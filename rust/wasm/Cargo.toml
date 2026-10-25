@@ -1,0 +1,20 @@
+[package]
+name = "mateless-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Mateless compiled to WebAssembly: the ladder behind a small C ABI for mateless-wasm.js"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "lib.rs"
+
+[dependencies]
+mateless = { path = "..", package = "mateless" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = 3

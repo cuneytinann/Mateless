@@ -1,0 +1,23 @@
+[package]
+name = "mateless"
+version = "0.1.0"
+edition = "2021"
+authors = ["Cüneyt İnan"]
+repository = "https://github.com/cuneytinann/Mateless"
+description = "Mateless: static lock detector and Domino search for FIDE dead positions and flag falls (Rust port of mateless.js)"
+license = "MIT"
+
+[lib]
+name = "mateless"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+# Only for the examples that run chasolver: vs_chasolver.rs (speed) and oracle.rs (full analysis).
+chasolver = { git = "https://github.com/miguel-ambrona/chasolver" }
+chess = "3.2"
+
+[profile.release]
+lto = true
+codegen-units = 1

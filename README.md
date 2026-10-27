@@ -13,7 +13,8 @@ Mateless is a library (JavaScript, Rust, WebAssembly; no dependencies) and an ar
 It is **sound but incomplete**: it never declares a draw without a proof, and what it cannot
 prove it leaves to the platform's rule (the flag loses) and to a complete solver after the game.
 
-[Türkçe](README.tr.md) · [Design](docs/DESIGN.md) · [Results](docs/RESULTS.md) ·
+**[The site](https://cuneytinann.github.io/Mateless/)** · [Türkçe](README.tr.md) ·
+[Design](docs/DESIGN.md) · [Results](docs/RESULTS.md) ·
 [for Lichess: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 
 ## The whole structure, not its smallest parts
@@ -174,8 +175,9 @@ detector alone on top of today's Lichess, 4,822 (`in-game`) or 4,568 (`a-lock`).
 ## Usage
 
 **The page.** One file, `index.html`, holds the whole site: open it in a browser, nothing to
-install. With GitHub Pages turned on it is the site's front page, and its Download link saves the
-same file, which runs offline (only the fonts come from the internet). English by default,
+install. It is the site's front page,
+[cuneytinann.github.io/Mateless](https://cuneytinann.github.io/Mateless/), and its Download link
+saves the same file, which runs offline (only the fonts come from the internet). English by default,
 Turkish to choose. Five tabs:
 - **Arbiter**: a FEN, CSV or TXT files of positions, or PGN games. Each verdict is
   shown as a score with its reason (insufficient material, locked position, Domino effect, mate
@@ -185,7 +187,8 @@ Turkish to choose. Five tabs:
 - **Lock detector**: how rung 2 works on bitboards (the cones; the fixed point of walls, fixed
   pawns, king reaches and take squares; the leaks; the mating net; the frozen king), with every
   assumption and why it is safe. An explorer steps through the passes for any FEN; its boards are
-  computed in the browser and checked against mateless.js as they are drawn.
+  computed in the browser and checked against mateless.js as they are drawn. The detector alone,
+  in 20 languages, downloads from there as `mateless-lock.zip`.
 - **Rules**: FIDE 5.2.2, 6.9 and 5.1.2, what the book says and how an algorithm can read it.
 - **Lichess scan**: drop one of Lichess's monthly databases (`.pgn.zst`) and it is scanned in
   the browser, on every core, without unpacking it first: the games won although the winner could
@@ -277,6 +280,13 @@ proposed), the same detector when a flag falls (`a-lock`, the alternative), and 
 ## Taking only the lock detector
 
 For a platform that wants the lock detector without the rest of the ladder.
+
+**The simplest way:** [`mateless-lock.zip`](mateless-lock.zip) (the folder [`lock/`](lock/)) holds
+the detector alone, in its simplest form, in 20 languages: C, C++, C#, Crystal, Go, Haskell, Java,
+JavaScript, Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Each
+is about two hundred lines on its language's standard library, and all give the same answers on the
+same 36,405 test positions ([lock/README.md](lock/README.md)). The table below is the fast versions
+inside Mateless.
 
 **What it needs:** the bitboards of the pawns, kings and bishops (by colour), whether any knight,
 rook or queen is on the board, and the en passant square (only when a legal capture onto it
@@ -372,10 +382,13 @@ mateless.mjs         the same file as an ES module (also from tools/build.js)
 mateless.d.ts        TypeScript types
 mateless.wasm        the Rust port as WebAssembly (tools/build-wasm.js); bridge: mateless-wasm.js
 index.html           the whole site in one page: arbiter, lock detector, rules, Lichess scan, chasolver
+lock/                the lock detector alone, in its simplest form, in 20 languages, and the
+                     positions that test them all (lock/README.md)
+mateless-lock.zip    lock/ as one download (tools/build-lock-zip.js)
 site/                its sources, one folder per tab; tools/build-site.js joins them (site/README.md)
 rust/                the Rust port: library, command-line tool, comparisons with chasolver;
                      rust/wasm: a thin C ABI for WebAssembly
-tools/               build.js, build-wasm.js, build-site.js
+tools/               build.js, build-wasm.js, build-site.js, build-lock-zip.js, lock-positions.js
 test/                the test suite (test/README.md)
 data/                the classification of the Lichess data (data/README.md)
 docs/                DESIGN.md (how it works and why), RESULTS.md (measurements)
@@ -395,12 +408,22 @@ node classify.js 6 100 1                         # against chasolver's labels: F
 node game_flags_check.js 1 3000 200              # every flag that comes down, against chasolver's full solver
 node twosided_check.js <files>                   # both sides in one pass = each side alone, every field
 node trigger_check.js                            # testsAfter = the clock rule, takebacks included
-node build_check.js                              # mateless.js and .mjs = a build of src/, the page carries the same engine
-node page_check.js                               # both pages in headless Chromium
+node build_check.js                              # mateless.js and .mjs = a build of src/, the page carries the same engine,
+                                                 # lock/positions.tsv and mateless-lock.zip are up to date
+(cd ../lock && sh test-all.sh)                   # the lock detector alone, every language, on lock/positions.tsv
+node page_check.js                               # the page, every tab, in headless Chromium
 node wasm_check.js                               # mateless.wasm = mateless.js
 node types_check.js                              # mateless.d.ts against the engine (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, every 50th lock
 ```
+
+## What comes next
+
+This version is the fast layer: sound, small, and meant to run on a game server after every
+move. A second version will come beside it. It will not be complete either, but it will be wider
+in scope, with completeness as its goal, and it will keep growing as new rules are added. This
+version already covers 99.98% of the Lichess data, so in practice the wider one will matter
+mostly to the curious and to research; it will not be rushed.
 
 ## License and credits
 

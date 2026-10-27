@@ -13,7 +13,8 @@ Mateless bir kütüphane (JavaScript, Rust, WebAssembly; bağımlılık yok) ve 
 **Sağlam ama eksik**: ispatı olmadan hiçbir zaman beraberlik demiyor; ispatlayamadığını
 platformun kuralına (süresi biten kaybeder) ve oyundan sonra tam bir çözücüye bırakıyor.
 
-[English](README.md) · [Tasarım](docs/DESIGN.md) · [Sonuçlar](docs/RESULTS.md) ·
+**[Site](https://cuneytinann.github.io/Mateless/)** · [English](README.md) ·
+[Tasarım](docs/DESIGN.md) · [Sonuçlar](docs/RESULTS.md) ·
 [Lichess için: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 (belgeler İngilizce)
 
@@ -178,10 +179,10 @@ dedektörüyle 4.822 (`in-game`) ya da 4.568 (`a-lock`).
 
 ## Kullanım
 
-**Sayfa.** Bütün site tek dosyada, `index.html`'de: tarayıcıda açılır, kurulum gerekmez. GitHub
-Pages açıkken sitenin ön sayfası olur; İndir bağlantısı aynı dosyayı kaydeder, o da internetsiz
-çalışır (yalnızca yazı tipleri internetten gelir). Varsayılan dil İngilizce; Türkçe seçilebilir.
-Beş sekme:
+**Sayfa.** Bütün site tek dosyada, `index.html`'de: tarayıcıda açılır, kurulum gerekmez. Sitenin ön
+sayfası odur, [cuneytinann.github.io/Mateless](https://cuneytinann.github.io/Mateless/); İndir
+bağlantısı aynı dosyayı kaydeder, o da internetsiz çalışır (yalnızca yazı tipleri internetten
+gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
 - **Hakem**: bir FEN, CSV ya da TXT pozisyon dosyaları ya da PGN oyunları. Her hüküm bir
   skor ve gerekçesiyle (yetersiz materyal, kilitli pozisyon, Domino etkisi, mat bulundu, ispat yok)
   ve ona götüren basamaklarla gösterilir; ölü pozisyonlar işaretlenir; sonuçlar CSV olarak
@@ -191,6 +192,7 @@ Beş sekme:
   piyonlar, şah erişimleri ve alım karelerinin sabit noktası; sızıntılar; mat ağı; donmuş şah),
   her varsayım ve neden güvenli olduğuyla. Bir gezgin, her FEN için geçişleri adım adım
   gösteriyor; tahtaları tarayıcıda hesaplanıyor ve çizildikçe mateless.js ile denetleniyor.
+  Dedektörün kendisi, 20 dilde, oradan `mateless-lock.zip` olarak iniyor.
 - **Kurallar**: FIDE 5.2.2, 6.9 ve 5.1.2; kitap ne diyor, bir algoritma onu nasıl okuyabilir.
 - **Lichess taraması**: Lichess'in aylık veritabanlarından birini (`.pgn.zst`) bırak, tarayıcıda,
   bütün çekirdeklerle, dosya açılmadan taransın: kazananın hiç mat edemeyeceği hâlde kazançla
@@ -282,6 +284,13 @@ başvuru için).
 ## Yalnızca kilit dedektörünü almak
 
 Merdivenin geri kalanı olmadan yalnızca kilit dedektörünü almak isteyen bir platform için.
+
+**En sade yol:** [`mateless-lock.zip`](mateless-lock.zip) ([`lock/`](lock/) klasörü) dedektörün
+kendisini en sade hâliyle 20 dilde taşıyor: C, C++, C#, Crystal, Go, Haskell, Java, JavaScript,
+Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Her biri kendi
+dilinin standart kütüphanesi üzerinde iki yüz kadar satır ve hepsi aynı 36.405 test pozisyonunda
+aynı cevapları veriyor ([lock/README.tr.md](lock/README.tr.md)). Aşağıdaki tablo Mateless'in
+içindeki hızlı sürümler.
 
 **Ne istiyor:** piyonların, şahların ve fillerin (renkleriyle) bitboard'ları, tahtada at, kale ya
 da vezir olup olmadığı ve en passant karesi (yalnızca o kareye yasal bir alış varsa). Hamle
@@ -376,10 +385,13 @@ mateless.mjs         aynı dosya, ES modülü olarak (o da tools/build.js'ten)
 mateless.d.ts        TypeScript tipleri
 mateless.wasm        Rust çevirisi, WebAssembly olarak (tools/build-wasm.js); köprüsü mateless-wasm.js
 index.html           bütün site tek sayfada: hakem, kilit dedektörü, kurallar, Lichess taraması, chasolver
+lock/                kilit dedektörünün kendisi, en sade hâliyle, 20 dilde, ve hepsini deneyen
+                     pozisyonlar (lock/README.tr.md)
+mateless-lock.zip    lock/ tek bir indirme olarak (tools/build-lock-zip.js)
 site/                kaynakları, her sekmeye bir klasör; tools/build-site.js birleştiriyor (site/README.md)
 rust/                Rust çevirisi: kütüphane, komut satırı aracı, chasolver karşılaştırmaları;
                      rust/wasm: WebAssembly için ince bir C arayüzü
-tools/               build.js, build-wasm.js, build-site.js
+tools/               build.js, build-wasm.js, build-site.js, build-lock-zip.js, lock-positions.js
 test/                test takımı (test/README.md)
 data/                Lichess verisinin sınıflaması (data/README.md)
 docs/                DESIGN.md (nasıl çalışıyor, neden), RESULTS.md (ölçümler)
@@ -399,12 +411,22 @@ node classify.js 6 100 1                         # chasolver etiketlerine karş�
 node game_flags_check.js 1 3000 200              # düşen her bayrak, chasolver'ın tam çözücüsüne karşı
 node twosided_check.js <dosyalar>                # iki taraf tek geçişte = taraf taraf, her alanda
 node trigger_check.js                            # testsAfter = sayaç kuralı, geri almalar dahil
-node build_check.js                              # mateless.js ve .mjs = src/'nin derlemesi, sayfa aynı motoru taşıyor
-node page_check.js                               # iki sayfa, başsız Chromium'da
+node build_check.js                              # mateless.js ve .mjs = src/'nin derlemesi, sayfa aynı motoru taşıyor,
+                                                 # lock/positions.tsv ve mateless-lock.zip güncel
+(cd ../lock && sh test-all.sh)                   # kilit dedektörünün kendisi, her dilde, lock/positions.tsv üzerinde
+node page_check.js                               # sayfa, her sekmesiyle, başsız Chromium'da
 node wasm_check.js                               # mateless.wasm = mateless.js
 node types_check.js                              # mateless.d.ts motora karşı (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü, her 50. kilit
 ```
+
+## Sırada ne var
+
+Bu sürüm hızlı katman: sağlam, küçük ve bir oyun sunucusunda her hamleden sonra çalışmak için
+yapıldı. Yanına ikinci bir sürüm gelecek. O da tam olmayacak, ama kapsamı daha geniş olacak;
+hedefi tamlık, yeni kurallar eklendikçe de büyümeye devam edecek. Bu sürüm Lichess verisinin
+%99,98'ini zaten karşılıyor; bu yüzden geniş sürüm pratikte en çok meraklıları ve araştırmayı
+ilgilendirecek, aceleye getirilmeyecek.
 
 ## Lisans ve teşekkür
 

@@ -4,7 +4,8 @@
    that does not answer:
      arbiter    one position, a labelled batch, the detail dialog, the PGN replay, the engine source
      chasolver  a position handed over by the arbiter's "Ask chasolver" link (#chasolver?fen=…)
-     lock       every example, both sides, every level and pass of the explorer, in both languages
+     lock       every example, both sides, every level and pass of the explorer, in both languages;
+                the download of the detector alone (mateless-lock.zip) and its section
      rules      an anchor link inside the tab
      scan       a small Lichess-style PGN through the workers: a timeout in a lock and a draw
                 played on after one
@@ -98,6 +99,14 @@ const fail = [];
     if (disagree) fail.push('the lock explorer disagrees with mateless.js (' + lang + ')');
   };
   await explore('en');
+  // the lock detector alone: the download, and its section
+  const zip = await page.getAttribute('#lockzip', 'href');
+  console.log('lock zip:', zip);
+  if (!/mateless-lock\.zip$/.test(zip || '')) fail.push('the lock tab has no download of mateless-lock.zip');
+  await page.locator('#tab-lock a[href="#code"]:visible').first().click();
+  await page.waitForTimeout(200);
+  if (!await page.evaluate(() => { const r = document.getElementById('code').getBoundingClientRect(); return r.top >= -20 && r.top < innerHeight; }))
+    fail.push('the lock tab\'s "In your own code" link does not scroll there');
 
   // 4. the rules: an anchor inside the tab
   await page.click('.tabs a[data-tab="rules"]');

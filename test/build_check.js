@@ -7,7 +7,9 @@
         mateless.js export the same names, the same constants and, for every function and class,
         the same source text;
      4. all of them give the same answers on chasolver's positions (CHASOLVER, every 16th) and on
-        games played from them.
+        games played from them;
+     5. lock/positions.tsv is what tools/lock-positions.js writes now (labelled by mateless.js),
+        and mateless-lock.zip is what tools/build-lock-zip.js builds from lock/ now.
    Usage: node build_check.js */
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 const root = path.join(__dirname, '..');
@@ -76,6 +78,12 @@ const problem = m => { problems++; if (problems <= 20) console.log('PROBLEM', m)
     positions++; plies += a.split('|').length - 3;
     for (const [where, B] of others.slice(0, 2)) if (answer(B, fens[i]).join('|') !== a) problem(where + ': another answer for ' + fens[i]);
   }
+  // 5. the lock detector alone: its test positions and its zip
+  for (const tool of ['lock-positions.js', 'build-lock-zip.js']) {
+    const r = spawnSync(process.execPath, [path.join(root, 'tools', tool), '--check'], { encoding: 'utf8' });
+    if (r.status !== 0) problem((r.stdout + r.stderr).trim());
+  }
+
   console.log(`build up to date: ${b.status === 0}; ${ka.length} exports compared in ${others.length} forms; ${positions} positions, ${plies} plies played in 3 forms: ${problems} problems`);
   process.exit(problems ? 1 : 0);
 })();

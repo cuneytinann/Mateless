@@ -1,5 +1,4 @@
-/* The look both pages share (index.html, chasolver.html): test/build_check.js checks that the two
-   copies are the same. */
+/* The look every tab of the page shares: colours, type, forms, boards, tables. */
 :root{--ground:#161a21;--raised:#1e232c;--sunk:#12151b;--line:#333a46;--ink:#ebe6da;--dim:#9ba2ae;--faint:#6f7682;
   --draw:#5bb5a4;--win:#d9a347;--flag:#e5484d;--open:#8a8f99;--focus:#8ab4f8;--sq-d:#7d8a99;--sq-l:#c9d1da;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -22,7 +21,7 @@ h3{font:600 16px/1.4 var(--sans);margin:26px 0 8px}
 .dim{color:var(--dim)}
 .small{font-size:13.5px}
 
-/* the bar the two pages share */
+/* the bar at the top */
 .bar-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 28px;padding:18px 0 16px;margin-bottom:40px;border-bottom:1px solid var(--line)}
 .brand{font:600 22px/1 var(--cond);letter-spacing:.01em;text-decoration:none;color:var(--ink)}
 .brand i{font-style:normal;color:var(--flag)}

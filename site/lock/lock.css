@@ -22,6 +22,9 @@ pre .c{color:var(--faint)} pre .k{color:#9bd8cb}
 .speed div+div{padding-left:18px;border-left:1px solid var(--line)}
 .speed b{display:block;font:600 30px/1.1 var(--cond);font-variant-numeric:tabular-nums}
 .speed span{display:block;font-size:13.5px;color:var(--dim);margin-top:4px;max-width:34ch}
+.take{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:18px 0 6px}
+.take .btn{background:var(--raised);white-space:nowrap}
+.take p{margin:0;flex:1 1 320px;min-width:0}
 @media(max-width:780px){.speed{grid-template-columns:1fr}.speed div+div{padding-left:0;border-left:0;border-top:1px solid var(--line)}}
 
 /* boards: the site's .bd, with sets painted under the pieces */

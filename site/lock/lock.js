@@ -12,6 +12,10 @@
   const names = w => V.squares(w).map(V.name).join(' ') || L('none', 'yok');
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  // The zip lies beside the page on the site; a copy of the page saved on its own fetches it from GitHub.
+  if (location.protocol === 'file:')
+    document.querySelectorAll('#lockzip, #tab-lock a.zip').forEach(a => { a.href = 'https://github.com/cuneytinann/Mateless/raw/main/mateless-lock.zip'; });
+
   const EXAMPLES = [
     { id: 'lock', fen: '8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 0 92', flagged: 'w',
       name: ['A Lichess lock', 'Bir Lichess kilidi'],

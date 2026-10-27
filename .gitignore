@@ -4,3 +4,17 @@ page.png
 test/page.png
 rust/target*/
 rust/wasm/target/
+# What building the lock detector's versions in place leaves (lock/; the zip leaves them out too)
+lock/*/test
+lock/haskell/build/
+lock/kotlin/lock.jar
+lock/rust/target/
+lock/rust/Cargo.lock
+lock/csharp/bin/
+lock/csharp/obj/
+lock/**/*.class
+lock/**/*.o
+lock/**/*.ppu
+lock/**/*.cm[iox]
+lock/**/__pycache__/
+lock/**/nimcache/

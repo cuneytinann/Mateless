@@ -243,18 +243,27 @@ a forced move). Without the tests a search does not run longer, it fails earlier
 
 ## 7. Rules measured and left out
 
-The lock detector stays a pure static test. Three rules were built, measured and left out:
+The lock detector stays a pure static test. Four rules were built, measured and left out:
 
 | rule | what it did | why it was left out |
 |---|---|---|
-| boxed pieces | let knights, rooks and queens stay when every square they could step to is held by their own fixed men | one practical row in 201,060 (`hPiwD75i`); without it the detector is shorter and ~1.5× faster in game positions |
+| boxed pieces | let knights, rooks and queens stay when every square they could step to is held by their own fixed men | one practical row in the Lichess data (`hPiwD75i`); without it the detector is shorter and ~1.5× faster in game positions |
 | pawn's check | started a king's reach in a pawn's check from its legal moves, so a lock entered by stepping out was proven statically | the Domino search proves those 212 rows in one ply; the rule made the detector generate moves and slowed it ~13% on locks |
 | forced capture | at the root, when every legal move takes the only knight, rook or queen, proved each position after the capture statically | the Domino search proves those ~61,000 rows in one ply; static use needed a trigger of its own ("the side to move is in check") |
+| open pawn pair | a white and a black pawn on one file with one empty square between them, the rest locked: split the reachable positions into three families (both pawns in place, the white one in the gap, the black one in the gap) and proved each like a lock; up to three pairs (27 families) | kept out for now. It proves 3 of the 36 unproven timeouts (2023–2024). In 5 drawn games of August and September 2026 it sees the dead position at once, where without it Mateless sees it 1–8 plies late in four and not at all in one (`19dcoW9q`). It costs ~300 more lines in JS (256 in Rust) and 18 KB of WebAssembly; per move in games no measurable time, +0.2 µs (JS) on each new lock |
 
-With the rules on or off: the same 36 rows unproven of 201,060; in ~5,000 games the flags come
-down at the same plies; the cost per move differs within the noise (±3%). The only gain was in
-judging one position at a flag fall (pawn's-check rows 2.2 → 0.5 µs, forced captures 1.0 →
-0.6 µs), and with the flags nothing is computed then.
+Why the open pair is missed: a king's reach may enter its own pawn's square ("the pawn may
+advance") and, separately, the empty square in front of it. Taken together the king walks through
+the file, the opposite pawn is counted as capturable, the wall falls and both pawns seem to
+promote. In fact the king can have only one of the two: while the pawn stands, its square is
+closed; once it steps into the gap, the gap is.
+
+With the pawn's check and the forced capture on or off: the same 36 rows unproven; in ~5,000
+games the flags come down at the same plies; the cost per move differs within the noise (±3%).
+The only gain was in judging one position at a flag fall (pawn's-check rows 2.2 → 0.5 µs, forced
+captures 1.0 → 0.6 µs), and with the flags nothing is computed then. Boxed pieces would prove one
+of the 36 (`hPiwD75i`), the open pawn pair three. An exhaustive enumeration of the reachable
+positions closes all 36, the largest at 7,950 positions ([RESULTS.md](RESULTS.md)).
 
 ## 8. Both sides in one pass
 

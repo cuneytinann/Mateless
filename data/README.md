@@ -1,15 +1,21 @@
 # Data
 
-Mateless's classification of chasolver's Lichess data: the 192,457 rated Lichess games up to
-31 July 2026 that were lost on time although the opponent could never have mated (the set without
-its material and server-stalemate rows; see [docs/RESULTS.md](../docs/RESULTS.md)). The data itself
-comes from Miguel Ambrona's [chasolver](https://github.com/miguel-ambrona/chasolver) project, which
-publishes it as CSV files at [chasolver.org/unfair-games](https://chasolver.org/unfair-games); the
-files here key into it by game id (`https://lichess.org/<gameId>`).
+Mateless's classification of the rated Lichess games lost on time although the opponent could
+never have mated: 195,287 games, newest first (see [docs/RESULTS.md](../docs/RESULTS.md)).
+
+- **Up to 31 July 2026:** chasolver's Lichess data, 192,457 games (the set without its material
+  and server-stalemate rows). The data itself comes from Miguel Ambrona's
+  [chasolver](https://github.com/miguel-ambrona/chasolver) project, which publishes it as CSV files
+  at [chasolver.org/unfair-games](https://chasolver.org/unfair-games); the files here key into it by
+  game id (`https://lichess.org/<gameId>`).
+- **August and September 2026:** a scan of Lichess's monthly databases
+  (`lichess_db_standard_rated_2026-08`, `-09`), 2,830 games lost on time where both chasolver and
+  Mateless prove that the winner could never have mated (games won by a rules infraction left out).
+  Their final positions are in `lichess_2026-08_09.tsv`.
 
 ## `timeouts_classified.tsv`
 
-One line per game, with a header:
+One line per game, newest first, with a header:
 
 | column | meaning |
 |---|---|
@@ -20,12 +26,31 @@ One line per game, with a header:
 | `with_lock_patch` | 1 if it is drawn with mateless-scalachess's `a-lock` patch (the lock detector at the position and in #821's lookahead) |
 | `dead_position` | 1 if the final position is already dead: Mateless proves that neither side can mate (FIDE 5.2.2) |
 
+"Newest first" is by date and, up to July, chasolver's UTC time. The scanned months have no time:
+within a day their games stand in the reverse of the database's order.
+
 ## `locked_positions.tsv`
 
-The 50,970 locked positions: `<fen>\t<w|b>\t<gameId>`. The FEN is the final position, the flagged
-side to move; the second field is the side that cannot mate (the flagged side's opponent). It is
-the input of `test/lock_invariant.js`, `test/fair_lock_bench.js` and
-`rust/examples/vs_chasolver.rs`.
+The 52,050 locked positions, newest first: `<fen>\t<w|b>\t<gameId>`. The FEN is the final position,
+the flagged side to move; the second field is the side that cannot mate (the flagged side's
+opponent). It is the input of `test/lock_invariant.js`, `test/fair_lock_bench.js` and
+`rust/examples/vs_chasolver.rs`. The speeds in the READMEs were measured on its first version, the
+50,970 locks up to July 2026.
+
+## `lichess_2026-08_09.tsv`
+
+The 3,000 games of the August and September scan won other than by mate although the winner could
+never have mated, newest first: the 2,830 timeouts above and 170 resignations (under FIDE 5.1.2 a
+draw, on Lichess scored as a loss).
+
+| column | meaning |
+|---|---|
+| `gameId`, `date` | as above |
+| `end` | `timeout` or `resignation` |
+| `loser` | `w` or `b`: the side that lost on time or resigned (in 22 resignations not the side to move) |
+| `mateless` | `lock`, `domino` or `unproven` for the loser: the first rung that proves its opponent can never mate |
+| `dead_position` | as above |
+| `fen` | the final position |
 
 ## Reproducing
 
@@ -38,6 +63,8 @@ target/release/mateless layers timeouts.csv > layers.tsv     # per row: gameId, 
 cut -f2 layers.tsv | sort | uniq -c                            # 141451 domino, 50970 lock, 36 none
 ```
 
-`node test/rust_compare.js layers timeouts.csv` prints the same lines from `mateless.js`. The two
-scalachess columns come from mateless-scalachess (`check/lock/LockCheck.scala`: `rows`, with the
-`a` build for the patch and today's scalachess for the other).
+`node test/rust_compare.js layers timeouts.csv` prints the same lines from `mateless.js`. The
+scanned timeouts go through the same commands once written in that CSV form (the FEN as the 13th
+column). The two scalachess columns come from mateless-scalachess (`check/lock/LockCheck.scala`:
+`rows` with the `a` build for the patch; `check/ladder/Check.scala`: `rows` with the `ref` build,
+today's scalachess, for the other).

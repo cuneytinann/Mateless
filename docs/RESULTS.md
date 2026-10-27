@@ -16,7 +16,14 @@ the flagged side to move.
 |---|---|---|
 | material | 8,139 | 2013–2020, most in 2016–2019; none after 2020: Lichess fixed its material rule around then |
 | server stalemates | 464 | the flagged side had no legal move and was not in check: the game had ended in stalemate |
-| the rest | 192,457 | the set Mateless classifies below |
+| the rest | 192,457 | classified below |
+
+**August and September 2026** come from a scan of Lichess's monthly databases
+(`lichess_db_standard_rated_2026-08` and `-09`: 91,912,325 and 89,616,462 rated games), every game
+replayed move by move. A game counts when it was won other than by mate although the winner could
+never have mated, and both chasolver and Mateless prove it; games won by a rules infraction are left
+out. That gives 3,000 games: 2,830 lost on time, classified below with the rest, and 170 resigned
+(below).
 
 ### Classification
 
@@ -25,61 +32,80 @@ WebAssembly give the same class, node count and failure on every row.
 
 | class | rows | share | Lichess today | with the lock patch | with the whole ladder |
 |---|---|---|---|---|---|
-| locked positions | 50,970 | 26.5% | 141 | 50,970 | 50,970 |
-| forced lines (Domino) | 141,451 | 73.5% | 136,772 | 137,007 | 141,451 |
-| unproven | 36 | 0.019% | 0 | 0 | 0 |
-| **all** | **192,457** | | **136,913 (71.1%)** | **187,977 (97.7%)** | **192,421 (99.98%)** |
+| locked positions | 52,050 | 26.7% | 141 | 52,050 | 52,050 |
+| forced lines (Domino) | 143,201 | 73.3% | 138,431 | 138,669 | 143,201 |
+| unproven | 36 | 0.018% | 0 | 0 | 0 |
+| **all** | **195,287** | | **138,572 (71.0%)** | **190,719 (97.7%)** | **195,251 (99.98%)** |
 
 - *Lichess today*: scalachess 18.0.1's `opponentHasInsufficientMaterial`, which lila asks when a
-  flag falls (`Finisher.outOfTime`), with the one-move lookahead of #821 (August 2026). The data
-  predates #821: scalachess would have drawn ~70% of the rows of every month from 2017 to 2026.
+  flag falls (`Finisher.outOfTime`), with the one-move lookahead of #821 (merged in August 2026;
+  on Lichess from 6 September, judging by the data). The data up to July predates #821: scalachess
+  would have drawn ~70% of the rows of every month from 2017 to 2026.
 - *The lock patch*: [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'s
-  `a-lock`, the lock detector asked at the position and in #821's lookahead. Of the 51,064 rows it
-  adds, 50,829 are locks at the position itself, 235 come through the lookahead (234 kings stepping
+  `a-lock`, the lock detector asked at the position and in #821's lookahead. Of the 52,147 rows it
+  adds, 51,909 are locks at the position itself, 238 come through the lookahead (237 kings stepping
   out of a pawn's check into a lock, one lock after a forced capture of a rook).
 - *The whole ladder*: `c-ladder`, or Mateless itself. No row that scalachess draws is missed.
-- What the lock patch leaves: 4,444 forced lines of more than one move, and the 36 unproven rows.
+- What the lock patch leaves: 4,532 forced lines of more than one move, and the 36 unproven rows.
+- Both scalachess columns come from scalachess itself, built with and without the patch
+  (mateless-scalachess's `check/`).
 
-By year (the lock class is a quarter of every year):
+By year, newest first. Up to August the lock class is about a quarter of every period. From
+7 September, with #821 in use, the scan holds only the games Lichess still scored wrongly: of
+those 460, 422 (92%) are locks, and the lock patch draws all of them.
 
 | year | rows | locked | forced lines | unproven | Lichess today | with the lock patch |
 |---|---|---|---|---|---|---|
-| 2013–2016 | 2,845 | 1,039 | 1,805 | 1 | 1,726 | 2,767 |
-| 2017 | 3,509 | 926 | 2,583 | 0 | 2,502 | 3,430 |
-| 2018 | 6,397 | 1,618 | 4,779 | 0 | 4,624 | 6,250 |
-| 2019 | 10,825 | 2,812 | 8,012 | 1 | 7,744 | 10,558 |
-| 2020 | 20,518 | 5,163 | 15,352 | 3 | 14,875 | 20,047 |
-| 2021 | 26,920 | 6,424 | 20,489 | 7 | 19,767 | 26,200 |
-| 2022 | 26,171 | 6,801 | 19,364 | 6 | 18,730 | 25,542 |
-| 2023 | 28,224 | 7,595 | 20,616 | 13 | 19,938 | 27,543 |
-| 2024 | 26,669 | 7,362 | 19,304 | 3 | 18,739 | 26,111 |
-| 2025 | 26,417 | 7,473 | 18,942 | 2 | 18,367 | 25,868 |
+| 2026 September | 864 | 533 | 331 | 0 | 282 | 816 |
+| 2026 August | 1,966 | 547 | 1,419 | 0 | 1,377 | 1,926 |
 | 2026 (to 31 July) | 13,962 | 3,757 | 10,205 | 0 | 9,901 | 13,661 |
+| 2025 | 26,417 | 7,473 | 18,942 | 2 | 18,367 | 25,868 |
+| 2024 | 26,669 | 7,362 | 19,304 | 3 | 18,739 | 26,111 |
+| 2023 | 28,224 | 7,595 | 20,616 | 13 | 19,938 | 27,543 |
+| 2022 | 26,171 | 6,801 | 19,364 | 6 | 18,730 | 25,542 |
+| 2021 | 26,920 | 6,424 | 20,489 | 7 | 19,767 | 26,200 |
+| 2020 | 20,518 | 5,163 | 15,352 | 3 | 14,875 | 20,047 |
+| 2019 | 10,825 | 2,812 | 8,012 | 1 | 7,744 | 10,558 |
+| 2018 | 6,397 | 1,618 | 4,779 | 0 | 4,624 | 6,250 |
+| 2017 | 3,509 | 926 | 2,583 | 0 | 2,502 | 3,430 |
+| 2013–2016 | 2,845 | 1,039 | 1,805 | 1 | 1,726 | 2,767 |
 
 By the move number at the flag fall:
 
 | move | forced lines | locked | unproven |
 |---|---|---|---|
 | < 20 | 17 | 0 | 0 |
-| 20–29 | 402 | 3 | 0 |
-| 30–39 | 5,270 | 828 | 2 |
-| ≥ 40 | 135,762 | 50,139 | 34 |
+| 20–29 | 407 | 3 | 0 |
+| 30–39 | 5,344 | 843 | 2 |
+| ≥ 40 | 137,433 | 51,204 | 34 |
 
-**Dead before the flag fell.** In 115,524 rows (60.0%) the final position is already dead: the
+**Dead before the flag fell.** In 117,455 rows (60.1%) the final position is already dead: the
 ladder proves that neither side can mate. Under FIDE 5.2.2 those games had ended, drawn, before
-the flag fell, and a check after every move would have ended them then. In the other 76,933 only
+the flag fell, and a check after every move would have ended them then. In the other 77,832 only
 the flagged side's opponent cannot mate; the flagged side still could, so only the flag-fall rule
 (FIDE 6.9) draws them.
 
-**The 36 unproven rows** (20 by the budget, 16 by the ply ceiling): 29 have only kings, pawns and
-bishops, mostly corner cages (a king shut in a corner where taking the last pawn gives stalemate;
-`FKr42ZRT`, `RwnQJq1k`) and pawn structures not yet locked; 7 have a queen or a rook. Their
-halfmove clocks run from 0 to 70: none is lost to a move-count rule. chasolver's full search
-proves all of them; a refund after the game would cover them.
+**Resignations.** Of the 3,000 scanned games, 170 were resigned in a position where the opponent
+could never mate: under FIDE 5.1.2 a draw, on Lichess scored as a loss. 95 are locks and 75
+forced lines; in 158 the position was already dead.
 
-**Files** ([data/](../data)): `timeouts_classified.tsv` (every row: game id, date, class, Lichess
-today, with the lock patch, dead position) and `locked_positions.tsv` (the 50,970 locked
-positions, with the side that cannot mate and the game id).
+**The 36 unproven rows** (20 by the budget, 16 by the ply ceiling; all up to July 2026):
+- 32 are cages whose reachable positions include stalemates: mostly a king shut in a corner, where
+  taking the last pawn gives stalemate (`FKr42ZRT`, `RwnQJq1k`); 6 of them have a queen or a rook.
+- 3 hold an open pawn pair: a white and a black pawn on one file with one empty square between
+  them, the rest locked (`GyWj6Ymz`, `azjorRHB`, `lBSDAx07`). The lock detector does not take the
+  pair as fixed (DESIGN.md, section 7).
+- 1 has a knight boxed in by its own pawns (`hPiwD75i`; DESIGN.md, section 7).
+
+An exhaustive enumeration of the positions reachable from each (move clocks ignored) closes every
+one without a mate, the largest at 7,950 positions (under 0.1 s in JavaScript). Their halfmove
+clocks run from 0 to 70: none is lost to a move-count rule. chasolver's full search proves all of
+them; a refund after the game would cover them.
+
+**Files** ([data/](../data)), newest game first: `timeouts_classified.tsv` (every row: game id,
+date, class, Lichess today, with the lock patch, dead position), `locked_positions.tsv` (the 52,050
+locked positions, with the side that cannot mate and the game id) and `lichess_2026-08_09.tsv`
+(the 3,000 scanned games with their final positions, resignations included).
 
 ## 2. Speed against chasolver
 
@@ -87,7 +113,8 @@ positions, with the side that cannot mate and the game id).
 chasolver's own build settings (LTO, one codegen unit). Positions are read beforehand and only the
 decision is timed; positions run in chunks of 64, every chunk by both engines in an order that
 rotates from chunk to chunk; the median of 7 rounds, two runs (`rust/examples/vs_chasolver.rs`).
-The slowest position: the shortest of three calls on each.
+The slowest position: the shortest of three calls on each. The sets are chasolver's rows up to
+31 July 2026; the speeds were measured before the August and September rows were added.
 
 | set | positions | chasolver fast check | Mateless (static + Domino 6/100) | ratio | slowest position (chasolver / Mateless) |
 |---|---|---|---|---|---|
@@ -188,7 +215,8 @@ deliberately broken detectors: without the twin-bishop guard it found 9 real mat
 
 | set | certificates | reachable set enumerated completely | positions visited | violations |
 |---|---|---|---|---|
-| the locked rows of the data (cap 200,000) | 50,970 | 50,692 | 271.8 million | 0 |
+| the locked rows of the data up to July 2026 (cap 200,000) | 50,970 | 50,692 | 271.8 million | 0 |
+| the locks of August and September 2026, timeouts and resignations (cap 200,000) | 1,175 | 1,171 | 5.8 million | 0 |
 | locks of chasolver's hard set (earlier run) | 636 | 538 | 15.4 million | 0 |
 
 A certificate whose reachable set is enumerated completely is a proof for that position (no mate

@@ -106,33 +106,42 @@ although the opponent could never have mated, and publishes them as CSV files at
 [chasolver.org/unfair-games](https://chasolver.org/unfair-games): 201,060 games up to 31 July 2026,
 all of them wrongly scored. Two classes no longer occur on Lichess and are left out of the published set:
 material (8,139 rows; Lichess fixed that around 2020) and server stalemates (464 rows; a
-short-lived bug). The other 192,457 rows, classified by Mateless (JS, Rust and WebAssembly give
-the same answer on every row):
+short-lived bug). August and September 2026 come from a scan of Lichess's own monthly databases
+(181.5 million rated games): 2,830 games lost on time where both chasolver and Mateless prove that
+the winner could never have mated (games won by a rules infraction left out). The 195,287 rows,
+classified by Mateless (JS, Rust and WebAssembly give the same answer on every row):
 
 | class | rows | share | drawn by Lichess today (scalachess 18.0.1) | drawn with the lock patch |
 |---|---|---|---|---|
-| **locked positions** (the lock detector) | **50,970** | 26.5% | 141 | **50,970** |
-| forced lines (the Domino search) | 141,451 | 73.5% | 136,772 | 137,007 |
-| unproven | 36 | 0.019% | 0 | 0 |
-| **all** | **192,457** | | **136,913** (71.1%) | **187,977** (97.7%) |
+| **locked positions** (the lock detector) | **52,050** | 26.7% | 141 | **52,050** |
+| forced lines (the Domino search) | 143,201 | 73.3% | 138,431 | 138,669 |
+| unproven | 36 | 0.018% | 0 | 0 |
+| **all** | **195,287** | | **138,572** (71.0%) | **190,719** (97.7%) |
 
-Lichess today draws most forced lines: scalachess #821 (August 2026) added a one-move lookahead
-to the test that lila asks when a flag falls. What it still misses is, almost entirely, **locked
-positions**: 50,829 of its 55,544 misses. The lock patch is
+Lichess today draws most forced lines: scalachess #821 (merged in August 2026; on Lichess from
+6 September, judging by the data) added a one-move lookahead to the test that lila asks when a
+flag falls. What it still misses is, almost entirely, **locked positions**: 51,909 of its 56,715
+misses. From 7 to 30 September, with #821 in use, 460 games were still lost on time this way;
+422 of them (92%) were locks, and the lock patch draws every one. The lock patch is
 [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'s `a-lock` (the lock
 detector alone, 181 lines of Scala, asked at the position and in #821's lookahead). The whole
-ladder, Mateless itself or that repository's `c-ladder` patch, draws 192,421 rows (99.98%).
+ladder, Mateless itself or that repository's `c-ladder` patch, draws 195,251 rows (99.98%).
 
-In 115,524 rows (60%) the final position was already dead, neither side able to mate: under
+In 117,455 rows (60%) the final position was already dead, neither side able to mate: under
 FIDE 5.2.2 those games had ended in a draw before the flag fell.
 
-The classification is in [`data/`](data): `timeouts_classified.tsv` (every row: game id, date,
-class, Lichess today, with the lock patch, dead position) and `locked_positions.tsv` (the 50,970
-locked positions with the side that cannot mate). The 36 unproven rows are mostly corner cages
-(a king shut in a corner, where taking the last pawn gives stalemate) and pawn structures not yet locked; 7 have a
-queen or a rook. They, and whatever a platform's own rules leave, are what a refund after the game
-would cover: a complete solver (chasolver) judges them once the game is over. With the whole
-ladder that is 36 rows of 192,457; with the lock detector alone on top of today's Lichess, 4,480.
+The classification is in [`data/`](data), newest game first: `timeouts_classified.tsv` (every
+row: game id, date, class, Lichess today, with the lock patch, dead position),
+`locked_positions.tsv` (the 52,050 locked positions with the side that cannot mate) and
+`lichess_2026-08_09.tsv` (the scanned rows with their final positions; with them 170 games
+resigned where the opponent could never mate, a draw under FIDE 5.1.2 that Lichess scores as a
+loss). Of the 36 unproven rows, 32 are cages whose reachable positions include stalemates (mostly
+a king shut in a corner, where taking the last pawn gives stalemate; 6 of them with a queen or a
+rook), 3 hold an open pawn pair (one empty square between a white and a black pawn on a file,
+the rest locked), and 1 a knight boxed in by its own pawns. They, and whatever a platform's own
+rules leave, are what a refund after the game would cover: a complete solver (chasolver) judges
+them once the game is over. With the whole ladder that is 36 rows of 195,287; with the lock
+detector alone on top of today's Lichess, 4,568.
 
 **Soundness.** There is no written proof yet; there is strong test evidence.
 - No false draw against chasolver's labels (its 68,950 labelled positions, both sides;
@@ -145,9 +154,11 @@ ladder that is 36 rows of 192,457; with the lock detector alone on top of today'
 - **The invariant check** (`test/lock_invariant.js`) tests the reasoning, not the verdict: from
   every lock certificate it enumerates the reachable positions and checks that each one keeps
   what the certificate claims (pawns in their cones, fixed pawns in place, kings and bishops in
-  their reaches, no promotion, no mate). On all 50,970 locked positions of the data: no
+  their reaches, no promotion, no mate). On all 50,970 locked positions up to July 2026: no
   violation in 271.8 million positions visited; for 50,692 of them the reachable set was
-  enumerated completely, which is a proof for that position.
+  enumerated completely, which is a proof for that position. On the 1,175 locks of August and
+  September (timeouts and resignations): no violation in 5.8 million positions, 1,171 enumerated
+  completely.
 
 ## Usage
 
@@ -260,8 +271,8 @@ exists). It generates no move and searches nothing.
 | a knight, rook or queen on the board (most of a game): it returns at once | ~9 ns | | ~30–35 ns |
 | a locked position (the whole fixed point) | ~105 ns | ~0.3–0.8 µs | ~150–190 ns |
 
-**What it sees on its own:** a lock standing in the position itself: 50,970 of the 192,457 Lichess
-rows above, the 50,829 that Lichess misses today among them.
+**What it sees on its own:** a lock standing in the position itself: 52,050 of the 195,287 Lichess
+rows above, the 51,909 that Lichess misses today among them.
 
 **What it does not see:** a lock one move away.
 1. **A step out of a pawn's check.** A king in a pawn's check stands on a square its reach leaves
@@ -275,8 +286,8 @@ rows above, the 50,829 that Lichess misses today among them.
 **Two ways to cover them:**
 - **A platform with a one-move lookahead** (such as scalachess #821, which looks at every move of
   the flagged side): ask the lock at the position and at every child. All three cases come by
-  themselves; in a child no en passant right is left. On the Lichess data that added 235 rows:
-  234 steps out of a pawn's check and 1 forced capture of a rook.
+  themselves; in a child no en passant right is left. On the Lichess data that added 238 rows:
+  237 steps out of a pawn's check and 1 forced capture of a rook.
   ```
   drawn on time  ⇔  lock(position)
                     or, after every legal move of the flagged side: a checkmate it gave, a
@@ -289,7 +300,7 @@ rows above, the 50,829 that Lichess misses today among them.
   king still in the pawn's check, the capture not yet made, the right still standing), only a
   lookahead or the Domino search sees it.
 
-**Beyond:** forced lines of more than one move (4,444 rows of the data) need a short search: the
+**Beyond:** forced lines of more than one move (4,532 rows of the data) need a short search: the
 Domino search.
 
 ## Layers

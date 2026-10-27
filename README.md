@@ -288,9 +288,10 @@ exists). It generates no move and searches nothing.
 rows above, the 51,909 that Lichess misses today among them.
 
 **What it does not see:** a lock one move away.
-1. **A step out of a pawn's check.** A king in a pawn's check stands on a square its reach leaves
-   out; stepping out can complete the lock. `8/8/1k6/p2p2p1/PK1P2Pp/7P/8/8 w`: every king move of
-   White enters a lock.
+1. **A step out of a pawn's check.** A king in a pawn's check stands on a square a pawn attacks,
+   and its reach floods from there, through squares it could not enter otherwise; stepping out
+   can complete the lock. `8/8/1k6/p2p2p1/PK1P2Pp/7P/8/8 w`: every king move of White enters a
+   lock.
 2. **A forced capture.** When taking the last knight, rook or queen is the only move, a lock (or
    bare material) follows it. `8/8/6R1/1p1p1k2/1P1Pp3/4P1p1/6P1/6K1 b`: Kxg6 is the only move.
 3. **The lapse of an en passant right.** The detector fails while the right stands; any next move

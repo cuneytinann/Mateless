@@ -293,9 +293,9 @@ da vezir olup olmadığı ve en passant karesi (yalnızca o kareye yasal bir al�
 satırının 52.050'si, Lichess'in bugün kaçırdığı 51.909'u dahil.
 
 **Neyi görmez:** bir hamle ötedeki kilidi.
-1. **Piyon şahından çıkış.** Piyon şahındaki şah, erişim kümesinin dışarıda bıraktığı bir karede
-   duruyor; oradan çıkınca kilit tamamlanabiliyor. `8/8/1k6/p2p2p1/PK1P2Pp/7P/8/8 w`: Beyaz'ın her
-   şah hamlesi kilide giriyor.
+1. **Piyon şahından çıkış.** Piyon şahındaki şah, bir piyonun saldırdığı bir karede duruyor ve
+   erişimi oradan, başka türlü giremeyeceği karelere de yayılıyor; oradan çıkınca kilit
+   tamamlanabiliyor. `8/8/1k6/p2p2p1/PK1P2Pp/7P/8/8 w`: Beyaz'ın her şah hamlesi kilide giriyor.
 2. **Zorunlu alış.** Son atı, kaleyi ya da veziri almak tek hamleyse, alıştan sonra bir kilit (ya da
    çıplak malzeme) geliyor. `8/8/6R1/1p1p1k2/1P1Pp3/4P1p1/6P1/6K1 b`: Şxg6 tek hamle.
 3. **En passant hakkının düşmesi.** Hak dururken dedektör başarısız; sonraki herhangi bir hamle hakkı

@@ -1,0 +1,49 @@
+<h1><span lang="en">Scan a month of Lichess games</span><span lang="tr">Bir ayın oyunlarını tara</span></h1>
+<p class="lede" lang="en">Drop one of Lichess’s monthly database files (<span class="mono">lichess_db_standard_rated_YYYY-MM.pgn.zst</span>) here. It is scanned on your computer as it is, without unpacking it first, on all of its processor cores; nothing goes to the internet.</p>
+<p class="lede" lang="tr">Lichess’in aylık veritabanı dosyalarından birini (<span class="mono">lichess_db_standard_rated_YYYY-MM.pgn.zst</span>) buraya bırak. Dosya açılmadan, bilgisayarında, işlemcinin bütün çekirdekleriyle taranır; hiçbir şey internete gitmez.</p>
+<p class="dim" lang="en">Every game is replayed move by move. Games won are judged at their final position; in drawn games Mateless follows both sides’ flags at every ply. chasolver (its full search) decides at the final position and, in games that ended dead, searches back for the ply where the position died. Games that end in mate are skipped.</p>
+<p class="dim" lang="tr">Her oyun hamle hamle oynatılır. Kazançla bitenler son pozisyonda yargılanır; berabere bitenlerde Mateless her ply’da iki tarafın bayrağını izler. chasolver (tam arama) son pozisyonda karar verir, ölü bitenlerde ölümün başladığı ply’ı geriye doğru arar. Mattan biten oyunlar atlanır.</p>
+
+<section class="panel">
+  <div class="drop" id="scan-drop" tabindex="0" role="button" aria-describedby="scan-dropsmall">
+    <strong><span lang="en">Drop the .pgn.zst file here</span><span lang="tr">.pgn.zst dosyasını buraya sürükle</span></strong>
+    <small id="scan-dropsmall"><span lang="en">or click to choose it (an unpacked .pgn works too)</span><span lang="tr">ya da tıklayıp seç (açılmış .pgn de olur)</span></small>
+    <div class="file" id="scan-fileName"></div>
+  </div>
+  <input type="file" id="scan-fileInput" accept=".zst,.pgn" hidden>
+  <div class="opts">
+    <label><span lang="en">Threads</span><span lang="tr">İş parçacığı</span> <select id="scan-workers"></select></label>
+    <label><input type="checkbox" id="scan-useCha" checked> <span lang="en">chasolver’s full search</span><span lang="tr">chasolver tam arama</span></label>
+  </div>
+  <div class="gorow">
+    <button class="primary" id="scan-start" disabled><span lang="en">Start the scan</span><span lang="tr">Taramayı başlat</span></button>
+    <button id="scan-stop" disabled><span lang="en">Stop</span><span lang="tr">Durdur</span></button>
+    <span class="stat" id="scan-status" aria-live="polite"></span>
+  </div>
+  <div class="prog"><i id="scan-bar"></i></div>
+  <div class="err" id="scan-error"></div>
+</section>
+
+<h2><span lang="en">Results</span><span lang="tr">Sonuçlar</span></h2>
+<div class="cards">
+  <div class="card"><div class="who">Mateless</div><div class="what"><span lang="en">Wrong result</span><span lang="tr">Yanlış sonuç</span></div><div class="n" id="scan-n-mw">0</div><div class="by" id="scan-by-mw"></div><button data-k="mw" disabled><span lang="en">Download CSV</span><span lang="tr">CSV indir</span></button></div>
+  <div class="card"><div class="who">Mateless</div><div class="what"><span lang="en">Ended late (rightly)</span><span lang="tr">Geç biten (doğru)</span></div><div class="n" id="scan-n-ml">0</div><div class="by" id="scan-by-ml"></div><button data-k="ml" disabled><span lang="en">Download CSV</span><span lang="tr">CSV indir</span></button></div>
+  <div class="card"><div class="who"><span lang="en">chasolver · full</span><span lang="tr">chasolver · tam</span></div><div class="what"><span lang="en">Wrong result</span><span lang="tr">Yanlış sonuç</span></div><div class="n" id="scan-n-cw">0</div><div class="by" id="scan-by-cw"></div><button data-k="cw" disabled><span lang="en">Download CSV</span><span lang="tr">CSV indir</span></button></div>
+  <div class="card"><div class="who"><span lang="en">chasolver · full</span><span lang="tr">chasolver · tam</span></div><div class="what"><span lang="en">Ended late (rightly)</span><span lang="tr">Geç biten (doğru)</span></div><div class="n" id="scan-n-cl">0</div><div class="by" id="scan-by-cl"></div><button data-k="cl" disabled><span lang="en">Download CSV</span><span lang="tr">CSV indir</span></button></div>
+</div>
+<div class="gorow"><button id="scan-summary" disabled><span lang="en">Download the summary (.txt)</span><span lang="tr">Özet (.txt) indir</span></button><span class="dim small" id="scan-partial"></span></div>
+
+<div class="note" lang="en">
+  <p><b>Wrong result:</b> a game won other than by mate (on time, by resignation, abandoned…) although the winner could not have mated by any series of legal moves.
+  <b>Ended late:</b> a draw whose position had been dead for at least 2 plies; the link goes to the ply where it died.</p>
+  <p>Keep the computer from sleeping during a scan; the tab may stay in the background. If you stop, what was found so far can still be downloaded.
+  Games Lichess ended for a rules violation (mostly cheating) are left out of the lists and only counted in the summary.
+  Nothing found here is checked any further.</p>
+</div>
+<div class="note" lang="tr">
+  <p><b>Yanlış sonuç:</b> mat dışında kazançla biten (süre, terk, oyunu bırakma…) ama kazananın hiçbir yasal hamle dizisiyle mat edemediği oyunlar.
+  <b>Geç biten:</b> berabere biten ama pozisyon en az 2 ply önce ölmüş oyunlar; link, pozisyonun öldüğü ply’a gider.</p>
+  <p>Tarama sırasında bilgisayar uykuya geçmesin; sekme arka planda kalabilir. Durdurursan o ana kadar bulunanları yine indirebilirsin.
+  Lichess’in kural ihlali (çoğunlukla hile) yüzünden bitirdiği oyunlar listelere alınmaz, yalnızca özette sayılır.
+  Bulunanlar burada ayrıca doğrulanmaz.</p>
+</div>

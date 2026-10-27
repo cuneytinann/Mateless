@@ -2,17 +2,16 @@
 /* The game flags against chasolver's full analysis. Games are played move by move with the
    engine's Game, from chasolver's test positions and from the standard start, with random moves
    (mostly quiet ones, so that structures close). Every time a flag comes down ("this side can
-   never mate"), chasolver's full helpmate analysis (winnability, from chasolver.html) is asked
+   never mate"), chasolver's full helpmate analysis (winnability, its port in site/chasolver/engine.js) is asked
    about that side in that position: it must never find a mate. A dead position (both flags
    down) is checked for both sides.
      node game_flags_check.js [seed] [games] [plies]
-   CHASOLVER: chasolver's tests folder (default ../../chasolver/tests, a clone beside this one); PAGE: the chasolver
-   page (default ../chasolver.html); ENGINE: the engine (default ../mateless.js); DATA: the
+   CHASOLVER: chasolver's tests folder (default ../../chasolver/tests, a clone beside this one); CHA_ENGINE: chasolver's
+   port (default ../site/chasolver/engine.js); ENGINE: the engine (default ../mateless.js); DATA: the
    chasolver-data CSV, to start from its positions (real endgames) instead of the test files. */
 const fs = require('fs'), path = require('path'), os = require('os');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js'));
-const page = path.resolve(__dirname, process.env.PAGE || '../chasolver.html');
-const src = fs.readFileSync(page, 'utf8').match(/<script id="engine">([\s\S]*?)<\/script>/)[1];
+const src = fs.readFileSync(path.resolve(__dirname, process.env.CHA_ENGINE || '../site/chasolver/engine.js'), 'utf8');
 const tmp = path.join(os.tmpdir(), 'cha-engine-' + process.pid + '.js');
 fs.writeFileSync(tmp, src + '\nmodule.exports = CHA;\n');
 const C = require(tmp); fs.unlinkSync(tmp);

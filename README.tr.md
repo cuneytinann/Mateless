@@ -178,22 +178,34 @@ dedektörüyle 4.822 (`in-game`) ya da 4.568 (`a-lock`).
 
 ## Kullanım
 
-**Sayfalar.** İki sayfa, tek görünüm; tarayıcıda açılır, kurulum gerekmez (GitHub Pages açıkken
-`index.html` sitenin ön sayfası olur). Varsayılan dil İngilizce; Türkçe seçilebilir.
-- `index.html`, hakem: bir FEN, CSV ya da TXT pozisyon dosyaları ya da PGN oyunları. Her hüküm bir
+**Sayfa.** Bütün site tek dosyada, `index.html`'de: tarayıcıda açılır, kurulum gerekmez. GitHub
+Pages açıkken sitenin ön sayfası olur; İndir bağlantısı aynı dosyayı kaydeder, o da internetsiz
+çalışır (yalnızca yazı tipleri internetten gelir). Varsayılan dil İngilizce; Türkçe seçilebilir.
+Beş sekme:
+- **Hakem**: bir FEN, CSV ya da TXT pozisyon dosyaları ya da PGN oyunları. Her hüküm bir
   skor ve gerekçesiyle (yetersiz materyal, kilitli pozisyon, Domino etkisi, mat bulundu, ispat yok)
   ve ona götüren basamaklarla gösterilir; ölü pozisyonlar işaretlenir; sonuçlar CSV olarak
   indirilir. chasolver'ın, berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları
   listeleri ([chasolver.org/unfair-games](https://chasolver.org/unfair-games)) doğrudan bırakılabilir.
-- `chasolver.html`: Miguel Ambrona'nın chasolver 3.0.0'ının JavaScript çevirisi (resmi değil; MIT),
+- **Kilit dedektörü**: ikinci basamağın bitboard'larla nasıl çalıştığı (koniler; duvarlar, sabit
+  piyonlar, şah erişimleri ve alım karelerinin sabit noktası; sızıntılar; mat ağı; donmuş şah),
+  her varsayım ve neden güvenli olduğuyla. Bir gezgin, her FEN için geçişleri adım adım
+  gösteriyor; tahtaları tarayıcıda hesaplanıyor ve çizildikçe mateless.js ile denetleniyor.
+- **Kurallar**: FIDE 5.2.2, 6.9 ve 5.1.2; kitap ne diyor, bir algoritma onu nasıl okuyabilir.
+- **Lichess taraması**: Lichess'in aylık veritabanlarından birini (`.pgn.zst`) bırak, tarayıcıda,
+  bütün çekirdeklerle, dosya açılmadan taransın: kazananın hiç mat edemeyeceği hâlde kazançla
+  biten oyunlar ve pozisyon öldükten sonra oynanmaya devam eden beraberlikler, Mateless ve
+  chasolver için, CSV dosyaları olarak.
+- **chasolver**: Miguel Ambrona'nın chasolver 3.0.0'ının JavaScript çevirisi (resmi değil; MIT),
   tam çözücü; kazanılabilir her pozisyon için bir mat hattı gösterir. 398.960 girdide hızlı kontrolü
-  resmi Rust sürümüyle her satırda aynı cevabı verdi. Hakem sayfasındaki "chasolver'a sor" düğmesi
-  pozisyonu ona aktarır; JS ölçümleri chasolver'ı bu sayfadan alıyor.
+  resmi Rust sürümüyle her satırda aynı cevabı verdi. Hakemdeki "chasolver'a sor" düğmesi
+  pozisyonu ona aktarır.
 
-Hakem sayfası motoru gömülü taşıyor; `src/` değişince:
+Sayfa `site/`'tan kuruluyor (her sekmeye bir klasör, bkz. [site/README.md](site/README.md)) ve
+motoru gömülü taşıyor; `src/` ya da `site/` değişince:
 
 ```sh
-node tools/build.js && node tools/embed-engine.js
+node tools/build.js && node tools/build-site.js
 ```
 
 **Node:**
@@ -363,11 +375,11 @@ mateless.js          motor, tek dosya (src/'den tools/build.js ile; elle düzenl
 mateless.mjs         aynı dosya, ES modülü olarak (o da tools/build.js'ten)
 mateless.d.ts        TypeScript tipleri
 mateless.wasm        Rust çevirisi, WebAssembly olarak (tools/build-wasm.js); köprüsü mateless-wasm.js
-index.html           hakem sayfası (motor gömülü)
-chasolver.html       chasolver 3.0.0'ın JavaScript çevirisi (MIT, Miguel Ambrona)
+index.html           bütün site tek sayfada: hakem, kilit dedektörü, kurallar, Lichess taraması, chasolver
+site/                kaynakları, her sekmeye bir klasör; tools/build-site.js birleştiriyor (site/README.md)
 rust/                Rust çevirisi: kütüphane, komut satırı aracı, chasolver karşılaştırmaları;
                      rust/wasm: WebAssembly için ince bir C arayüzü
-tools/               build.js, build-wasm.js, embed-engine.js
+tools/               build.js, build-wasm.js, build-site.js
 test/                test takımı (test/README.md)
 data/                Lichess verisinin sınıflaması (data/README.md)
 docs/                DESIGN.md (nasıl çalışıyor, neden), RESULTS.md (ölçümler)
@@ -399,6 +411,9 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 - MIT Lisansı, © 2026 Cüneyt İnan ([LICENSE](LICENSE)).
 - FideLite.Art golfstack motorundan esinlenildi.
 - Lichess verisi ve etiketli test pozisyonları Miguel Ambrona'nın
-  [chasolver](https://github.com/miguel-ambrona/chasolver) projesinden. `chasolver.html`
-  chasolver'ın MIT lisanslı kodunun çevirisi; lisans metni dosyanın içinde. chasolver'ın kendi
-  sitesi: [chasolver.org](https://chasolver.org).
+  [chasolver](https://github.com/miguel-ambrona/chasolver) projesinden. chasolver sekmesi
+  chasolver'ın MIT lisanslı kodunun bir çevirisini çalıştırıyor (`site/chasolver/`); lisans metni
+  `site/chasolver/LICENSE.txt`'te ve `index.html`'in başında. chasolver'ın kendi sitesi:
+  [chasolver.org](https://chasolver.org).
+- Kurallar sekmesi FideLite.Art'ın kurallarından (5. ve 6. bölümleri) uyarlandı.
+- Lichess taraması [fzstd](https://github.com/101arrowz/fzstd) ile açıyor (MIT, Arjun Barrett).

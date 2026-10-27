@@ -1,15 +1,16 @@
 'use strict';
 /* chasolver's fast check against Mateless's static test, in one Node process, on the same positions.
-     node fair_lock_bench.js <chasolver.html> <positions> [rounds]
+     node fair_lock_bench.js <chasolver> <positions> [rounds]
    <positions>: lines "<fen>\t<w|b>", the second field being the side that should be unable to mate
-   (the opponent of the side whose flag fell). The chasolver engine is taken from the page's
-   <script id="engine"> block. Mateless engines: MATELESS_ENGINES=a.js,b.js (default ../mateless.js).
+   (the opponent of the side whose flag fell). <chasolver>: its JavaScript port, site/chasolver/engine.js
+   (or a page that carries it in a <script id="cha-engine"> or <script id="engine"> block, as index.html does). Mateless engines: MATELESS_ENGINES=a.js,b.js (default ../mateless.js).
    Boards are parsed once; only the decision is timed. The rows are cut into chunks of 64; every
    chunk is run by every engine, in an order that rotates from chunk to chunk, so all engines see
    the same JIT state, caches and machine load. The median of the rounds is reported. */
 const fs = require('fs'), path = require('path'), os = require('os');
 const [page, file, roundsArg] = process.argv.slice(2);
-const src = fs.readFileSync(page, 'utf8').match(/<script id="engine">([\s\S]*?)<\/script>/)[1];
+const text = fs.readFileSync(page, 'utf8');
+const src = /\.js$/.test(page) ? text : text.match(/<script id="(?:cha-)?engine">([\s\S]*?)<\/script>/)[1];
 const tmp = path.join(os.tmpdir(), 'cha-engine-' + process.pid + '.js');
 fs.writeFileSync(tmp, src + '\nmodule.exports = CHA;\n');
 const C = require(tmp); fs.unlinkSync(tmp);

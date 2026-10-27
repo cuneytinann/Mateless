@@ -1,0 +1,273 @@
+<div class="art">
+<p class="eyebrow"><span lang="en">Mateless · rung 2 of the ladder</span><span lang="tr">Mateless · merdivenin ikinci basamağı</span></p>
+<h1><span lang="en">The lock detector</span><span lang="tr">Kilit dedektörü</span></h1>
+<p class="lede" lang="en">When only kings, pawns and bishops are left and the pawns have jammed so that neither king can ever be caught, no series of legal moves can end in mate. FIDE calls such a position dead and ends the game there, drawn (Article 5.2.2). Mateless proves it without generating a move: a few 64-bit sets, corrected against each other until nothing changes.</p>
+<p class="lede" lang="tr">Tahtada yalnızca şahlar, piyonlar ve filler kaldığında ve piyonlar hiçbir şah yakalanamayacak biçimde kilitlendiğinde, hiçbir geçerli hamle dizisi matla bitemez. FIDE böyle bir pozisyona ölü der ve oyunu orada berabere bitirir (Madde 5.2.2). Mateless bunu tek bir hamle üretmeden ispatlıyor: birkaç 64 bitlik küme, hiçbir şey değişmeyene kadar birbirine göre düzeltiliyor.</p>
+<div class="speed">
+  <div><b>~9 ns</b><span lang="en">per call (Rust) when a knight, rook or queen stands: the first test returns. That is most positions of a game.</span><span lang="tr">tahtada at, kale ya da vezir varken çağrı başına (Rust): ilk test döner. Bir oyunun pozisyonlarının çoğu böyle.</span></div>
+  <div><b>~53–105 ns</b><span lang="en">for a whole proof on a lock (Rust), hot cache to cold: one pass of the fixed point, and one that stops.</span><span lang="tr">bir kilitte bütün ispat için (Rust), sıcak önbellekten soğuğa: sabit noktanın bir geçişi ve duran bir geçiş.</span></div>
+  <div><b>~70×</b><span lang="en">faster than chasolver’s fast check on the 50,970 Lichess locks, Rust against Rust.</span><span lang="tr">50.970 Lichess kilidinde chasolver’ın hızlı kontrolünden daha hızlı, Rust’a karşı Rust.</span></div>
+</div>
+
+<span class="anchor" id="question"></span>
+<h2 lang="en">What it proves</h2><h2 lang="tr">Neyi ispatlıyor</h2>
+<p lang="en">The question is a helpmate: can this side be mated by some series of legal moves, both sides cooperating? That is much stricter than a fortress, where a side only cannot win against best defence. An arbiter may use only the stricter question; a fortress test would declare false draws.</p>
+<p lang="tr">Soru bir yardımlı mat sorusu: bu taraf, iki taraf da yardımlaşırken bir geçerli hamle dizisiyle mat edilebilir mi? Bu, bir tarafın yalnızca en iyi savunmaya karşı kazanamadığı kaleden (fortress) çok daha sıkı. Hakem yalnızca sıkı soruyu kullanabilir; bir kale testi yanlış beraberlikler ilan ederdi.</p>
+<p lang="en">One answer serves three rules. A flag fall (6.9) and a resignation (5.1.2) are draws when the opponent cannot mate. A position is dead (5.2.2) when neither side can, so for that the detector is asked once for each colour.</p>
+<p lang="tr">Tek bir cevap üç kurala hizmet ediyor. Süre bitimi (6.9) ve terk (5.1.2), rakip mat edemiyorsa beraberliktir. Hiçbir taraf mat edemiyorsa pozisyon ölüdür (5.2.2); bunun için dedektör her renk için bir kez sorulur.</p>
+<p lang="en">It matters on Lichess. Of 195,287 rated games lost on time although the opponent could never have mated, 52,050 (26.7%) ended in a lock. Today’s scalachess draws 141 of them; the rest count as wins.</p>
+<p lang="tr">Lichess’te bunun önemi büyük. Rakip hiç mat edemeyecekken süreden kaybedilmiş 195.287 puanlı oyunun 52.050’si (%26,7) bir kilitle bitti. Bugünkü scalachess bunların 141’ini berabere sayıyor; geri kalanı kazanç sayılıyor.</p>
+
+<span class="anchor" id="words"></span>
+<h2 lang="en">A position is six words</h2><h2 lang="tr">Bir pozisyon altı sözcük</h2>
+<p lang="en">Squares are numbered a1 = 0, b1 = 1 … h8 = 63, as in scalachess’s <code>Bitboard</code>. A set of squares is one 64-bit word, and a set of pieces is the set of their squares. The detector reads six of them, each side’s pawns, king and bishops, and everything it computes is again a set.</p>
+<p lang="tr">Kareler scalachess’in <code>Bitboard</code>’ındaki gibi a1 = 0, b1 = 1 … h8 = 63 diye numaralanıyor. Bir kare kümesi tek bir 64 bitlik sözcük; bir taş kümesi de taşların durduğu karelerin kümesi. Dedektör bunlardan altısını okuyor, her tarafın piyonlarını, şahını ve fillerini; hesapladığı her şey de yine bir küme.</p>
+<figure class="fig" id="f-shifts"></figure>
+<pre><code>inline def north(w: Long): Long = w &lt;&lt; 8
+inline def south(w: Long): Long = w &gt;&gt;&gt; 8
+inline def sideways(w: Long): Long = ((w &lt;&lt; 1) &amp; ~FileA) | ((w &gt;&gt;&gt; 1) &amp; ~FileH)
+inline def zone(w: Long): Long =
+  val v = w | (w &lt;&lt; 8) | (w &gt;&gt;&gt; 8)
+  v | sideways(v)
+inline def diagonal(w: Long): Long = sideways((w &lt;&lt; 8) | (w &gt;&gt;&gt; 8))</code></pre>
+<p lang="en">Each is one operation on the whole board. <code>zone</code> is the 3×3 block around every square of the set: the square and each step a king can make from it. <code>diagonal</code> is every square a pawn’s capture or a bishop’s single step can touch. The file masks keep a shift from wrapping from the h-file to the a-file.</p>
+<p lang="tr">Her biri bütün tahta üzerinde tek bir işlem. <code>zone</code>, kümenin her karesinin çevresindeki 3×3 blok: karenin kendisi ve bir şahın oradan atabileceği her adım. <code>diagonal</code>, bir piyonun alışının ya da bir filin tek adımının dokunabileceği her kare. Dikey maskeleri, bir kaydırmanın h dikeyinden a dikeyine taşmasını önlüyor.</p>
+
+<span class="anchor" id="gates"></span>
+<h2 lang="en">Three gates first</h2><h2 lang="tr">Önce üç kapı</h2>
+<p lang="en">Before any set is built, three facts end the test with no proof.</p>
+<p lang="tr">Daha hiçbir küme kurulmadan, üç durum testi ispatsız bitirir.</p>
+<div class="scroll"><table class="tbl">
+<thead><tr lang="en"><th>It fails at once when</th><th>Why</th></tr><tr lang="tr"><th>Hemen düşer, eğer</th><th>Neden</th></tr></thead>
+<tbody>
+<tr lang="en"><td>a knight, rook or queen stands</td><td>The model knows how kings, pawns and bishops move, nothing else. Most positions of a game end here, at one comparison of three words.</td></tr>
+<tr lang="tr"><td>tahtada at, kale ya da vezir varsa</td><td>Model yalnızca şahların, piyonların ve fillerin nasıl oynadığını biliyor. Bir oyunun pozisyonlarının çoğu burada, üç sözcüğün tek bir karşılaştırmasıyla biter.</td></tr>
+<tr lang="en"><td>a side has two bishops on one colour</td><td>The mating net counts a flight on the assumption that the flagged side has at most one bishop per colour of square. Only a promotion makes twins. Without this gate a test run found 64 false locks.</td></tr>
+<tr lang="tr"><td>bir tarafın aynı renkte iki fili varsa</td><td>Mat ağı, bayrağı düşen tarafın her kare rengi için en fazla bir fili olduğunu varsayarak kaçış sayar. İkiz fili yalnızca terfi doğurur. Bu kapı olmadan bir test koşusu 64 yanlış kilit buldu.</td></tr>
+<tr lang="en"><td>an en passant capture is possible</td><td>No cone contains the square a double step jumps over, so the model would miss that capture. Built from the Lichess locks by pulling a pawn back and replaying its double step, 150 of the first 300 positions a gateless detector called locked had a mate. The right lapses after one move.</td></tr>
+<tr lang="tr"><td>geçerken alma mümkünse</td><td>Hiçbir koni çift adımın üzerinden atladığı kareyi içermiyor; model bu alışı kaçırırdı. Lichess kilitlerinden, bir piyon geri çekilip çift adımı yeniden oynatılarak kurulan pozisyonlarda, kapısız bir dedektörün kilitli dediği ilk 300 pozisyonun 150’sinde mat vardı. Hak bir hamle sonra düşer.</td></tr>
+</tbody></table></div>
+
+<span class="anchor" id="cones"></span>
+<h2 lang="en">Cones: where a pawn may still stand</h2><h2 lang="tr">Koniler: bir piyon hâlâ nerede durabilir</h2>
+<p lang="en">A pawn’s cone is every square it may still stand on: up its file until it meets a <em>wall</em>, an enemy pawn that can never be taken. The cone is an occluded fill, three shifts and no loop over the steps (Kogge–Stone):</p>
+<p lang="tr">Bir piyonun konisi, hâlâ durabileceği her kare: dikeyi boyunca bir <em>duvara</em>, yani hiç alınamayacak bir düşman piyonuna varana kadar. Koni bir örtülü dolgu; üç kaydırma, adımlar üzerinde döngü yok (Kogge–Stone):</p>
+<pre><code><span class="c">/** Every square reachable from g by steps north through squares of p. */</span>
+inline def fillNorth(g0: Long, p0: Long): Long =
+  var g = g0
+  var p = p0
+  g |= p &amp; (g &lt;&lt; 8)
+  p &amp;= p &lt;&lt; 8
+  g |= p &amp; (g &lt;&lt; 16)
+  p &amp;= p &lt;&lt; 16
+  g | (p &amp; (g &lt;&lt; 32))
+
+val wCone = fillNorth(wp, ~bWall)   <span class="c">// White's pawns, stopped by Black's walls</span></code></pre>
+<p lang="en">The cone runs through the side’s own pawns, which only makes it larger. Two cones decide two leaks. A cone that reaches the last rank means a pawn might promote; a black cone square diagonally in front of a white one means two pawns might meet and one take the other. The model does not follow what a new queen or a capture would change, so either one ends the level.</p>
+<p lang="tr">Koni, tarafın kendi piyonlarının içinden de geçer; bu onu yalnızca büyütür. İki koni iki sızıntıya karar verir. Son yataya ulaşan bir koni, bir piyonun terfi edebileceği demek; bir beyaz koni karesinin çapraz önündeki bir siyah koni karesi, iki piyonun karşılaşıp birinin öbürünü alabileceği demek. Model yeni bir vezirin ya da bir alışın neyi değiştireceğini izlemiyor; ikisi de seviyeyi bitirir.</p>
+<figure class="fig" id="f-cones"></figure>
+
+<span class="anchor" id="fixpoint"></span>
+<h2 lang="en">The fixed point</h2><h2 lang="tr">Sabit nokta</h2>
+<p lang="en">Four pairs of sets decide each other in a cycle: walls → fixed pawns → king reaches → take squares → walls.</p>
+<p lang="tr">Dört küme çifti bir döngü içinde birbirini belirliyor: duvarlar → sabit piyonlar → şah erişimleri → alım kareleri → duvarlar.</p>
+<div class="scroll"><table class="tbl"><tbody>
+<tr lang="en"><td>Walls</td><td>a side’s pawns that the other side can never take (and a frozen king, below)</td></tr>
+<tr lang="tr"><td>Duvarlar</td><td>bir tarafın, öbür tarafın hiç alamayacağı piyonları (ve aşağıda anlatılan donmuş şah)</td></tr>
+<tr lang="en"><td>Fixed pawns</td><td>pawns that can never move or be taken: each is a wall itself, with an enemy wall or a fixed pawn of its own side right in front of it</td></tr>
+<tr lang="tr"><td>Sabit piyonlar</td><td>hiç oynayamayacak ve alınamayacak piyonlar: her biri kendisi bir duvar ve hemen önünde bir düşman duvarı ya da kendi tarafının bir sabit piyonu var</td></tr>
+<tr lang="en"><td>King reaches</td><td>every square a king may ever stand on, flooded from its square, never onto its own fixed pawns or a square that a fixed enemy pawn attacks</td></tr>
+<tr lang="tr"><td>Şah erişimleri</td><td>bir şahın bir gün durabileceği her kare; kendi karesinden yayılır, kendi sabit piyonlarına ya da sabit bir düşman piyonunun saldırdığı bir kareye hiç girmez</td></tr>
+<tr lang="en"><td>Take squares</td><td>squares where a side may ever take an enemy pawn: wherever its king can go, and every square from which an enemy pawn could still walk into one</td></tr>
+<tr lang="tr"><td>Alım kareleri</td><td>bir tarafın bir gün bir düşman piyonunu alabileceği kareler: şahının gidebildiği her yer ve bir düşman piyonunun oradan yürüyerek bunlardan birine girebileceği her kare</td></tr>
+</tbody></table></div>
+<p lang="en">The loop starts optimistic, with every pawn a wall and fixed and each king on its own square, and then corrects. A pawn the enemy king can reach is no wall and no fixed pawn, a pawn in front of which a wall has fallen may move, the kings flood through what opened, and so on, until a pass changes nothing. Step through it:</p>
+<p lang="tr">Döngü iyimser başlar: her piyon duvar ve sabit, her şah kendi karesinde; sonra düzeltir. Düşman şahının erişebildiği bir piyon ne duvardır ne sabit; önündeki duvar düşen bir piyon oynayabilir; şahlar açılan yerlerden yayılır ve bu, bir geçiş hiçbir şeyi değiştirmeyene kadar sürer. Adım adım izle:</p>
+
+<div class="explore" id="explore">
+  <div class="ctrl">
+    <label for="exsel"><span lang="en">Position</span><span lang="tr">Pozisyon</span> <select id="exsel"></select></label>
+    <label for="flsel"><span lang="en">Prove that</span><span lang="tr">İspatla:</span> <select id="flsel"><option value="w" data-l="White|Beyaz">White</option><option value="b" data-l="Black|Siyah">Black</option></select> <span lang="en">can never be mated</span><span lang="tr">hiç mat edilemez</span></label>
+  </div>
+  <div class="ctrl" style="margin-top:12px">
+    <input type="text" id="fenin" spellcheck="false" autocomplete="off" aria-label="FEN">
+    <button id="fengo" type="button"><span lang="en">Show this FEN</span><span lang="tr">Bu FEN’i göster</span></button>
+  </div>
+  <p class="err hide" id="fenerr"></p>
+  <div class="seg" id="lvls"></div>
+  <div class="seg" id="passes"></div>
+  <p class="passnote" id="passnote"></p>
+  <div class="row" id="cyc"></div>
+  <div class="endrow"><div class="row r3" id="endp"></div></div>
+  <div class="key" id="key"></div>
+  <div class="vd" id="vd"></div>
+</div>
+
+<pre><code><span class="c">// one pass of the cycle (Lock.scala); fr is the frozen king's square, 0 when both are free</span>
+wWall = (wp &amp; ~bTake) | fr
+bWall = (bp &amp; ~wTake) | fr
+val nwFixed = wFixed &amp; wWall &amp; south(bWall | wFixed)
+val nbFixed = bFixed &amp; bWall &amp; north(wWall | bFixed)
+<span class="c">// both kings flood against their masks: never onto own fixed pawns or squares fixed enemy pawns attack</span>
+val mw = ~(nwFixed | sideways(south(nbFixed)) | nearFrozenBlack)
+val mb = ~(nbFixed | sideways(north(nwFixed)) | nearFrozenWhite)
+<span class="c">//   repeat: wKing |= zone(wKing) &amp; mw; bKing |= zone(bKing) &amp; mb   until neither grows</span>
+<span class="c">// a pawn that could walk into a take square can be taken too</span>
+val tb = bTake | nbKing
+val nbTake = tb | south(fillSouth(tb &amp; ~bWall, ~bWall))</code></pre>
+<p lang="en">Every update is monotone: walls and fixed pawns only shrink, reaches and take squares only grow. So the loop ends, and where it ends does not depend on the order of the steps. On 52,014 of the 52,050 Lichess locks it is one full pass and one that stops at once; growing each set by one step per pass would take about eleven. A whole proof is some 400 bit operations, most of them the kings’ floods.</p>
+<p lang="tr">Her güncelleme tek yönlü: duvarlar ve sabit piyonlar yalnızca küçülür, erişimler ve alım kareleri yalnızca büyür. Bu yüzden döngü biter ve nerede bittiği adımların sırasına bağlı değildir. 52.050 Lichess kilidinin 52.014’ünde bu, bir tam geçiş ve hemen duran bir geçiş; her kümeyi geçiş başına bir adım büyütmek yaklaşık on bir geçiş sürerdi. Bütün bir ispat 400 kadar bit işlemi, çoğu şahların yayılması.</p>
+
+<span class="anchor" id="sound"></span>
+<h2 lang="en">Why the optimistic start gives no false draw</h2><h2 lang="tr">İyimser başlangıç neden yanlış beraberlik vermiyor</h2>
+<p lang="en">What the loop ends with is a certificate. Each fixed pawn rests on other facts of the same certificate: neither it nor the pawn in front of it can be taken, since no enemy king reaches them and a capture by a pawn or a bishop would be a leak; and no king reaches them because fixed pawns fence the kings in. Read together, the facts are an invariant of every position reachable from this one:</p>
+<p lang="tr">Döngünün sonunda elde kalan bir sertifika. Her sabit piyon aynı sertifikanın başka olgularına dayanıyor: ne kendisi ne önündeki piyon alınabilir, çünkü hiçbir düşman şahı onlara erişemez ve bir piyonun ya da filin alışı bir sızıntı olurdu; hiçbir şah da onlara erişemez, çünkü sabit piyonlar şahları çevreler. Birlikte okununca bu olgular, bu pozisyondan ulaşılabilen her pozisyonun bir değişmezi:</p>
+<ol>
+<li lang="en">every pawn stands in its side’s cone;</li><li lang="tr">her piyon kendi tarafının konisinde durur;</li>
+<li lang="en">every fixed pawn stands on its square;</li><li lang="tr">her sabit piyon kendi karesinde durur;</li>
+<li lang="en">each king stands in its reach, a frozen king on its square;</li><li lang="tr">her şah kendi erişiminde, donmuş şah kendi karesinde durur;</li>
+<li lang="en">every bishop stands in its side’s bishop reach;</li><li lang="tr">her fil kendi tarafının fil erişiminde durur;</li>
+<li lang="en">no knight, rook or queen appears;</li><li lang="tr">hiç at, kale ya da vezir ortaya çıkmaz;</li>
+<li lang="en">no piece count grows (no promotion);</li><li lang="tr">hiçbir taş sayısı artmaz (terfi yok);</li>
+<li lang="en">the flagged king is not mated.</li><li lang="tr">bayrağı düşen şah mat edilmez.</li>
+</ol>
+<p lang="en">If they hold before a move, they hold after it, whatever the move. The leak tests are the ways a move could break one of them. Starting optimistic is how the loop finds the largest set of facts that support each other; what makes the result safe is that the set is closed under every legal move. There is no written proof of this yet; the tests behind it are under <a href="#evidence">Evidence</a>.</p>
+<p lang="tr">Bir hamleden önce geçerliyseler, hamle ne olursa olsun hamleden sonra da geçerliler. Sızıntı testleri, bir hamlenin bunlardan birini bozabileceği yolları sayıyor. İyimser başlamak, döngünün birbirini destekleyen en büyük olgu kümesini bulma yolu; sonucu güvenli kılan, bu kümenin her geçerli hamleye karşı kapalı olması. Bunun henüz yazılı bir ispatı yok; arkasındaki testler <a href="#evidence">Kanıtlar</a> başlığında.</p>
+
+<span class="anchor" id="leaks"></span>
+<h2 lang="en">Leaks</h2><h2 lang="tr">Sızıntılar</h2>
+<p lang="en">At the fixed point a level fails when a move could break the invariant:</p>
+<p lang="tr">Sabit noktada, bir hamle değişmezi bozabiliyorsa seviye düşer:</p>
+<ul>
+<li lang="en"><b>a pawn can promote:</b> a cone reaches the last rank;</li><li lang="tr"><b>bir piyon terfi edebilir:</b> bir koni son yataya ulaşıyor;</li>
+<li lang="en"><b>two pawns can meet:</b> a black cone square lies diagonally in front of a white one;</li><li lang="tr"><b>iki piyon karşılaşabilir:</b> bir siyah koni karesi bir beyaz koni karesinin çapraz önünde;</li>
+<li lang="en"><b>a bishop meets a pawn’s path:</b> a square diagonally next to a bishop’s reach lies in an enemy cone, so the bishop could take the pawn or be taken;</li><li lang="tr"><b>bir fil bir piyonun yoluna çıkar:</b> bir filin erişiminin çapraz komşusu olan bir kare düşman konisinde; fil piyonu alabilir ya da alınabilir;</li>
+<li lang="en"><b>the frozen king can move</b> (below);</li><li lang="tr"><b>donmuş şah oynayabilir</b> (aşağıda);</li>
+<li lang="en"><b>the flagged king can be mated:</b> the mating net.</li><li lang="tr"><b>bayrağı düşen şah mat edilebilir:</b> mat ağı.</li>
+</ul>
+<p lang="en">A bishop’s reach is flooded from its square, one diagonal step at a time, through every square that no fixed pawn holds. Kings and loose pawns are no obstacle, so the reach is too large, never too small, and a sliding attack is covered too: every square a bishop attacks lies in its reach or diagonally next to it.</p>
+<p lang="tr">Bir filin erişimi kendi karesinden, her seferinde bir çapraz adımla, hiçbir sabit piyonun durmadığı her kareye yayılır. Şahlar ve serbest piyonlar engel sayılmaz; erişim bu yüzden olsa olsa fazla büyüktür, asla küçük değil, kayan saldırı da kapsanır: bir filin saldırdığı her kare ya erişiminde ya da erişiminin çapraz komşusunda.</p>
+
+<span class="anchor" id="net"></span>
+<h2 lang="en">The mating net</h2><h2 lang="tr">Mat ağı</h2>
+<p lang="en">A mate needs a check and no flight. Only the mater’s pawns and bishops can give check; a king never does. So the net takes every square the flagged king may reach and the mater may attack, and asks for a guaranteed flight there.</p>
+<p lang="tr">Mat için bir şah çekmek ve kaçış karesinin olmaması gerekir. Şahı yalnızca mat edecek tarafın piyonları ve filleri çekebilir; şah asla çekemez. Ağ bu yüzden, bayrağı düşen şahın erişebileceği ve mat edecek tarafın saldırabileceği her kareyi alır ve orada güvenli bir kaçış ister.</p>
+<pre><code><span class="c">// White flagged: can Black's pawns and bishops ever mate White?</span>
+val attack = diagonal(bBish) | sideways(south(bCone))
+val reach  = wKing
+val free   = ~(wCone | zone(bKing) | attack)
+val spare  = free &amp; ~wBish
+val flight = sideways(spare) | north(spare) | south(spare) |
+             ((north(free) | south(free)) &amp; sideways(free))
+(attack &amp; reach &amp; ~flight) != 0   <span class="c">// a square that could host a mate: a leak</span></code></pre>
+<p lang="en">A square is <em>free</em> when the flagged side’s pawns never reach it, the mater never attacks it and the mater’s king never comes next to it. If anything stands there, it is the flagged side’s own bishop, or a mater’s pawn or bishop that the king may take, since nothing protects the square. A <em>spare</em> square is free and never reached by the flagged side’s own bishops, so it is always open.</p>
+<p lang="tr">Bayrağı düşen tarafın piyonları bir kareye hiç ulaşmıyorsa, mat edecek taraf ona hiç saldırmıyorsa ve onun şahı yanına hiç gelmiyorsa kare <em>boştur</em>. Orada bir şey duruyorsa ya bayrağı düşen tarafın kendi filidir ya da mat edecek tarafın şahın alabileceği bir piyonu veya fili, çünkü kareyi hiçbir şey korumuyor. <em>Yedek</em> kare boş olan ve bayrağı düşen tarafın kendi fillerinin hiç ulaşmadığı karedir; hep açıktır.</p>
+<p lang="en">An attacked square has a guaranteed flight when a spare square lies beside, above or below it, or when free squares lie both beside it and above or below it. The second rule is where the twin-bishop gate pays: those two neighbours are of one colour, the flagged side has at most one bishop of that colour, and one bishop fills one square at a time. Diagonal neighbours are not counted. The rules are sufficient, not necessary: a flight they miss can only cost a proof.</p>
+<p lang="tr">Saldırı altındaki bir karenin güvenli bir kaçışı vardır: yanında, üstünde ya da altında bir yedek kare varsa, ya da hem yanında hem de üstünde veya altında boş kareler varsa. İkiz fil kapısının işe yaradığı yer ikinci kural: bu iki komşu aynı renkte, bayrağı düşen tarafın o renkte en fazla bir fili var ve bir fil aynı anda tek bir kareyi doldurur. Çapraz komşular sayılmaz. Kurallar yeterli, gerekli değil: kaçırdıkları bir kaçış olsa olsa bir ispata mal olur.</p>
+<figure class="fig" id="f-net"></figure>
+
+<span class="anchor" id="frozen"></span>
+<h2 lang="en">A frozen king</h2><h2 lang="tr">Donmuş şah</h2>
+<p lang="en">Some locks rest on a king that cannot move at all. Boxed in a corner, it blocks an enemy pawn for ever. With the king free, the model must allow that it steps aside one day; the pawn is then not fixed and the proof falls apart. So the certificate is tried at up to three levels: both kings free, the white king frozen, the black king frozen. A frozen king is a wall for both sides. In exchange the level must show that the king really never moves: its reach has to stay its own square.</p>
+<p lang="tr">Bazı kilitler hiç oynayamayan bir şaha dayanıyor. Köşeye kapanmış şah bir düşman piyonunu sonsuza dek durdurur. Şah serbestken model onun bir gün kenara çekilebileceğini kabul etmek zorunda; o zaman piyon sabit olmaz ve ispat dağılır. Sertifika bu yüzden en çok üç seviyede deneniyor: iki şah da serbest, beyaz şah donmuş, siyah şah donmuş. Donmuş şah iki taraf için de duvardır. Karşılığında seviye, şahın gerçekten hiç oynamadığını göstermek zorunda: erişimi kendi karesinde kalmalı.</p>
+<p lang="en">A level is tried only when every square around that king holds a pawn or is attacked by one; otherwise the king could step out and the level would fail anyway. Of the 50,970 Lichess locks up to July, 99.5% are proven with both kings free; without the frozen levels 271 would be lost.</p>
+<p lang="tr">Bir seviye ancak o şahın çevresindeki her karede bir piyon duruyorsa ya da her kareye bir piyon saldırıyorsa deneniyor; yoksa şah dışarı çıkabilir ve seviye zaten düşerdi. Temmuza kadarki 50.970 Lichess kilidinin %99,5’i iki şah da serbestken ispatlanıyor; donmuş seviyeler olmasa 271’i kaybolurdu.</p>
+<figure class="fig" id="f-frozen"></figure>
+
+<span class="anchor" id="assumptions"></span>
+<h2 lang="en">Every assumption, and why it is safe</h2><h2 lang="tr">Her varsayım ve neden güvenli olduğu</h2>
+<p lang="en">Each simplification makes a reach, a cone or an attack larger, or a test stricter. Too many squares there can cost a proof; they never make one. Walls and fixed pawns go the other way: they start too large, and the loop removes every one that loses its support.</p>
+<p lang="tr">Her sadeleştirme bir erişimi, bir koniyi ya da bir saldırıyı büyütüyor veya bir testi sıkılaştırıyor. Oralardaki fazla kare bir ispata mal olabilir; asla ispat üretmez. Duvarlar ve sabit piyonlar ters yönde: fazla büyük başlarlar ve döngü dayanağını kaybeden her birini eler.</p>
+<div class="scroll"><table class="tbl tbl3">
+<thead><tr lang="en"><th>The model assumes</th><th>Effect</th><th>Why that is safe, or needed</th></tr><tr lang="tr"><th>Model şunu varsayıyor</th><th>Etkisi</th><th>Neden güvenli ya da gerekli</th></tr></thead>
+<tbody>
+<tr lang="en"><td>a king may go wherever its mask allows</td><td>reach too large</td><td>Order, tempo and zugzwang are ignored, and so are loose pawns and their attacks. The reach covers every future at once.</td></tr>
+<tr lang="tr"><td>bir şah maskesinin izin verdiği her yere gidebilir</td><td>erişim fazla büyük</td><td>Sıra, tempo ve zugzwang yok sayılıyor; serbest piyonlar ve saldırıları da. Erişim her geleceği bir arada kapsıyor.</td></tr>
+<tr lang="en"><td>a pawn an enemy king can reach can be taken</td><td>fewer walls</td><td>Protection by a pawn that may still move is not counted (a fixed pawn’s protection is: the king’s mask leaves that square out). A wall that falls this way can only weaken the proof.</td></tr>
+<tr lang="tr"><td>düşman şahının erişebildiği bir piyon alınabilir</td><td>daha az duvar</td><td>Hâlâ oynayabilecek bir piyonun koruması sayılmıyor (sabit bir piyonun koruması sayılıyor: şahın maskesi o kareyi dışarıda bırakıyor). Bu yoldan düşen bir duvar olsa olsa ispatı zayıflatır.</td></tr>
+<tr lang="en"><td>a cone runs through its own pawns</td><td>cones too large</td><td>Doubled pawns get extra squares; the promotion and contact tests only get stricter.</td></tr>
+<tr lang="tr"><td>bir koni kendi piyonlarının içinden geçer</td><td>koniler fazla büyük</td><td>Katmerli piyonlar fazladan kare kazanıyor; terfi ve temas testleri yalnızca sıkılaşıyor.</td></tr>
+<tr lang="en"><td>a bishop may go anywhere fixed pawns let it</td><td>reach too large</td><td>Kings and loose pawns are no obstacle, and sliding attacks are covered without following lines.</td></tr>
+<tr lang="tr"><td>bir fil sabit piyonların izin verdiği her yere gidebilir</td><td>erişim fazla büyük</td><td>Şahlar ve serbest piyonlar engel sayılmıyor; kayan saldırılar da hatları izlemeden kapsanıyor.</td></tr>
+<tr lang="en"><td>any possible contact is a leak</td><td>fewer proofs</td><td>The model does not follow what a capture or a promotion changes; it stops instead.</td></tr>
+<tr lang="tr"><td>mümkün olan her temas bir sızıntıdır</td><td>daha az ispat</td><td>Model bir alışın ya da terfinin neyi değiştirdiğini izlemiyor; onun yerine duruyor.</td></tr>
+<tr lang="en"><td>only the two flight rules count</td><td>fewer flights</td><td>Diagonal flights, and a single free square the king’s own bishop could fill, are not counted: flights are missed, never invented.</td></tr>
+<tr lang="tr"><td>yalnızca iki kaçış kuralı sayılır</td><td>daha az kaçış</td><td>Çapraz kaçışlar ve şahın kendi filinin doldurabileceği tek bir boş kare sayılmıyor: kaçışlar kaçırılır, asla uydurulmaz.</td></tr>
+<tr lang="en"><td>no knight, rook or queen, no twin bishops, no en passant</td><td>no answer</td><td>Outside the model; the gates refuse rather than guess.</td></tr>
+<tr lang="tr"><td>at, kale, vezir, ikiz fil ve geçerken alma yok</td><td>cevap yok</td><td>Modelin dışında; kapılar tahmin etmek yerine reddediyor.</td></tr>
+<tr lang="en"><td>every pawn starts fixed</td><td>none</td><td>A start, not a conclusion: the loop removes every fact that loses its support.</td></tr>
+<tr lang="tr"><td>her piyon sabit başlar</td><td>yok</td><td>Bir başlangıç, bir sonuç değil: döngü dayanağını kaybeden her olguyu eliyor.</td></tr>
+</tbody></table></div>
+
+<span class="anchor" id="game"></span>
+<h2 lang="en">When a game asks it</h2><h2 lang="tr">Oyun onu ne zaman soruyor</h2>
+<p lang="en">A lock appears only right after a capture or a pawn move, or one move later: once an en passant right has lapsed, or once a king has stepped out of a pawn’s check. A king in a pawn’s check stands on a square outside its own mask; its reach floods from there and can slip past the fence, so the lock may be proven only once the king has stepped out. Any other king or bishop move stays inside the reaches the fixed point already holds and cannot complete a lock. So the halfmove clock says when to ask: at 0 or 1, for both sides, with nothing remembered from the move before.</p>
+<p lang="tr">Bir kilit ancak bir alıştan ya da piyon hamlesinden hemen sonra, ya da bir hamle sonra doğar: bir geçerken alma hakkı düştüğünde veya bir şah piyon şahından çıktığında. Piyon şahındaki şah kendi maskesinin dışındaki bir karede durur; erişimi oradan yayılır ve çitin ötesine sızabilir; kilit bu yüzden ancak şah çıktıktan sonra ispatlanabilir. Başka her şah ya da fil hamlesi, sabit noktanın zaten tuttuğu erişimlerin içinde kalır ve bir kilidi tamamlayamaz. Ne zaman sorulacağını yarım hamle sayacı söylüyor: 0 ya da 1’de, iki taraf için, önceki hamleden hiçbir şey hatırlamadan.</p>
+<pre><code><span class="c">// scalachess, Position.scala (the proposed change)</span>
+inline def autoDraw: Boolean = variant.autoDraw(this) || variant.specialDraw(this) || lockedOut
+
+def lockedOut: Boolean =
+  history.halfMoveClock.value &lt; 2 &amp;&amp; (variant.standard || variant.fromPosition) &amp;&amp;
+    mateless.Lock.cannotBeMated(this, Color.White) &amp;&amp; mateless.Lock.cannotBeMated(this, Color.Black)</code></pre>
+<figure class="fig" id="f-check"></figure>
+<p lang="en">In random games, over 907,766 moves from clock 0 to clock 1, a lock appeared at clock 1 232 times: 231 times a king stepping out of a pawn’s check, once a lapsed en passant right. Mateless’s <code>test/trigger_check.js</code> replays 40,381 games, 371,799 plies, under the clock rule and under Mateless’s own trigger, which asks one move later only when an en passant right has lapsed or a king has left a pawn’s check: the flags come down at the same plies. In scalachess’s <code>autoDraw</code>, which lila asks after every move, the hook moves the median from 10.1 to 16.9 ns on positions from openings and from 13.8 to 23.9 ns on positions from endgames (JVM 21); on endgame positions where the detector runs, from 17.9 to 73.9 ns at clock 0 and from 21.6 to 85.3 ns at clock 1.</p>
+<p lang="tr">Rastgele oyunlarda, sayacı 0’dan 1’e götüren 907.766 hamlede, sayaç 1’de 232 kez bir kilit doğdu: 231’i piyon şahından çıkan bir şah, biri düşen bir geçerken alma hakkı. Mateless’in <code>test/trigger_check.js</code>’i 40.381 oyunu, 371.799 ply’ı hem sayaç kuralıyla hem de Mateless’in kendi tetiğiyle oynatıyor; kendi tetiği bir hamle sonra yalnızca bir geçerken alma hakkı düşmüşse ya da bir şah piyon şahından çıkmışsa soruyor. Bayraklar aynı ply’larda iniyor. lila’nın her hamleden sonra sorduğu scalachess <code>autoDraw</code>’ında kanca medyanı açılış pozisyonlarında 10,1’den 16,9 ns’ye, oyun sonu pozisyonlarında 13,8’den 23,9 ns’ye çıkarıyor (JVM 21); dedektörün çalıştığı oyun sonu pozisyonlarında sayaç 0’da 17,9’dan 73,9 ns’ye, sayaç 1’de 21,6’dan 85,3 ns’ye.</p>
+
+<span class="anchor" id="evidence"></span>
+<h2 lang="en">Evidence</h2><h2 lang="tr">Kanıtlar</h2>
+<ul>
+<li lang="en"><b>One answer in every language.</b> JavaScript, Rust and WebAssembly give the same answer on every row of the Lichess data. scalachess’s <code>Lock.scala</code> gives mateless.js’s answer for both sides on 3,643,939 positions. The boards on this page come from another copy, written for display; it matches mateless.js on 211,200 positions, both sides, sets included, and Lock.scala’s verdicts on the same positions.</li>
+<li lang="tr"><b>Her dilde aynı cevap.</b> JavaScript, Rust ve WebAssembly Lichess verisinin her satırında aynı cevabı veriyor. scalachess’in <code>Lock.scala</code>’sı 3.643.939 pozisyonda iki taraf için de mateless.js’in cevabını veriyor. Bu sayfadaki tahtalar gösterim için yazılmış başka bir kopyadan geliyor; o da 211.200 pozisyonda iki taraf için, kümeler dahil, mateless.js ile ve aynı pozisyonlarda Lock.scala’nın hükümleriyle örtüşüyor.</li>
+<li lang="en"><b>The invariant, enumerated.</b> From each of 52,145 lock certificates (the 52,050 Lichess locks and 95 games resigned in a lock), every reachable position was generated, up to 200,000 per certificate: 277.6 million positions, and the seven points held in every one. For 51,863 certificates that is the whole reachable set, a proof for that position.</li>
+<li lang="tr"><b>Değişmez, tek tek sayıldı.</b> 52.145 kilit sertifikasının her birinden (52.050 Lichess kilidi ve kilitte terk edilmiş 95 oyun) ulaşılabilen her pozisyon, sertifika başına en çok 200.000 olmak üzere üretildi: 277,6 milyon pozisyon; yedi maddenin her biri hepsinde geçerli. 51.863 sertifikada bu, ulaşılabilir kümenin tamamı, yani o pozisyon için bir ispat.</li>
+<li lang="en"><b>Against chasolver.</b> Its full search finds every one of 23,001 lock certificates unwinnable (mutations of chasolver’s positions and random locked structures), and all 50,970 locked rows of the data up to July; on its 68,950 labelled positions Mateless gives no false draw. These are consistency checks, not proofs, and the rows up to July come from chasolver’s own list.</li>
+<li lang="tr"><b>chasolver’a karşı.</b> Tam araması 23.001 kilit sertifikasının her birini (chasolver pozisyonlarının mutasyonları ve rastgele kilit yapıları) ve temmuza kadarki verinin 50.970 kilitli satırının hepsini kazanılamaz buluyor; etiketli 68.950 pozisyonunda Mateless hiç yanlış beraberlik vermiyor. Bunlar ispat değil tutarlılık kontrolleri; temmuza kadarki satırlar da chasolver’ın kendi listesinden geliyor.</li>
+<li lang="en"><b>A fresh scan.</b> In Lichess’s August and September 2026 databases, 24,044 “cannot mate” verdicts of the whole ladder were checked by an independent search: no mate in any; 23,310 were enumerated to the end, 734 stopped at a cap of a million positions.</li>
+<li lang="tr"><b>Yeni bir tarama.</b> Lichess’in ağustos ve eylül 2026 veritabanlarında, bütün merdivenin 24.044 “mat edemez” hükmü bağımsız bir aramayla denetlendi: hiçbirinde mat yok; 23.310’u sonuna kadar sayıldı, 734’ü bir milyon pozisyonluk sınırda durdu.</li>
+</ul>
+<p lang="en">There is no written proof yet.</p>
+<p lang="tr">Henüz yazılı bir ispat yok.</p>
+
+<span class="anchor" id="speed"></span>
+<h2 lang="en">Speed</h2><h2 lang="tr">Hız</h2>
+<div class="scroll"><table>
+<thead><tr><th></th><th>Rust</th><th>JavaScript</th><th>Scala (scalachess)</th></tr></thead>
+<tbody>
+<tr><td><span lang="en">a knight, rook or queen on the board</span><span lang="tr">tahtada at, kale ya da vezir</span></td><td>~9 ns</td><td></td><td>~31–35 ns</td></tr>
+<tr><td><span lang="en">a lock, the whole fixed point</span><span lang="tr">kilit, bütün sabit nokta</span></td><td><span lang="en">~53 ns hot, ~81–105 ns cold</span><span lang="tr">sıcakta ~53 ns, soğukta ~81–105 ns</span></td><td>~0.3–0.8 µs</td><td>~150–190 ns</td></tr>
+</tbody></table></div>
+<p class="cap" lang="en">Per call, after warm-up. The Scala figures are taken over 374,739 positions of real games and the 50,970 locks, so they include fetching each position from memory; a rough loop over three positions already in the cache gives ~3.5 and ~65–72 ns. chasolver’s fast check takes 6.46–6.52 µs on the same locks (Rust): it searches first, then analyses the pieces one by one.</p>
+<p class="cap" lang="tr">Çağrı başına, ısınmadan sonra. Scala ölçümleri gerçek oyunlardan 374.739 pozisyon ve 50.970 kilit üzerinden alındı; her pozisyonun bellekten getirilmesini de içeriyor. Önbellekteki üç pozisyon üzerinde kaba bir döngü ~3,5 ve ~65–72 ns veriyor. chasolver’ın hızlı kontrolü aynı kilitlerde 6,46–6,52 µs sürüyor (Rust): önce arıyor, sonra taşları tek tek inceliyor.</p>
+
+<span class="anchor" id="before"></span>
+<h2 lang="en">Before Mateless</h2><h2 lang="tr">Mateless’ten önce</h2>
+<ul class="refs">
+<li lang="en">Inspired by FideLite.Art’s golfstack engine.</li>
+<li lang="tr">FideLite.Art’ın golfstack motorundan esinlenildi.</li>
+<li lang="en"><a href="https://chessprogramming.org/Blockage_Detection">Blockage detection</a> (Omid David, Ariel Felner and Nathan S. Netanyahu, 2004) also works on bitboards: a fence of rams and a king flood fill, used inside an engine’s search in pawn endings to see whether the stronger side’s king can ever get past the pawn fence. That is a question of winning against defence, asked for evaluation, not of whether a mate is possible at all.</li>
+<li lang="tr"><a href="https://chessprogramming.org/Blockage_Detection">Blockage detection</a> (Omid David, Ariel Felner ve Nathan S. Netanyahu, 2004) da bitboard’larla çalışıyor: kilitlenmiş piyon çiftlerinden bir çit ve şahın yayılması; bir motorun aramasında, piyon oyunsonlarında güçlü tarafın şahının piyon çitini bir gün aşıp aşamayacağını görmek için. Bu, değerlendirme için sorulan, savunmaya karşı kazanma sorusu; matın mümkün olup olmadığı sorusu değil.</li>
+<li lang="en"><a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> (Miguel Ambrona, <a href="https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.FUN.2022.2">“A Practical Algorithm for Chess Unwinnability”</a>, FUN 2022) decides unwinnability by searching for a helpmate, with an algorithm the paper shows to be sound and complete. On a lock, its fast check searches first and then analyses the structure piece by piece.</li>
+<li lang="tr"><a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> (Miguel Ambrona, <a href="https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.FUN.2022.2">“A Practical Algorithm for Chess Unwinnability”</a>, FUN 2022) kazanılamazlığa bir yardımlı mat arayarak karar veriyor; makale algoritmanın sağlam ve tam olduğunu gösteriyor. Bir kilitte hızlı kontrolü önce arıyor, sonra yapıyı taş taş inceliyor.</li>
+<li lang="en">Stockfish keeps no dead-position test; its search reaches 0.00 in most locks.</li>
+<li lang="tr">Stockfish’te ölü pozisyon testi yok; araması çoğu kilitte 0.00’a varıyor.</li>
+</ul>
+<p lang="en">To our knowledge, no other dead-position test works this way: one fixed point over a few sets per side, with no search and no analysis piece by piece. The detector is sound, not complete: it never calls an open position locked, but it misses some dead positions.</p>
+<p lang="tr">Bildiğimiz kadarıyla başka hiçbir ölü pozisyon testi böyle çalışmıyor: taraf başına birkaç küme üzerinde tek bir sabit nokta; arama yok, taş taş inceleme yok. Dedektör sağlam ama tam değil: açık bir pozisyona asla kilitli demiyor, ama bazı ölü pozisyonları kaçırıyor.</p>
+
+<span class="anchor" id="limits"></span>
+<h2 lang="en">What it does not see</h2><h2 lang="tr">Neyi görmüyor</h2>
+<ul>
+<li lang="en">A lock one forced move away: a king in a pawn’s check, or an only move that takes the last knight, rook or queen. Mateless’s short search (Domino) proves those; in a game played move by move the lock is asked once it stands.</li>
+<li lang="tr">Bir zorunlu hamle ötedeki kilit: piyon şahındaki bir şah ya da son atı, kaleyi veya veziri alan tek hamle. Bunları Mateless’in kısa araması (Domino) ispatlıyor; hamle hamle oynanan bir oyunda kilit, oluştuğu anda sorulur.</li>
+<li lang="en">An open pawn pair: a white and a black pawn on one file with one empty square between them, the rest locked. The king’s reach may enter the pawn’s square and the gap in front of it, as if both could be empty at once.</li>
+<li lang="tr">Önü açık piyon çifti: aynı dikeyde aralarında tek boş kare olan bir beyaz ve bir siyah piyon, geri kalan her şey kilitli. Şahın erişimi piyonun karesine de önündeki boşluğa da girebiliyor; sanki ikisi aynı anda boş olabilirmiş gibi.</li>
+<li lang="en">Cages that hold only because the capture that would open them gives stalemate, mostly a cornered king taking the last pawn: the model counts the capture as a leak and never reaches the stalemate.</li>
+<li lang="tr">Yalnızca onları açacak alış pat verdiği için duran kafesler; çoğunlukla son piyonu alan köşedeki bir şah: model alışı sızıntı sayıyor ve pata hiç varmıyor.</li>
+</ul>
+<p lang="en">A lock of one side only is not missed: the detector proves 16 in the data, and a flag fall needs only that side. It is no dead position, so the hook in <code>autoDraw</code> lets the game go on.</p>
+<p lang="tr">Yalnızca bir tarafın kilidi kaçırılmıyor: dedektör veride 16 tanesini ispatlıyor ve bir süre bitimi için yalnızca o taraf yetiyor. Bu bir ölü pozisyon değil; <code>autoDraw</code>’daki kanca oyunun sürmesine izin veriyor.</p>
+<p lang="en">Added on its own to today’s Lichess, as proposed, the lock detector leaves 4,822 of the 195,287 rows scored as wins: 4,532 forced lines of more than one move, 16 locks of one side only, 238 where the lock comes one move after the flag, and 36 unproven. Mateless’s whole ladder leaves only those 36, all from the data up to July, and an exhaustive enumeration of their reachable positions finds no mate in any.</p>
+<p lang="tr">Önerildiği gibi bugünkü Lichess’e tek başına eklenince kilit dedektörü 195.287 satırın 4.822’sini kazanç olarak bırakıyor: birden fazla hamlelik 4.532 zorunlu varyant, yalnızca bir tarafın 16 kilidi, kilidin bayraktan bir hamle sonra geldiği 238 satır ve ispatlanamayan 36 satır. Mateless’in bütün merdiveni yalnızca bu 36’yı bırakıyor; hepsi temmuza kadarki veriden ve ulaşılabilir pozisyonlarının eksiksiz sayımı hiçbirinde mat bulmuyor.</p>
+</div>
+<footer><p lang="en">Mateless · MIT · the lock detector in <a href="https://github.com/cuneytinann/Mateless/blob/main/src/lock.js">src/lock.js</a>, <a href="https://github.com/cuneytinann/Mateless/blob/main/rust/src/lock.rs">rust/src/lock.rs</a> and, for scalachess, <a href="https://github.com/cuneytinann/scalachess/blob/dead-position-lock/core/src/main/scala/mateless/Lock.scala">Lock.scala</a>. The boards in this tab are computed in your browser as they are drawn, and checked against mateless.js.</p>
+<p lang="tr">Mateless · MIT · kilit dedektörü <a href="https://github.com/cuneytinann/Mateless/blob/main/src/lock.js">src/lock.js</a>, <a href="https://github.com/cuneytinann/Mateless/blob/main/rust/src/lock.rs">rust/src/lock.rs</a> ve scalachess için <a href="https://github.com/cuneytinann/scalachess/blob/dead-position-lock/core/src/main/scala/mateless/Lock.scala">Lock.scala</a> içinde. Bu sekmedeki tahtalar çizildikçe tarayıcında hesaplanıyor ve mateless.js ile denetleniyor.</p></footer>

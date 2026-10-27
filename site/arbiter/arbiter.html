@@ -1,0 +1,143 @@
+<h1 data-i="h1">When a flag falls, can the other side still mate?</h1>
+<p class="lede" data-ihtml data-i="lede"></p>
+<div class="speed">
+  <div><b data-i="sp1n">~90 ns</b><span data-i="sp1t"></span></div>
+  <div><b data-i="sp2n">~70×</b><span data-i="sp2t"></span></div>
+  <div><b data-i="sp3n">99.98%</b><span data-i="sp3t"></span></div>
+</div>
+
+<section class="panel" aria-labelledby="poslab">
+  <div class="two">
+    <div>
+      <label class="lab" id="poslab" for="fen" data-i="hPos">Positions</label>
+      <textarea id="fen" rows="5" spellcheck="false" autocomplete="off" aria-describedby="poshint" placeholder="5b2/p7/Pp3k2/1Pp1pBp1/2P1P1P1/5K2/8/8 w - -"></textarea>
+      <p class="hint" id="poshint"><span data-ihtml data-i="posHint"></span> <button class="link" id="example" data-i="useEx"></button></p>
+    </div>
+    <div>
+      <span class="lab" data-i="hFiles">Files</span>
+      <div class="drop" id="drop" tabindex="0" role="button">
+        <strong data-i="dropBig"></strong>
+        <small data-ihtml data-i="dropSmall"></small>
+      </div>
+      <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" multiple class="hide">
+      <ul class="flist" id="flist"></ul>
+      <p class="hint" data-ihtml data-i="dataHint"></p>
+    </div>
+  </div>
+
+  <div class="flagnote" role="note">
+    <b data-i="assumeH"></b>
+    <p data-ihtml data-i="assume"></p>
+    <p class="hide" id="assumeBoth" data-i="assumeBoth"></p>
+  </div>
+
+  <div class="opts">
+    <label><span data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="6" min="1" max="600"></label>
+    <label><span data-i="lblBud">node budget</span> <input type="number" id="bud" value="100" min="1" step="10"></label>
+    <span class="dim small" id="limnote"></span>
+  </div>
+  <div class="opts">
+    <span class="rng"><label for="rowA" data-i="lblRange">positions</label> <input type="number" id="rowA" value="1" min="1" step="100">
+      <label for="rowB" data-i="lblRangeTo">to</label> <input type="number" id="rowB" value="0" min="0" step="100">
+      <span class="dim small" data-i="lblRangeNote"></span></span>
+  </div>
+  <div class="opts hide" id="labrow">
+    <span data-i="lblLab">labels</span> <span id="labs" class="opts" style="margin:0"></span>
+    <label><input type="checkbox" id="bothdir"> <span data-i="lblBoth">judge both flags</span></label>
+  </div>
+  <div class="gorow">
+    <button id="go" class="primary"></button>
+    <span class="dim small" id="split"></span>
+    <span class="stat" id="stat" aria-live="polite"></span>
+  </div>
+  <div class="prog hide" id="bar"><i id="barf"></i></div>
+</section>
+
+<section id="solo" class="hide"></section>
+
+<section id="out" class="hide">
+  <h2 data-i="secResults"></h2>
+  <div id="outcome"></div>
+
+  <h2 data-i="secRef"></h2>
+  <div id="refbox"></div>
+
+  <h2 data-i="secPer"></h2>
+  <div class="scroll"><table id="perfile"></table></div>
+
+  <h2 data-i="secCost"></h2>
+  <div class="scroll"><table id="cost"></table></div>
+  <p class="dim small" data-i="costNote"></p>
+
+  <h2 data-i="secBrowse"></h2>
+  <p class="dim small" data-i="browseNote"></p>
+  <div class="opts" id="filters"></div>
+  <div class="grid" id="grid"></div>
+  <div class="pg" id="pg"></div>
+
+  <h2 data-i="secExp"></h2>
+  <div class="opts">
+    <button id="expAll" data-i="expAll"></button>
+    <button id="expUn" data-i="expUn"></button>
+    <button id="expMate" data-i="expMate"></button>
+    <button id="expMiss" data-i="expMiss"></button>
+    <button id="expBad" data-i="expBad"></button>
+    <button id="expInv" data-i="expInv"></button>
+  </div>
+  <p class="dim small" data-ihtml data-i="expNote"></p>
+</section>
+
+<section id="pgnsec">
+  <h2 data-i="secPgn"></h2>
+  <p data-ihtml data-i="pgnSub"></p>
+  <div class="panel">
+    <div class="two">
+      <div>
+        <label class="lab" for="pgntext" data-i="pgnHPaste"></label>
+        <textarea id="pgntext" rows="5" spellcheck="false" autocomplete="off" placeholder='[Result "0-1"]&#10;1. f3 e5 2. g4 Qh4# 0-1'></textarea>
+      </div>
+      <div>
+        <span class="lab" data-i="hFiles"></span>
+        <div class="drop" id="pdrop" tabindex="0" role="button">
+          <strong data-i="pgnDropBig"></strong>
+          <small data-ihtml data-i="pgnDropSmall"></small>
+        </div>
+        <input type="file" id="pfile" accept=".pgn,application/x-chess-pgn,text/plain" multiple class="hide">
+        <ul class="flist" id="pgnflist"></ul>
+      </div>
+    </div>
+    <div class="gorow">
+      <button id="pgngo" class="primary"></button>
+      <span class="stat" id="pstat" aria-live="polite"></span>
+    </div>
+    <div class="prog hide" id="pbar"><i id="pbarf"></i></div>
+  </div>
+  <div id="pgnout" class="hide">
+    <div class="scroll" id="pgnsum"></div>
+    <div class="opts"><label><span data-i="pgnFilt"></span> <select id="pgnfilt"></select></label>
+      <button id="pgnexp" data-i="pgnExp"></button></div>
+    <div class="scroll"><table id="pgntab"></table></div>
+    <div class="pg" id="pgnpg"></div>
+    <div id="pgndet"></div>
+  </div>
+</section>
+
+<details class="fold" id="fold-engine">
+  <summary data-i="secEngine"></summary>
+  <p class="dim small" data-ihtml data-i="engineNote"></p>
+  <pre class="src" id="srcbox"></pre>
+</details>
+
+<footer data-ihtml data-i="foot"></footer>
+
+<div id="lb" class="lb hide">
+  <div class="lbin" role="dialog" aria-modal="true" aria-labelledby="lbpos">
+    <div class="lbbar">
+      <button id="lbprev" data-i="lbPrev"></button>
+      <span id="lbpos"></span>
+      <button id="lbnext" data-i="lbNext"></button>
+      <button id="lbx" data-i="lbClose"></button>
+    </div>
+    <div id="lbbody"></div>
+  </div>
+</div>

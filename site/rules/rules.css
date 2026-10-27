@@ -1,0 +1,55 @@
+/* the rules tab: FIDE 5.2.2, 6.9 and 5.1.2 in prose, tables and small boards. Board markup:
+   .mb, one <i> per square (d = dark, m = marked, x = not possible, a = attacked, p = the king's path),
+   pieces as <b class="w|b">, file and rank labels in data-f / data-r. */
+:root{--lt:var(--sq-l);--dk:var(--sq-d);--mark:rgba(217,163,71,.55);--xcol:#e5484d;--live:#5bb5a4;--on-lt:#1e232c;--on-dk:#eef1f4}
+.lede{max-width:72ch}
+.src{margin:6px 0 0}
+.toc{display:flex;flex-wrap:wrap;gap:8px 20px;margin:18px 0 0;font-size:14.5px}
+.anchor{display:block;position:relative;top:-12px}
+.prose{max-width:72ch}
+.prose p{margin:0 0 10px}
+.prose[lang] + .prose[lang]{margin-top:0}
+.layer{font:500 12px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:26px 0 8px}
+h2 + .layer,h2 + h2 + .layer{margin-top:4px}
+h3{font:600 18px/1.35 var(--cond);margin:34px 0 10px}
+ul.tight,ol.tight{margin:12px 0;padding-left:22px;max-width:72ch}
+ul.tight li,ol.tight li{margin-bottom:8px}
+.tw{width:fit-content;max-width:100%;overflow-x:auto;margin:16px 0 20px;border:1px solid var(--line);border-radius:8px}
+.tw table{margin:0;width:auto;font-variant-numeric:normal}
+.tw th,.tw td{text-align:left;vertical-align:top;padding:8px 12px}
+.tw tr:last-child td{border-bottom:0}
+.tw table.ctr th,.tw table.ctr td{text-align:center}
+.none{font-family:var(--mono);font-size:12px;color:var(--faint)}
+.sub{font-family:var(--mono);font-size:11.5px;color:var(--faint);display:block}
+.snip{font:12.5px/1.7 var(--mono);margin:14px 0;padding:12px 14px;overflow-x:auto;background:var(--sunk);border-left:2px solid var(--line);max-width:72ch;white-space:pre}
+.snip b{color:var(--ink);font-weight:600}
+.snip i{font-style:normal;color:var(--faint)}
+.cost{font-size:14px;line-height:1.6;color:var(--dim);max-width:72ch;margin:12px 0 18px;padding-left:12px;border-left:2px solid var(--line)}
+.cost b{color:var(--ink)}
+.dtag{display:inline-block;font:600 11px/1.6 var(--mono);letter-spacing:.03em;padding:0 .55em;border:1px solid var(--line);border-radius:999px;color:var(--dim);vertical-align:.12em;white-space:nowrap;margin:0 .35em}
+.ml{border-left:3px solid var(--draw);background:rgba(91,181,164,.08);padding:10px 14px;margin:14px 0 18px;max-width:72ch;font-size:14.5px}
+.ml p{margin:0}
+.ml b{color:var(--draw)}
+.sidefig{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap;margin:16px 0}
+.sidefig .prose{flex:1 1 18rem;min-width:0}
+.fig{margin:0;flex:0 0 auto;width:150px}
+.fig-wide{width:260px}
+.fig figcaption{font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--faint);margin-top:6px}
+.mb{--c:8;display:grid;grid-template-columns:repeat(var(--c),1fr);width:100%;container-type:inline-size;font-family:var(--mono);border:1px dashed var(--line);border-radius:3px;overflow:hidden}
+.mb.mini{--c:3;width:110px}
+.mb.et{border-top:2px solid var(--ink)} .mb.er{border-right:2px solid var(--ink)} .mb.eb{border-bottom:2px solid var(--ink)} .mb.el{border-left:2px solid var(--ink)}
+.mb i{position:relative;aspect-ratio:1;display:flex;font-style:normal;align-items:center;justify-content:center;background:var(--lt)}
+.mb i.d{background:var(--dk)}
+.mb i.m{box-shadow:inset 0 0 0 99px var(--mark)}
+.mb i.x{background-image:linear-gradient(45deg,transparent 46%,var(--xcol) 46% 54%,transparent 54%),linear-gradient(-45deg,transparent 46%,var(--xcol) 46% 54%,transparent 54%);background-size:54% 54%;background-position:center;background-repeat:no-repeat}
+.mb i.a{box-shadow:inset 0 0 0 99px rgba(229,72,77,.30)}
+.mb i.p{box-shadow:inset 0 0 0 max(1.5px,.55cqw) var(--live)}
+.mb svg.arr{width:62%;height:62%;fill:none;stroke:var(--live);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.mb b{font-weight:400;line-height:1;font-size:calc(64cqw / var(--c));font-family:"Segoe UI Symbol","Apple Symbols","DejaVu Sans",serif;font-variant-emoji:text}
+.mb b.g{opacity:.42}
+.mb b.w{color:#fff;text-shadow:0 0 1px #000,0 0 1px #000,0 0 2px #000}
+.mb b.b{color:#111}
+.mb i[data-f]::before,.mb i[data-r]::after{position:absolute;line-height:1;color:var(--on-lt);opacity:.72;font-size:calc(25cqw / var(--c))}
+.mb i.d[data-f]::before,.mb i.d[data-r]::after{color:var(--on-dk)}
+.mb i[data-f]::before{content:attr(data-f);bottom:.3em;left:.34em}
+.mb i[data-r]::after{content:attr(data-r);top:.3em;right:.34em}

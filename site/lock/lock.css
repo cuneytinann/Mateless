@@ -1,0 +1,95 @@
+/* the lock detector page. Layout: one reading column for the text, boards in rows of small
+   multiples that break out to the full width of the wrap. Colour of a set: White's sets teal,
+   Black's sets amber, a square in both split corner to corner; the mater's attacks red. */
+:root{--setw:rgba(91,181,164,.86);--setb:rgba(217,163,71,.88);--reach:rgba(91,181,164,.62);
+  --hit:rgba(229,72,77,.92);--code:#1a1e25}
+.wrap{padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+.art{max-width:1000px}
+.art>:not(.fig):not(.explore){max-width:760px}
+.art p,.art li{max-width:68ch}
+.art h2{text-wrap:balance}
+.art ul,.art ol{padding-left:22px;margin:10px 0 14px}
+.art li{margin:4px 0}
+.art li::marker{color:var(--faint)}
+.eyebrow{font:500 12.5px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:0 0 14px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px 14px;overflow-x:auto;
+  font:13px/1.55 var(--mono);color:#d8d3c6;margin:12px 0 16px;max-width:100%}
+pre .c{color:var(--faint)} pre .k{color:#9bd8cb}
+.art code{background:var(--raised);border-radius:3px;padding:1px 4px}
+.art pre code{background:none;padding:0;border-radius:0}
+.speed{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:26px 0 8px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.speed div{padding:16px 18px 16px 0;min-width:0}
+.speed div+div{padding-left:18px;border-left:1px solid var(--line)}
+.speed b{display:block;font:600 30px/1.1 var(--cond);font-variant-numeric:tabular-nums}
+.speed span{display:block;font-size:13.5px;color:var(--dim);margin-top:4px;max-width:34ch}
+@media(max-width:780px){.speed{grid-template-columns:1fr}.speed div+div{padding-left:0;border-left:0;border-top:1px solid var(--line)}}
+
+/* boards: the site's .bd, with sets painted under the pieces */
+.bd i::before{content:"";position:absolute;inset:0;pointer-events:none}
+.bd i em{position:relative;font-style:normal}
+.bd i.sw::before{background:var(--setw)}
+.bd i.sb::before{background:var(--setb)}
+.bd i.sx::before{background:linear-gradient(135deg,var(--setw) 50%,var(--setb) 50%)}
+.bd i.nr::before{background:var(--reach)}
+.bd i.na::before{background:repeating-linear-gradient(135deg,var(--hit) 0 2.5px,transparent 2.5px 6px)}
+.bd i.nr.na::before{background:repeating-linear-gradient(135deg,var(--hit) 0 2.5px,transparent 2.5px 6px),var(--reach)}
+.bd i.nf::after{content:"";position:absolute;top:9%;right:9%;width:24%;height:24%;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #161a21}
+.bd i.nc{box-shadow:inset 0 0 0 3px var(--flag)}
+.bd i.mk::after{content:"";position:absolute;inset:20%;border:2.5px solid #161a21;border-radius:50%}
+.bd s.num{position:relative;font:500 10.5px/1 var(--mono);color:#1e232c;text-shadow:none}
+.bd i.d s.num{color:#eef1f4}
+.bd.mini i{font-size:clamp(15px,4.2vw,22px)}
+@media(min-width:861px){.bd.mini i{font-size:21px}}
+.bd.mid i{font-size:clamp(16px,5vw,26px)}
+
+.fig{margin:22px 0 30px}
+.fig>figcaption,.cap{font-size:13.5px;color:var(--dim);margin-top:10px;max-width:86ch}
+.row{display:grid;gap:16px 18px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.row.r3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.row.r2{grid-template-columns:repeat(2,minmax(0,1fr));max-width:560px}
+.row.r1{grid-template-columns:minmax(0,1fr);max-width:300px}
+@media(max-width:860px){.row,.row.r3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.pnl{margin:0;min-width:0}
+.pnl h4{font:600 14px/1.3 var(--sans);margin:0 0 2px}
+.pnl .sub{font-size:12.5px;color:var(--dim);margin:0 0 8px;min-height:2.6em;line-height:1.3}
+.hx{font:11.5px/1.5 var(--mono);color:var(--dim);margin-top:7px}
+.hx b{font-weight:400;white-space:nowrap}
+.row:not(.r3):not(.r2):not(.r1) .hx b{display:none}
+@media(max-width:860px){.hx b{display:none}}
+.hx span{display:block}
+.hx i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:0}
+.hx i.w{background:var(--setw)} .hx i.b{background:var(--setb)}
+.key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--dim);margin:12px 0 0}
+.key span{display:inline-flex;align-items:center;gap:7px}
+.key i{display:inline-block;width:14px;height:14px;border-radius:2px;position:relative}
+.key i.w{background:var(--setw)} .key i.b{background:var(--setb)}
+.key i.x{background:linear-gradient(135deg,var(--setw) 50%,var(--setb) 50%)}
+.key i.r{background:var(--reach)}
+.key i.a{background:repeating-linear-gradient(135deg,var(--hit) 0 2.5px,transparent 2.5px 6px),var(--reach)}
+.key i.f{background:var(--reach)} .key i.f::after{content:"";position:absolute;top:1px;right:1px;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px #161a21}
+.key i.c{background:var(--reach);box-shadow:inset 0 0 0 2px var(--flag)}
+
+/* the explorer */
+.explore{background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:20px 20px 18px;margin:20px 0 30px}
+.ctrl{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.ctrl label{display:flex;gap:8px;align-items:center;font-size:14px}
+.ctrl input[type=text]{flex:1 1 320px;min-width:0;background:var(--sunk);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:7px 10px;font:13px var(--mono)}
+.ctrl input[type=text]:hover{border-color:#4a5262}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 0}
+.seg button{padding:6px 12px;font-size:13.5px}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.seg button.off{opacity:.55}
+.seg .lab{font-size:13px;color:var(--dim);align-self:center;margin-right:4px}
+.vd{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:18px 0 0;font-size:14.5px}
+.vd .why{color:var(--ink)}
+.vd .agree{color:var(--dim);font-size:13px;flex-basis:100%}
+.err{color:var(--flag);font-size:14px;margin:10px 0 0}
+.passnote{font-size:13.5px;color:var(--dim);margin:14px 0 0;max-width:90ch;min-height:1.5em}
+.endrow{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+
+.tbl td,.tbl th{text-align:left;vertical-align:top}
+.tbl td:first-child{white-space:nowrap;font-weight:500}
+.tbl td{font-size:14px}
+.tbl3 td:first-child{white-space:normal;width:34%}
+.tbl3 td:nth-child(2){white-space:nowrap;color:var(--dim)}
+.refs li{font-size:14.5px}

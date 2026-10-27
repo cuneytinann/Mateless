@@ -1,0 +1,4 @@
+Mateless, the whole site in one file: the arbiter, the lock detector, the rules, the Lichess scan
+and chasolver. It runs offline; only the fonts come from the internet.
+Built from site/ by tools/build-site.js: edit the sources there, not this file.
+Mateless: MIT License, Copyright (c) 2026 Cüneyt İnan (LICENSE in the repository).

@@ -1,0 +1,70 @@
+<h1 data-i="h1"></h1>
+<p class="lede" data-ihtml data-i="sub"></p>
+
+<section class="panel" style="margin-top:30px">
+  <div class="two">
+    <div>
+      <label class="lab" for="cha-fen" data-i="lblFen"></label>
+      <textarea id="cha-fen" rows="5" spellcheck="false" autocomplete="off" aria-describedby="cha-fenhint"
+        placeholder="5b2/p7/Pp3k2/1Pp1pBp1/2P1P1P1/5K2/8/8 w - -"></textarea>
+      <p class="hint" id="cha-fenhint" data-ihtml data-i="fenHint"></p>
+      <div class="ex"><span data-i="exTry"></span>
+        <button class="link" data-ex="0" data-i="ex0"></button>
+        <button class="link" data-ex="1" data-i="ex1"></button>
+        <button class="link" data-ex="2" data-i="ex2"></button>
+      </div>
+    </div>
+    <div>
+      <span class="lab" data-i="hFiles"></span>
+      <div class="drop" id="cha-drop" tabindex="0" role="button" aria-describedby="cha-dropsmall">
+        <strong data-i="dropBig"></strong>
+        <small id="cha-dropsmall" data-ihtml data-i="dropSmall"></small>
+      </div>
+      <input type="file" id="cha-file" accept=".csv,.txt,text/csv,text/plain" multiple class="hide">
+      <ul class="flist" id="cha-flist"></ul>
+      <p class="hint" data-ihtml data-i="dataHint"></p>
+    </div>
+  </div>
+
+  <div class="opts">
+    <fieldset>
+      <legend data-i="lgWho"></legend>
+      <div class="radios">
+        <label><input type="radio" name="who" value="auto" checked> <span data-i="whoAuto"></span></label>
+        <label><input type="radio" name="who" value="white"> <span data-i="whoW"></span></label>
+        <label><input type="radio" name="who" value="black"> <span data-i="whoB"></span></label>
+      </div>
+    </fieldset>
+    <label class="chk"><input type="checkbox" id="cha-fast"> <span data-i="lblFast"></span></label>
+  </div>
+  <p class="hint" data-i="whoHint"></p>
+  <div class="opts">
+    <span class="rng"><label for="cha-rowA" data-i="lblRange"></label> <input type="number" id="cha-rowA" value="1" min="1" step="100">
+      <label for="cha-rowB" data-i="lblRangeTo"></label> <input type="number" id="cha-rowB" value="0" min="0" step="100">
+      <span class="dim small" data-i="lblRangeNote"></span></span>
+    <label class="chk hide" id="cha-bothrow"><input type="checkbox" id="cha-both"> <span data-i="lblBoth"></span></label>
+  </div>
+  <div class="gorow">
+    <button id="cha-go" class="primary"></button>
+    <span class="dim small" id="cha-split"></span>
+    <span class="stat" id="cha-stat" aria-live="polite"></span>
+  </div>
+  <div class="prog hide" id="cha-bar"><i id="cha-barf"></i></div>
+</section>
+
+<section id="cha-out" class="hide"></section>
+
+<section id="cha-batch" class="hide">
+  <h2 data-i="hBatch"></h2>
+  <div class="sum" id="cha-sum"></div>
+  <div class="scroll" id="cha-persetbox"><table id="cha-perset"></table></div>
+  <div class="opts tools">
+    <label><span data-i="fShow"></span> <select id="cha-filt"></select></label>
+    <button id="cha-dlTxt" data-i="dlTxt"></button>
+    <button id="cha-dlCsv" data-i="dlCsv"></button>
+  </div>
+  <div class="scroll"><table id="cha-tab"></table></div>
+  <div class="pg" id="cha-pg"></div>
+</section>
+
+<footer data-ihtml data-i="foot"></footer>

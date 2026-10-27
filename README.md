@@ -173,22 +173,34 @@ detector alone on top of today's Lichess, 4,822 (`in-game`) or 4,568 (`a-lock`).
 
 ## Usage
 
-**The pages.** Two pages, one look; open them in a browser, nothing to install (with GitHub
-Pages turned on, `index.html` is the site's front page).
-- `index.html`, the arbiter: a FEN, CSV or TXT files of positions, or PGN games. Each verdict is
+**The page.** One file, `index.html`, holds the whole site: open it in a browser, nothing to
+install. With GitHub Pages turned on it is the site's front page, and its Download link saves the
+same file, which runs offline (only the fonts come from the internet). English by default,
+Turkish to choose. Five tabs:
+- **Arbiter**: a FEN, CSV or TXT files of positions, or PGN games. Each verdict is
   shown as a score with its reason (insufficient material, locked position, Domino effect, mate
   found, no proof) and the rungs that led to it; dead positions are marked; results download as
   CSV. chasolver's lists of the Lichess games lost on time that should have been drawn,
   [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in.
-- `chasolver.html`: a JavaScript port of Miguel Ambrona's chasolver 3.0.0 (not official; MIT),
+- **Lock detector**: how rung 2 works on bitboards (the cones; the fixed point of walls, fixed
+  pawns, king reaches and take squares; the leaks; the mating net; the frozen king), with every
+  assumption and why it is safe. An explorer steps through the passes for any FEN; its boards are
+  computed in the browser and checked against mateless.js as they are drawn.
+- **Rules**: FIDE 5.2.2, 6.9 and 5.1.2, what the book says and how an algorithm can read it.
+- **Lichess scan**: drop one of Lichess's monthly databases (`.pgn.zst`) and it is scanned in
+  the browser, on every core, without unpacking it first: the games won although the winner could
+  never mate, and the draws played on after the position had died, by Mateless and by chasolver,
+  as CSV files.
+- **chasolver**: a JavaScript port of Miguel Ambrona's chasolver 3.0.0 (not official; MIT),
   the complete solver, with a mating line for every winnable position. On 398,960 inputs its fast
   check gave the official Rust build's answer on every row. The arbiter's "Ask chasolver" button
-  hands a position over to it; the JS benchmarks take their chasolver from it.
+  hands a position over to it.
 
-The arbiter embeds the engine; after changing `src/`:
+The page is built from `site/` (one folder per tab, see [site/README.md](site/README.md)) and
+embeds the engine; after changing `src/` or `site/`:
 
 ```sh
-node tools/build.js && node tools/embed-engine.js
+node tools/build.js && node tools/build-site.js
 ```
 
 **Node:**
@@ -359,11 +371,11 @@ mateless.js          the engine, one file (built from src/ by tools/build.js; ne
 mateless.mjs         the same file as an ES module (also from tools/build.js)
 mateless.d.ts        TypeScript types
 mateless.wasm        the Rust port as WebAssembly (tools/build-wasm.js); bridge: mateless-wasm.js
-index.html           the arbiter page (the engine embedded)
-chasolver.html       a JavaScript port of chasolver 3.0.0 (MIT, Miguel Ambrona)
+index.html           the whole site in one page: arbiter, lock detector, rules, Lichess scan, chasolver
+site/                its sources, one folder per tab; tools/build-site.js joins them (site/README.md)
 rust/                the Rust port: library, command-line tool, comparisons with chasolver;
                      rust/wasm: a thin C ABI for WebAssembly
-tools/               build.js, build-wasm.js, embed-engine.js
+tools/               build.js, build-wasm.js, build-site.js
 test/                the test suite (test/README.md)
 data/                the classification of the Lichess data (data/README.md)
 docs/                DESIGN.md (how it works and why), RESULTS.md (measurements)
@@ -395,6 +407,9 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, 
 - MIT License, © 2026 Cüneyt İnan ([LICENSE](LICENSE)).
 - Inspired by FideLite.Art's golfstack engine.
 - The Lichess data and the labelled test positions come from Miguel Ambrona's
-  [chasolver](https://github.com/miguel-ambrona/chasolver). `chasolver.html` is a port of
-  chasolver's MIT-licensed code; its license text is inside the file. chasolver's own site:
+  [chasolver](https://github.com/miguel-ambrona/chasolver). The chasolver tab runs a port of
+  chasolver's MIT-licensed code (`site/chasolver/`); its license text is in
+  `site/chasolver/LICENSE.txt` and at the top of `index.html`. chasolver's own site:
   [chasolver.org](https://chasolver.org).
+- The Rules tab is adapted from the rules of FideLite.Art (its sections 5 and 6).
+- The Lichess scan decompresses with [fzstd](https://github.com/101arrowz/fzstd) (MIT, Arjun Barrett).

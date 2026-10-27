@@ -176,7 +176,7 @@ nothing 7.7 µs, **the static analysis 32.3 µs**, the rest 4.0 µs. Without the
 analysis alone is ~45× slower than Mateless's lock test. On the 51,058 rows of chasolver's own
 "blocked" list, 99.6% are proven by that static analysis.
 
-**JavaScript against JavaScript** (`test/fair_lock_bench.js`, chasolver from `chasolver.html`):
+**JavaScript against JavaScript** (`test/fair_lock_bench.js`, chasolver's JavaScript port from `site/chasolver/engine.js`):
 ~85–95× on locks, ~5× on forced lines. These ratios flatter Mateless: the JavaScript port of
 chasolver runs 5–9× slower than the official Rust build, Mateless's JavaScript 3–5× slower than its
 own Rust. Rust against Rust is the comparison to quote.

@@ -1,0 +1,10 @@
+/* the one page: tabs in the bar, one shown at a time; bilingual text shows in the chosen language */
+.tab[hidden]{display:none!important}
+html[lang="en"] .tab [lang="tr"],html[lang="tr"] .tab [lang="en"]{display:none!important}
+.tabs{flex-wrap:wrap}
+.bar-top .end{flex-wrap:wrap}
+#dl{color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 10px;text-decoration:none}
+#dl:hover{border-color:var(--dim)}
+.wrap{padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+@media(max-width:640px){.bar-top{gap:10px 16px}.bar-top .end{margin-left:auto}.tabs{order:3;flex-basis:100%;gap:2px}.tabs a{padding:6px 9px}}
+.anchor{display:block;position:relative;top:-12px;height:0}

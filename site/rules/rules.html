@@ -1,0 +1,3143 @@
+<h1><span lang="en">The rules: dead position, flag fall, resignation</span><span lang="tr">Kurallar: ölü pozisyon, süre bitimi, terk</span></h1>
+<p class="lede" lang="en">Three articles of the FIDE Laws of Chess decide when a game that no one can win any more is a draw. <b>5.2.2</b>: when neither side can mate by any series of legal moves, the position is dead and the game is drawn at once. <b>6.9</b> and <b>5.1.2</b>: a flag fall or a resignation is a draw when the opponent cannot mate. What the book says, and how an algorithm can read it.</p>
+<p class="lede" lang="tr">FIDE Satranç Kuralları’nın üç maddesi, artık kimsenin kazanamayacağı bir oyunun ne zaman berabere olduğuna karar veriyor. <b>5.2.2</b>: hiçbir taraf herhangi bir geçerli hamle dizisiyle mat edemiyorsa pozisyon ölüdür ve oyun anında berabere biter. <b>6.9</b> ve <b>5.1.2</b>: rakip mat edemiyorsa süre bitimi ya da terk beraberliktir. Kitap ne diyor, bir algoritma onu nasıl okuyabilir.</p>
+<p class="src dim small" lang="en">From the rules tab of FideLite.Art (its sections 5 and 6), adapted.</p>
+<p class="src dim small" lang="tr">FideLite.Art’ın kurallar sekmesinden (5. ve 6. bölümleri), uyarlanarak.</p>
+<nav class="toc">
+  <a href="#r-deadpos"><span lang="en">Dead position — 5.2.2</span><span lang="tr">Ölü pozisyon — 5.2.2</span></a>
+  <a href="#r-flag"><span lang="en">Flag fall and resignation — 6.9 · 5.1.2</span><span lang="tr">Süre bitimi ve terk — 6.9 · 5.1.2</span></a>
+</nav>
+
+<div class="rules">
+<span class="anchor" id="r-deadpos"></span>
+<h2 lang="tr">Ölü pozisyon — 5.2.2</h2>
+    <h2 lang="en">Dead position — 5.2.2</h2>
+    <p class="layer" lang="tr">Kitap ne diyor</p>
+    <p class="layer" lang="en">What the book says</p>
+
+    <div class="prose" lang="tr">
+      <p>Madde şunu söylüyor: <b>hiçbir</b> oyuncunun, herhangi bir geçerli hamle dizisiyle rakibin
+      şahını mat edemeyeceği bir pozisyon doğduğunda oyun berabere biter. Böyle bir pozisyona
+      ölü pozisyon denir.</p>
+      <p>Üç noktanın baştan altını çizmek gerek, çünkü maddenin özü bunlarda.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>The article says this: when a position arises in which <b>neither</b> player can checkmate
+      the opponent’s king by any series of legal moves, the game is drawn. Such a position is
+      called dead.</p>
+      <p>Three points are worth making at the outset, because the whole article turns on them.</p>
+    </div>
+
+    <ul class="tight" lang="tr">
+      <li><b>İki taraflı.</b> İki tarafın da mat edememesi gerekir; taraflardan biri hâlâ mat edebiliyorsa pozisyon ölü değildir. Bir sonraki bölümdeki 6.9 ve 5.1.2 ise yalnızca <em>bir</em> tarafı sorar — iki taraflı soruyla tek taraflı soruyu karıştırmak, bu sekmede en kolay düşülen hata.</li>
+      <li><b>Anında biter.</b> Oyun, pozisyon ölü hâle geldiği <em>anda</em> bitmiştir. Ne bir talep beklenir ne de hakemin kararı. Sonrasında oynanan hamleler yok hükmündedir — kitap bunu, sonucu geriye dönük işletecek kadar ciddiye alıyor.</li>
+      <li><b>Üç kolu var.</b> Mat imkânsızlığı <em>materyalden</em> doğabilir: tahtada mat edebilecek taş kalmamıştır. <em>Yapıdan</em> doğabilir: taşlar fazlasıyla yeterlidir ama pozisyon kilitlenmiştir. Ya da <em>zorunlu varıştan</em>: tahta şu an ne materyal ne yapı bakımından ölüdür, ama her geçerli devam onu matsız bir sona götürür. Aynı madde, üç ayrı soru.</li>
+    </ul>
+    <ul class="tight" lang="en">
+      <li><b>It is two-sided.</b> Both sides must be unable to mate; if either side still can, the position is not dead. Articles 6.9 and 5.1.2 in the next section ask about <em>one</em> side only — confusing the two-sided question with the one-sided one is the easiest mistake to make on this tab.</li>
+      <li><b>It ends the game at once.</b> The game is over the <em>moment</em> the position becomes dead. No claim is needed, nor any ruling from the arbiter. Moves played afterwards do not count — the book takes this seriously enough to make the result retroactive.</li>
+      <li><b>It has three branches.</b> The impossibility of mate can come from <em>material</em>: nothing left on the board can mate. It can come from <em>structure</em>: the material is more than enough, but the position is locked. Or it can come from <em>forced arrival</em>: the board is not yet dead by material or by structure, but every legal continuation carries it to an end without mate. One article, three different questions.</li>
+    </ul>
+
+    <p class="layer" lang="tr">Algoritmada nasıl okunur</p>
+    <p class="layer" lang="en">How an algorithm reads it</p>
+    <div class="prose" lang="tr">
+      <p>Her kolu farklı hamleler doğurabilir; bir algoritmanın hangi kola ne zaman bakacağı da buradan çıkıyor:</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Each branch can be brought about by different moves, and that is what tells an algorithm when to look at which branch:</p>
+    </div>
+<div class="tw" lang="tr"><table>
+<thead><tr><th>Kol</th><th>Onu doğurabilen hamle</th><th>Neden</th></tr></thead>
+<tbody>
+<tr><td>Materyal</td><td>Taş alımı. Tek istisna, tahtadaki son piyonun terfi edip yetersiz materyal bırakması: tek bir at ya da hepsi aynı renkte filler.</td><td>Materyal yalnızca alımla azalır. Terfi piyonu başka bir taşa çevirir; seçilen taş mat edemeyecek kadar zayıf olabilir.</td></tr>
+<tr><td>Yapı</td><td>Taş alımı ya da piyon sürmesi. İstisna: hamle mat veriyorsa ya da sürülen piyon geçerken alma hakkı doğuruyorsa.</td><td>Sessiz hamle geri oynanabilir; ardından bir kilit görünüyorsa, o kilit önceki pozisyonda da vardı. Mat oyunu zaten bitirir. Geçerken alma hakkı ise başlı başına bir kilit kırıcı; kilit ancak hak düşünce doğar.</td></tr>
+<tr><td>Zorunlu varış</td><td>Her hamle, sessiz olanlar dahil.</td><td>Sessiz bir hamle yarım hamle sayacını ilerletir; mat için yeterli hamle kalmamış olabilir.</td></tr>
+</tbody>
+</table></div>
+<div class="tw" lang="en"><table>
+<thead><tr><th>Branch</th><th>Moves that can bring it about</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Material</td><td>A capture. The one exception is when the last pawn on the board promotes and leaves the material insufficient: a lone knight, or bishops all of one colour.</td><td>Material shrinks only through captures. A promotion turns the pawn into another piece, and the piece chosen may be too weak to mate.</td></tr>
+<tr><td>Structure</td><td>A capture or a pawn move. Exceptions: the move gives mate, or the pawn move creates an en passant right.</td><td>A quiet move can be played back, so if a lock appears after it, the lock was already there in the previous position. Mate ends the game anyway. An en passant right is itself a lock breaker; the lock arises only once the right lapses.</td></tr>
+<tr><td>Forced arrival</td><td>Any move, quiet ones included.</td><td>A quiet move advances the ply counter; there may no longer be enough moves left for a mate.</td></tr>
+</tbody>
+</table></div>
+
+    <span class="anchor" id="r-material"></span>
+    <h3 lang="tr">Birinci kol: materyalden</h3>
+    <h3 lang="en">The first branch: from material</h3>
+
+    <div class="prose" lang="tr">
+      <p>Aşağıdaki tablo <b>iki tarafın taşlarına birden</b> bakar ve şunu sorar: bu tahtada mat diye bir şey var mı? Bir sonraki bölümdeki tabloyla karıştırılmamalı; o tablo tek tarafa bakar ve başka bir maddeye aittir. İkisi arasındaki bağ <a href="#r-intersection">o bölümün sonunda</a> kuruluyor.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>The table below looks at <b>both sides’ material at once</b> and asks: is mate possible on this board at all? It should not be confused with the table in the next section, which looks at one side only and belongs to a different article; the link between the two is drawn at <a href="#r-intersection">the end of that section</a>.</p>
+    </div>
+
+        <div class="tw" lang="tr"><table>
+<thead><tr><th>Materyal</th><th>Hüküm</th></tr></thead>
+<tbody>
+<tr><td>Çıplak şah</td><td>Yetersiz</td></tr>
+<tr><td>Tek fil</td><td>Yetersiz</td></tr>
+<tr><td>Hepsi aynı renkte filler</td><td>Yetersiz</td></tr>
+<tr><td>Tek at</td><td>Yetersiz</td></tr>
+<tr><td>Farklı renklerde filler</td><td>Yeterli</td></tr>
+<tr><td>Fil + at</td><td>Yeterli</td></tr>
+<tr><td>İki at</td><td>Yeterli</td></tr>
+<tr><td>Herhangi bir kale, vezir ya da piyon</td><td>Yeterli</td></tr>
+</tbody>
+</table></div>
+<div class="tw" lang="en"><table>
+<thead><tr><th>Material</th><th>Ruling</th></tr></thead>
+<tbody>
+<tr><td>Bare king</td><td>Insufficient</td></tr>
+<tr><td>A lone bishop</td><td>Insufficient</td></tr>
+<tr><td>Bishops all on squares of one colour</td><td>Insufficient</td></tr>
+<tr><td>A lone knight</td><td>Insufficient</td></tr>
+<tr><td>Bishops on squares of both colours</td><td>Sufficient</td></tr>
+<tr><td>Bishop + knight</td><td>Sufficient</td></tr>
+<tr><td>Two knights</td><td>Sufficient</td></tr>
+<tr><td>Any rook, queen or pawn</td><td>Sufficient</td></tr>
+</tbody>
+</table></div>
+
+    <span class="anchor" id="r-bishopcolour"></span>
+    <h3 lang="tr">Atlar toplanır, filler birleşir</h3>
+    <h3 lang="en">Knights add up, bishops merge</h3>
+
+    <div class="prose" lang="tr">
+      <p>Ölü pozisyonda taşlar taraf ayrımı yapılmadan, tahtanın bütünü üzerinden sayılıyor; bu sayımda
+      at ile fil aynı terazide tartılmıyor. Atta <b>sayı</b> belirleyici: tahtada tek at varsa pozisyon
+      ölüdür; ikinci bir at, hangi tarafa gelirse gelsin, pozisyonu ölü olmaktan çıkarır. Filde öyle
+      değil. Tahtadaki bütün filler aynı renkteyse, kaç tane olurlarsa olsunlar ve kimin elinde bulunurlarsa bulunsunlar pozisyon ölüdür. O renkte gelen her yeni fil hükmü değiştirmez; pozisyon ancak tahtaya <b>öbür renkte bir fil</b> ya da filden başka bir taş geldiği anda ölü olmaktan çıkar.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>For a dead position the pieces are counted without regard to side, across the whole board,
+      and in that count knights and bishops are not weighed on the same scale. With knights the
+      <b>number</b> decides: with a single knight on the board the position is dead; a second knight, whichever side it joins, brings it back to life. Bishops are different. If every bishop on the
+      board stands on one colour, the position is dead however many there are and whoever holds them.
+      Each new bishop of that colour leaves the ruling unchanged; the position stops being dead only
+      when <b>a bishop of the other colour</b>, or any piece other than a bishop, arrives.</p>
+    </div>
+
+    <div class="sidefig" lang="tr">
+      <figure class="fig fig-wide">
+<div class="mb et el eb er" role="img" aria-label="On altı fil, dokuzu beyazın, yedisi siyahın, hepsi koyu karelerde. Siyah şah f8'de, beyaz şah f1'de. Siyah şahın açık renkli komşuları e8, g8 ve f7 işaretli.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i class="m"></i>
+<i class="d"><b class="b">♚</b></i>
+<i class="m"></i>
+<i class="d" data-r="8"><b class="b">♝</b></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i class="m"></i>
+<i class="d"><b class="b">♝</b></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"><b class="b">♝</b></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"><b class="w">♚</b></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>On altı fil, hepsi koyu karelerde. İşaretli e8, g8 ve f7 siyah şahın yatay ve dikey komşuları: açık kare oldukları için tahtadaki fillerin hiçbiri bu karelere ulaşamaz. Beyaz şah ise açık karede duruyor; orada kaldıkça ona şah bile çekilemez.</figcaption>
+      </figure>
+      <div class="prose">
+        <p>Yandaki tahtada on altı fil var: dokuzu beyazın, yedisi siyahın, hepsi koyu karelerde.
+        Beyazın dokuz fili ulaşılabilecek en yüksek sayı: başlangıçtaki koyu kareli fil ile sekiz terfi.</p>
+        <p>Doğru hüküm: <b>ölü pozisyon</b>, oyun berabere biter. Fil sayan bir sistem on altı fili
+        görür, materyali fazlasıyla yeterli sayar ve oyunu sürdürür. Oysa bu fillerin on beşinin yerinde
+        öbür renkte tek bir fil olsaydı, tahtada yalnızca iki fil kalırdı ve pozisyon ölü olmazdı.</p>
+      </div>
+    </div>
+    <div class="sidefig" lang="en">
+      <figure class="fig fig-wide">
+<div class="mb et el eb er" role="img" aria-label="Sixteen bishops, nine White's and seven Black's, all on dark squares. Black king on f8, white king on f1. The black king's light neighbours e8, g8 and f7 are marked.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i class="m"></i>
+<i class="d"><b class="b">♚</b></i>
+<i class="m"></i>
+<i class="d" data-r="8"><b class="b">♝</b></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i class="m"></i>
+<i class="d"><b class="b">♝</b></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"><b class="b">♝</b></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"><b class="w">♚</b></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Sixteen bishops, all on dark squares. The marked e8, g8 and f7 are the squares orthogonally adjacent to the black king: being light squares, they can never be reached by any of the bishops on the board. The white king stands on a light square; as long as it stays there, it cannot even be checked.</figcaption>
+      </figure>
+      <div class="prose">
+        <p>The board alongside holds sixteen bishops: nine White's, seven Black's, all on dark squares.
+        White's nine is the highest number reachable: the original dark-squared bishop and eight
+        promotions.</p>
+        <p>The correct ruling: a <b>dead position</b>, the game is drawn. A system that counts bishops
+        sees sixteen of them, judges the material more than sufficient and plays on. Yet if fifteen of
+        these were replaced by a single bishop of the other colour, leaving only two bishops on the
+        board, the position would not be dead.</p>
+      </div>
+    </div>
+
+    <div class="prose" lang="tr">
+      <p>Bu bir rastlantı değil, satrancın geometrisinden çıkan bir zorunluluk.</p>
+      <p><b>Fil rengini değiştirmez.</b> Çapraz bir adım hem dikeyi hem yatayı birer kare değiştirir; bu yüzden karenin rengi hiç değişmez. Terfiyle doğan fil de doğduğu karenin renginde kalır. Koyu kareli bir
+      filin bütün etkisi koyu karelerdedir: saldırdığı, üzerinde durduğu ve başka taşların yolunu
+      kestiği kareler hep koyudur. Açık kareler onun için yok hükmündedir.</p>
+      <p><b>Kaçış karesi hep açıkta kalır.</b> Tahtada şahlardan başka yalnızca koyu kareli filler varken şah altındaki bir şah mutlaka koyu karededir; yatay ve dikey komşuları ise açık karedir. Bu kareleri iki
+      tarafın hiçbir fili ne tehdit edebilir ne de üzerlerine çıkabilir; onları ancak karşı şah
+      tutabilir. Mat edilecek şah en elverişli yerde, köşede olsa bile karşı şah bunu başaramaz: köşedeki şahın iki açık
+      komşusu vardır ve ikisini birden tutmak için karşı şahın, mat edilecek şaha bitişik bir kareye
+      girmesi gerekir. Kenardaki şahın böyle üç, ortadakinin dört komşusu vardır. Dolayısıyla hiçbir taraf mat edemez.
+      Fillerin sayısı da hangi tarafa ait oldukları da bu ispatın hiçbir adımına girmiyor.</p>
+      <p><b>Koşul kalıcı.</b> Tahtada piyon olmadığı için yeni bir taş türü doğamaz; alımlar yalnızca fil eksiltir. Öbür renkte bir fil tahtaya hiçbir zaman giremez. Koşul bir kez oluştuysa hiç bozulmaz
+      ve 5.2.2'nin “herhangi bir geçerli hamle dizisi” sorusu ileriye bakmadan, tek bakışta
+      cevaplanır.</p>
+      <p>Atta böyle bir değişmez yok: at her adımda renk değiştirir ve iki at, ister aynı tarafta ister ayrı taraflarda olsun, bir mat pozisyonunun kurulmasına imkân verir. Atta hükmü sayı verir, filde
+      renk.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>This is no coincidence but a necessity that follows from the geometry of chess.</p>
+      <p><b>A bishop never changes colour.</b> A diagonal step changes both the file and the rank by
+      one, so the colour of the square never changes. A bishop that comes from promotion stays on the colour of its promotion square. Everything a dark-squared bishop does happens on dark squares: the
+      squares it attacks, the squares it stands on and the squares where it blocks other pieces are all
+      dark. For it, the light squares might as well not exist.</p>
+      <p><b>The escape square always stays open.</b> With nothing on the board but the kings and
+      dark-squared bishops, a king in check always stands on a dark square, and its orthogonal neighbours are light. No bishop of either side can attack those squares or stand on
+      them; only the opposing king can cover them. It cannot manage this even in the most favourable case, with the king to be mated in the corner: a king in the corner has two light neighbours, and to cover both at once the
+      opposing king would have to step onto a square next to the king being mated. On the edge there
+      are three such neighbours, in the middle four. So neither side can mate. Neither the number of
+      bishops nor the side they belong to enters any step of this proof.</p>
+      <p><b>The condition is permanent.</b> With no pawns on the board no new kind of piece can appear,
+      and captures only remove bishops. A bishop of the other colour can never enter the board. Once
+      the condition has arisen it never breaks, and 5.2.2's question of “any series of legal moves” is
+      answered at a glance, without looking ahead.</p>
+      <p>The knight has no such invariant: it changes colour with every step, and two knights, whether
+      on the same side or on opposite sides, make a mating position constructible. With knights it is the number that decides; with bishops, the colour.</p>
+    </div>
+    
+    
+
+    <span class="anchor" id="r-deadscope"></span>
+    <h3 lang="tr">Kapsam ve doğruluk</h3>
+    <h3 lang="en">Scope and correctness</h3>
+
+    <div class="prose" lang="tr">
+      <p>Bir ölü pozisyon algoritmasının doğruluğu iki ayrı soruya ayrılıyor; mantıktaki adlarıyla
+      <b>sağlamlık</b> (<i>soundness</i>) ve <b>tamlık</b> (<i>completeness</i>):</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>The correctness of a dead-position algorithm splits into two separate questions, known in
+      logic as <b>soundness</b> and <b>completeness</b>:</p>
+    </div>
+    <ul class="tight" lang="tr">
+      <li><b>Sağlamlık: “ölü” dediği ölüdür.</b> Beraberlik ilan ettiği her pozisyonda gerçekten hiçbir taraf mat edemez.</li>
+      <li><b>Tamlık: ölü olan her pozisyonu tanır.</b> Hiçbir ölü pozisyon “ölü değil” cevabıyla oyunda kalmaz.</li>
+    </ul>
+    <ul class="tight" lang="en">
+      <li><b>Soundness: when it says “dead”, the position is dead.</b> In every position where it declares a draw, neither side can really mate.</li>
+      <li><b>Completeness: it recognises every dead position.</b> No dead position stays in play with a “not dead” answer.</li>
+    </ul>
+    <div class="prose" lang="tr">
+      <p>Bu ikisinin ağırlığı farklı: sağlamlık pazarlık konusu değil, tamlık ise ölçülen bir hedef.
+      Hata yalnızca tek <b>yönde</b> olabilir: ölü bir pozisyon kaçırılabilir, ama ölü olmayan bir
+      pozisyona hiçbir zaman “ölü” denmez.</p>
+      <p><b>Neden bu yön.</b> İki hata eşit değil. <em>Kaçırmada</em> oyun sürer, hamleler yinelenir
+      ve iki sayaçtan biri beraberliği eninde sonunda getirir; sonuç yalnızca
+      geç gelir. Kaçırmanın yanlış sonuca dönüştüğü tek durum, oyunun sayaçlar dolmadan
+      kesilmesi: bir bayrak düşer ya da bir oyuncu terk eder ve beraberliğe hakkı olan taraf
+      kaybeder. Ağır bir hata, ama tek bir oyunla
+      sınırlı. <em>Yanlış pozitif</em> ise oyunu bitirir; ilan edilmiş bir beraberliği hiçbir kural
+      geri almaz. Bu yüzden ispatlanamayan bir imkânsızlık beraberlik sayılmaz: kuşku varsa cevap “ölü değil”.</p>
+      <p><b>Sağlamlık ispatlanabilir.</b> Üç kolun her biri “ölü” derken bir ispata dayanıyor.
+      Materyal kolunda ispat tablonun kendisi. Kilitte desenin her koşulu, kilidi kırabilecek bir
+      hamle türünü dışlıyor; koşulların hepsi birden sağlandığında öyle bir hamle kalmıyor. Zorunlu
+      varışta ise ispat sonuna kadar tüketilmiş ağaç: her dal mattan önce bir sona çarpmış.</p>
+      <p><b>Tamlık ise yalnızca yetersiz materyalde ispatlanabiliyor.</b> Materyal tablosu kapalı:
+      materyalin yetersiz olduğu her pozisyonu yakalıyor ve bu pozisyonların hepsi ölü. Ama yeterli
+      materyal pozisyonun canlı olduğunu göstermez; materyal yeterliyken pozisyon ölü de olabilir,
+      olmayabilir de. Bunu taşların sayısı değil, yapısı belirler: bir kilit ya da zorunlu bir
+      hat.</p>
+      <p>Ölü pozisyonda tamlığın asıl sorusu da bu yüzden yapıda. Kilitte tamlığın ispatı, iki ile
+      otuz iki taş arasındaki bütün geçerli pozisyonların kaba kuvvetle taranmasını gerektirir;
+      böyle bir tarama henüz yapılmadı. Zorunlu varışta tamlık bütçeye bağlı; sınırlı bir bütçe
+      bazı dalları yarıda bırakır. Bir algoritmanın “bütün ölü pozisyonları yakalar” demesi bu
+      yüzden fazla iddialı olur. Yine de pratikte karşılaşılan ölü pozisyonların neredeyse tamamı
+      yakalanabiliyor; kaçırma oranı da ölçülebilir.</p>
+      <p><b>Kapsam: ulaşılabilir tahtalar.</b> Yapı ve zorunlu varış kollarının algoritmaları, standart dizilişten ya da Chess960 dizilişlerinden biriyle 32 taşla başlayan bir oyunda geçerli hamlelerle ulaşılabilen tahtalar için yazılır. Hiçbir oyunda doğamayacak tahtaların en azından bir kısmı aritmetikle tanınır ve baştan elenir: başlangıç kadrosunu aşan her taş bir terfiden gelir, her terfi bir piyona mal olur; fazla kale, at, fil ve vezirlerin toplamı eksik piyon sayısını aşamaz. Fillerde renk de sayılır: bir taraf aynı renkte en fazla dokuz fil bulundurabilir, başlangıçtaki fil ile sekiz terfi. Bunun ötesindeki tahtalar
+      algoritmaların konusu değil; hiçbir oyunda doğmadıkları için hakemin önüne de gelmezler.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>The two do not weigh the same: soundness is not negotiable, while completeness is a target
+      that gets measured. An error can go in one <b>direction</b> only: a dead position may be
+      missed, but a position that is not dead is never called dead.</p>
+      <p><b>Why this direction.</b> The two errors are not equal. On a <em>miss</em> the game carries
+      on, the moves repeat and one of the two counters brings the draw in the
+      end; the result only arrives late. A miss turns into a wrong result in one case only, the game
+      being cut short before the counters fill: a flag falls or a player resigns, and the side
+      entitled to a draw loses. A serious error,
+      but confined to one game. A <em>false positive</em> ends the game; no rule takes back a draw
+      once declared. So an impossibility that cannot be proved does not count as a draw: when in doubt, the answer is “not dead”.</p>
+      <p><b>Soundness can be proved.</b> Each of the three branches rests on a proof when it says
+      “dead”. In the material branch the proof is the table itself. In a lock, each condition of the
+      pattern rules out one kind of move that could break it; when all the conditions hold at once,
+      no such move is left. In forced arrival the proof is the exhausted tree: every line has run
+      into an end before any mate.</p>
+      <p><b>Completeness can be proved only for insufficient material.</b> The material table is
+      closed: it catches every position whose material is insufficient, and all of those are dead.
+      But sufficient material does not show that a position is alive; with sufficient material a
+      position may be dead or it may not. That is decided not by the number of pieces but by their structure: a lock, or a forced line.</p>
+      <p>So the real question of completeness for a dead position lies in the structure. For the
+      lock, a proof of completeness would require a brute-force scan of every legal position with
+      two to thirty-two pieces; no such scan has been done yet. In forced arrival, completeness
+      depends on the budget; a limited budget leaves some lines unfinished. An algorithm that claimed to catch every dead position would therefore be claiming too much. Even so, almost every
+      dead position that arises in practice can be caught, and the miss rate can be measured.</p>
+      <p><b>Scope: reachable boards.</b> The algorithms for structure and forced arrival are written for boards that can be reached by legal moves in a game that starts with 32 men, from the standard setup or from one of the Chess960 setups. At least some of the boards that can never arise in a game can be recognised by arithmetic alone, and they are eliminated at the outset: every piece beyond the starting
+      complement comes from a promotion, and every promotion costs a pawn; the extra rooks,
+      knights, bishops and queens together cannot outnumber the missing pawns. Bishops are counted
+      by colour as well: a side can hold at most nine bishops of one colour, the original one and
+      eight promotions. Boards beyond that are outside the algorithms' scope; since
+      they never arise in a game, they never come before an arbiter either.</p>
+    </div>
+    
+    
+
+    <span class="anchor" id="r-dead"></span>
+    <h3 lang="tr">İkinci kol: yapıdan — kilitli pozisyonlar</h3>
+    <h3 lang="en">The second branch: from structure — blocked positions</h3>
+    <div class="ml" lang="tr"><p><b>Mateless’te.</b> Bu kol kilit dedektörü, merdivenin ikinci basamağı: taraf başına birkaç 64 bitlik küme üzerinde tek bir sabit nokta; arama yok, hamle üretilmiyor. <a href="#lock">Kilit dedektörü</a> sekmesi onu geçiş geçiş, her varsayımı ve neden güvenli olduğuyla gösteriyor.</p></div>
+    <div class="ml" lang="en"><p><b>In Mateless.</b> This branch is the lock detector, rung 2 of the ladder: one fixed point over a few 64-bit sets per side, with no search and no move generated. The <a href="#lock">Lock detector</a> tab shows it pass by pass, with every assumption and why it is safe.</p></div>
+
+    <div class="prose" lang="tr">
+      <p>Materyal fazlasıyla yeterliyken de mat imkânsız olabilir. Piyonlar birbirini kilitlemiştir,
+      hiçbiri ilerleyemez, hiçbir taş alınamaz; iki taraf iş birliği yapsa bile bir mat pozisyonu
+      kurulamaz. Madde bu hâli de kapsıyor, çünkü “herhangi bir geçerli hamle dizisi” diyor —
+      taş saymıyor.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Mate can be impossible with material to spare. The pawns have locked each other, none can
+      advance, nothing can be captured; even with both sides cooperating no mating position can be
+      built. The article covers this too, because it speaks of “any series of legal moves” — it
+      does not count pieces.</p>
+    </div>
+
+    <div class="prose" lang="tr">
+      <p><b>Kilit bir değişmezdir.</b> Kilitli bir pozisyon, devamlar tek tek denenerek değil, tahtadan okunan bir desenle tanınır. Desen bir kez kurulduysa hiçbir geçerli hamle onu bozamaz. Bozamadığı
+      için bir sonraki pozisyonda da kuruludur, ondan sonrakinde de. Hamle hamle işleyen bu
+      tümevarım sayesinde tek bir pozisyona bakarak oyunun bütün geleceği hakkında hüküm
+      verilebilir.</p>
+      <p><b>Aranan şey kazanan değil, kilit kırıcı.</b> İki taraf iş birliği yapsa bile ne geri alınamaz bir hamleye (taş alımı ya da piyon sürmesi, terfi dahil) ne de bir mata yol açılabiliyorsa pozisyon ölüdür. Geriye yalnızca geri alınabilir hamleler kalır, onlar da matsız bir mekik
+      dokur. Algoritma bu yüzden “kim kazanır” diye sormaz; kilidi kıracak bir hamle ya da bir mat
+      arar.</p>
+      <p><a href="#r-deadscope">Kapsam</a> içindeki bir tahtada kilit deseni beş koşulu birden
+      sağlar. Her biri yukarıdaki ilkenin doğal sonucu: biri bozulduğu an bir kırıcı doğar.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p><b>A lock is an invariant.</b> A blocked position is recognised not by trying continuations one by one but by a pattern read off the board. Once the pattern is in place, no legal move can break
+      it; and since none can, it is in place in the next position too, and in the one after that.
+      This induction, move by move, is what lets a single position settle the whole future of the
+      game.</p>
+      <p><b>What is sought is not a winner but a lock breaker.</b> If, even with both sides cooperating, no path leads either to an irreversible move (a capture or a pawn move, promotion included) or to a mate, the position is dead. Only reversible moves remain, and they shuttle
+      without ever reaching mate. So the algorithm does not ask who wins; it looks for a move that
+      would break the lock, or for a mate.</p>
+      <p>On a board within <a href="#r-deadscope">the scope</a>, a locking pattern meets five
+      conditions at once. Each follows naturally from the principle above: break one, and a breaker
+      is born.</p>
+    </div>
+    <ol class="tight" lang="tr">
+      <li><b>At, kale ve vezir gömülü olmalı.</b> Gidebilecekleri her karede kendi taşları durmalı. Hareket edebilen bir at duvarın üstünden atlar, kale ve vezir açık bir hatta kayar; algoritma hareket edebilen her birini kırıcı sayar. Vezir de gömülebilir: a8'de kendi piyonları ve atıyla kapatılmış bir vezir bu koşulu sağlar. Rok hakkı olan bir kale, ancak rokun geometrisi de kapalıysa gömülüdür; Chess960 dizilişleri de buna dahil.</li>
+      <li><b>Piyon dikey değiştirememeli.</b> Piyon ya donmuştur ya da alacak taşı olmadan yalnızca kendi dikeyinde ilerleyebilir. Çapraz alım dikeyi, terfi taşın türünü değiştirir; ikisi de geri alınamaz. Geçerken alma hakkı dururken pozisyon kilitli sayılmaz, çünkü o alım da bir dikey değişimidir.</li>
+      <li><b>Şahın yaptığı alım kilidi açmamalı.</b> Şah serbestçe dolaşabilir; duvarın öbür yanına geçmesi tek başına bir şey değiştirmez. Ama bir taş alabiliyorsa, desen o alımdan sonra da kurulu olmalı.</li>
+      <li><b>Fil etkisiz kalmalı.</b> Fil dolaşabilir, ama hiçbir taş alamamalı ve bir piyonun alabileceği kareye çıkamamalı. Çıkabilseydi kendini aldırıp piyona dikey değiştirterek kilidi kırardı. Filin şah çekebilmesi ise tek başına bir şey söylemez: kimi yapıda etkisizdir, kimi yapıda <a href="#r-semilocked">tek taraflı bir mata</a> kapı açar.</li>
+      <li><b>Gömülü olan gömülü kalmalı.</b> Şah, fil ya da piyon nereye giderse gitsin, at, kale ve vezir gömülü kalmalı. Bir piyonun ilerlemesi, şahın ya da filin yer değiştirmesi gömülü bir taşın önünü açıyorsa, o hamle de kırıcıdır.</li>
+    </ol>
+    <ol class="tight" lang="en">
+      <li><b>Knights, rooks and queens must be buried.</b> Every square they could move to must hold one of their own men. A knight that can move jumps over the wall, a rook or a queen slides down an open line; the algorithm counts every one that can move as a breaker. A queen can be buried too: a queen on a8, shut in by its own pawns and knight, meets the condition. A rook that still has a castling right counts as buried only if the geometry of castling is closed as well, Chess960 setups included.</li>
+      <li><b>A pawn must not be able to change file.</b> A pawn is either frozen or can advance only along its own file, with nothing to capture. A diagonal capture changes the file, a promotion the kind of piece; neither can be undone. While an en passant right stands the position does not count as locked, because that capture is a change of file too.</li>
+      <li><b>A capture by the king must not open the lock.</b> The king may roam freely; reaching the other side of the wall changes nothing by itself. But if it can capture something, the pattern must still hold after the capture.</li>
+      <li><b>The bishop must stay harmless.</b> The bishop may roam, but it must be unable to capture anything and unable to reach a square on which a pawn could take it; if it could, it would let itself be taken, make the pawn change file and break the lock. That a bishop can give check, on the other hand, proves nothing by itself: in some structures the check is harmless, in others it opens the door to <a href="#r-semilocked">a one-sided mate</a>.</li>
+      <li><b>What is buried must stay buried.</b> Wherever the king, a bishop or a pawn goes, the knights, rooks and queens must stay buried. If a pawn's advance, or a king or bishop changing square, would free a buried piece, that move is a breaker too.</li>
+    </ol>
+
+    <div class="prose" lang="tr">
+      <p>Koşulların tahtada nasıl göründüğünü üç örnek gösteriyor. En yalını yalnızca şahlardan ve
+      piyonlardan oluşuyor:</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Three examples show how the conditions look on the board. The plainest consists of nothing
+      but kings and pawns:</p>
+    </div>
+        <div class="sidefig" lang="tr">
+      <figure class="fig fig-wide">
+        <div class="mb et el eb er" role="img" aria-label="Beyaz piyonlar b4, e4, h4; siyah piyonlar b5, e5, h5 karşılıklı kilitli. Beyaz şah d2, siyah şah e7. Şahlar serbest dolaşıyor ama hiçbir piyon oynayamıyor.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♚</b></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♚</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Altı piyon karşılıklı kilitli: hiçbiri ilerleyemiyor, çaprazlarında alacak taş yok. Şahlar aradaki açık dikeylerde serbestçe dolaşabiliyor — ama iki şah birbirini mat edemez ve tahtada başka taş yok. <b>Doğru hüküm: ölü pozisyon.</b></figcaption>
+      </figure>
+    </div>
+    <div class="sidefig" lang="en">
+      <figure class="fig fig-wide">
+        <div class="mb et el eb er" role="img" aria-label="White pawns on b4, e4 and h4 face black pawns on b5, e5 and h5, locked head to head. White king d2, black king e7. The kings roam freely but no pawn can move.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♚</b></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♚</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Six pawns locked head to head: none can advance, and there is nothing to capture on their diagonals. The kings can roam the open files in between — but two kings cannot mate each other, and there is nothing else on the board. <b>Correct ruling: a dead position.</b></figcaption>
+      </figure>
+    </div>
+
+    <div class="prose" lang="tr">
+      <p>Benzer bir kilidin üstüne iki fil koy: hüküm değişmiyor — pozisyon yine ölü, çünkü filler de
+      kendi yarılarına hapsolmuş ve hiçbir taş alınamıyor.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Put two bishops on a similar lock: the ruling does not change — the position is still
+      dead, because the bishops are confined to their own halves as well and nothing can be
+      captured.</p>
+    </div>
+    <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Beyaz piyonlar a4, c4, e4, g4; siyah piyonlar a5, c5, e5, g5 karşılıklı kilitli. Beyaz şah a1 ve fil f1, siyah şah a8 ve fil f8. Filler kendi yarılarında hapis, şahlar dördüncü yatayı aşamıyor.">
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i data-r="5"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"><b class="w">♚</b></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"><b class="w">♝</b></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Fillerin karşıya geçememesinin sebebi kare renkleri: beyazın piyonları 4. yatayın bütün açık karelerinde, siyahınkiler 5. yatayın bütün koyu karelerinde. Açık kareli beyaz fil 4. yatayı, koyu kareli siyah fil 5. yatayı hiçbir zaman aşamıyor — iki yatayın kalan karelerini de karşı piyonlar tehdit ediyor.</figcaption>
+      </figure>
+    <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="White pawns on a4, c4, e4 and g4 face black pawns on a5, c5, e5 and g5, locked head to head. White king a1 and bishop f1, black king a8 and bishop f8. Each bishop is confined to its own half and neither king can pass the fourth rank.">
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i data-r="5"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"><b class="w">♚</b></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"><b class="w">♝</b></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Why the bishops cannot cross is a matter of square colour: White’s pawns occupy every light square of the fourth rank, Black’s every dark square of the fifth. The light-squared white bishop can never pass the fourth rank, nor the dark-squared black bishop the fifth — and the remaining squares of those two ranks are covered by the opposing pawns.</figcaption>
+      </figure>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Siyah şah d7; serbest vezir d8, kale f8, at h8 ve fil b8. a4, c4, e4 ve g4'te siyah filler; b, d, f ve h dikeylerinde 3., 4. ve 5. yatayda siyah piyonlar; b2, d2, f2 ve h2'de beyaz piyonlar; beyaz şah d1. Serbest vezir, kale ve at işaretli.">
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d m"><b class="b">♛</b></i>
+<i></i>
+<i class="d m"><b class="b">♜</b></i>
+<i></i>
+<i class="d m" data-r="8"><b class="b">♞</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="5"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d" data-r="4"><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="3"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d" data-r="2"><b class="w">♟</b></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"><b class="w">♚</b></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Dördüncü yatay baştan sona siyah taşlarla dolu; serbest vezir, kale ve at bu duvarı aşamıyor, beyaz şah da birinci yatayda kapalı. Kilitli, ama ulaşılamaz: siyahın on iki piyonu var.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="Black king d7 with a free queen on d8, rook on f8, knight on h8 and bishop on b8. Black bishops on a4, c4, e4 and g4; black pawns on the third, fourth and fifth ranks of the b-, d-, f- and h-files; white pawns on b2, d2, f2 and h2; white king d1. The free queen, rook and knight are marked.">
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d m"><b class="b">♛</b></i>
+<i></i>
+<i class="d m"><b class="b">♜</b></i>
+<i></i>
+<i class="d m" data-r="8"><b class="b">♞</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="5"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♝</b></i>
+<i class="d" data-r="4"><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="3"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d" data-r="2"><b class="w">♟</b></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"><b class="w">♚</b></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>The fourth rank is filled end to end with black men; the free queen, rook and knight cannot cross that wall, and the white king is shut in on the first rank. Locked, but unreachable: Black has twelve pawns.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Birinci koşulun bedeli.</b> Yandaki tahtada siyahın veziri, kalesi ve atı serbest;
+        pozisyon yine de kilitli ve algoritma onu tanımaz. Ama bu duvarı kurmak için siyahın on iki
+        piyonu gerekiyor: tahta kapsamın dışında, hiçbir oyunda doğamaz.</p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>The price of the first condition.</b> On the board alongside, Black's queen, rook and
+        knight are free, yet the position is locked, and the algorithm does not recognise it. But
+        building that wall takes twelve black pawns: the board lies outside the scope, and no game
+        can produce it.</p>
+      </div>
+    </div>
+
+    <div class="prose" lang="tr">
+      <p><b>Bu koşullar nereden geliyor.</b> Bir kısmı tahtanın geometrisinden zorunlu olarak
+      çıkıyor: terfi aritmetiği, piyonun dikey değiştirmesi. Kalanı, algoritmanın bilerek temkinli
+      durduğu yerler; hareket edebilen bir atı, kaleyi ya da veziri kırıcı saymak gibi. On iki
+      piyonlu tahta bu temkinin bedelini gösteriyor. Şah güvenliğine, sıraya ve açmazlara bakmamak da aynı işi görüyor: taraflara gerçekte olduğundan fazla imkân tanıyor. Fazla imkân
+      daha çok kırıcı, daha çok kırıcı da “kilit değil” demek; temkin bir hataya yol açarsa, o hata <a href="#r-deadscope">güvenli yönde</a> olur. Gerçek oyunlarda karşılaşılan kilitlerin neredeyse tamamı bu desenlere uyuyor.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p><b>Where these conditions come from.</b> Some follow necessarily from the geometry of the
+      board: the promotion arithmetic, a pawn changing file. The rest are places where the
+      algorithm deliberately stays cautious, such as counting a knight, rook or queen that can move
+      as a breaker; the twelve-pawn board shows what that caution costs. Ignoring king safety, the
+      turn and pins does the same job: it gives the sides more freedom than they really have. More
+      freedom means more breakers, and more breakers mean “not locked”; if caution makes the
+      algorithm err, it errs in <a href="#r-deadscope">the safe direction</a>. Almost every lock met in real games fits these patterns.</p>
+    </div>
+
+    <div class="prose" lang="tr">
+      <p><b>Taramanın ne zaman çalışacağı da kuraldan çıkıyor.</b> Kilit ancak geri alınamaz bir
+      hamleyle doğar: <b>taş alımı</b> ya da <b>piyon sürmesi</b>. Sessiz bir hamle — şahın ya da
+      uzun menzilli bir taşın yer değiştirmesi — kilit kuramaz, çünkü tersi de oynanabilir: ardından bir kilit görünüyorsa, o kilit bir önceki pozisyonda da vardı. Alım da piyon sürmesi de yarım hamle sayacını
+      sıfırlıyor; taramanın anı bu.</p>
+      <p><b>Rok hakkının düşmesi kilidi doğurmaz.</b> Tekrar sayımında geri
+      alınamaz bir olaydır, çünkü pozisyonun kimliğini değiştirir; ama kilit rok hakkına değil,
+      rokun geometrisine bakar. Rok bir gün yapılabilecekse kale gömülü sayılmaz ve kilit zaten
+      yoktur. Hiç yapılamayacaksa hakkın düşmesi tahtada hiçbir şeyi değiştirmez.</p>
+      <p>Kuralın iki istisnası var. Birincisi <b>mat</b>: kilidi doğuran hamle aynı anda mat da
+      verebilir.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p><b>When the scan should run follows from the rule too.</b> A lock can only be born through
+      an irreversible move: <b>a capture</b> or <b>a pawn move</b>. A quiet move — a king or a
+      sliding piece changing square — cannot build a lock, because it can be played back: if a lock appears after it, the lock was already there in the previous position. A capture and a pawn move both reset
+      the ply counter; that is the moment to scan.</p>
+      <p><b>The loss of a castling right does not create a lock.</b> In the
+      repetition count it is an irreversible event, because it changes the position's identity;
+      but a lock looks not at the castling right but at the geometry of castling. If castling could
+      ever be played, the rook does not count as buried and there is no lock in the first place. If
+      it never can, losing the right changes nothing on the board.</p>
+      <p>The rule has two exceptions. The first is <b>mate</b>: the move that creates the lock may
+      give mate at the same time.</p>
+    </div>
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Beyaz şah e4; beyaz piyonlar a4, c4, d3, f4 ve g3. Siyah şah e6; siyah piyonlar a5, c5, d4, f6 ve g4. Siyah oynuyor; f6 piyonu ve gideceği f5 karesi işaretli.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d m"><b class="b">♟</b></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i class="m"></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="w">♚</b></i>
+<i class="d"><b class="w">♟</b></i>
+<i><b class="b">♟</b></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Siyah oynuyor ve <b>f5</b> sürüyor. Piyon e4'teki şaha şah çekiyor; piyonu da e6'daki şah koruyor. e3'ü d4, f3'ü g4 tutuyor; d4'ü c5 koruyor; d5 ve e5 siyah şaha bitişik: <b>mat</b>. Aynı hamle yapıyı da kilitledi: artık hiçbir piyon ne ilerleyebiliyor ne bir şey alabiliyor.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="White king e4; white pawns a4, c4, d3, f4 and g3. Black king e6; black pawns a5, c5, d4, f6 and g4. Black to move; the f6 pawn and the square it goes to, f5, are marked.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d m"><b class="b">♟</b></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i class="m"></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="w">♚</b></i>
+<i class="d"><b class="w">♟</b></i>
+<i><b class="b">♟</b></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Black to move plays <b>f5</b>. The pawn checks the king on e4 and is covered by the king on e6. e3 is held by d4, f3 by g4; d4 is covered by c5; d5 and e5 border the black king: <b>mate</b>. The same move locked the structure: now no pawn can either advance or capture anything.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Mat önce gelir.</b> Şahlar başka yerde olsa, aynı f5 yalnızca kilidi kurardı: pozisyon
+        ölü, oyun berabere.</p>
+        <pre class="snip">8/2k5/5p2/p1p5/P1Pp1Pp1/3P2P1/8/4K3 b - - 0 1</pre>
+        <p>Yandaki tahtada ise f5 hem kilidi doğuruyor hem mat ediyor. Desene bakan bir tarama donmuş piyonları ve hiç alım kalmadığını görür, “ölü” der. Ama oyun f5 oynandığı anda matla
+        bitti; mat edilmiş bir pozisyon ölü pozisyon sayılmaz. Bu yüzden önce mata bakılır, kilide
+        ancak mat yoksa. <b>Doğru hüküm: siyah kazandı.</b></p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>Mate comes first.</b> With the kings elsewhere, the same f5 would only build the lock:
+        a dead position, a draw.</p>
+        <pre class="snip">8/2k5/5p2/p1p5/P1Pp1Pp1/3P2P1/8/4K3 b - - 0 1</pre>
+        <p>On the board alongside, though, f5 both creates the lock and mates. A scan that reads the
+        pattern sees frozen pawns and no captures left, and answers “dead”. But the game ended with
+        mate the moment f5 was played; a mated position is not a dead position. So mate is checked
+        first, and the lock only if there is none. <b>Correct ruling: Black wins.</b></p>
+      </div>
+    </div>
+    <div class="prose" lang="tr">
+      <p>İkincisi <b>geçerken alma</b>. Piyonun çift adımı kilidi doğurmuş olabilir, ama aynı hamle bir geçerken alma hakkı da doğurabilir ve o hak dururken pozisyon ölü sayılamaz. Tarama tam o anda çalışırsa “kilitli değil” der; ardından geri alınamaz bir hamle gelmeyeceği için bir daha hiç çalışmaz ve pozisyon kalıcı olarak kaçırılır. Taranması
+      gereken, hak düştükten sonraki, yani bir yarım hamle sonraki pozisyon. Kural dört satıra
+      sığıyor:</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>The second is <b>en passant</b>. A double step may well have created the lock, but it may
+      also create an en passant right, and while that right stands the
+      position cannot be called dead. Run the scan at that instant and it must answer “not locked”; and since no further irreversible move will come, it never runs again and the
+      position is missed for good. The position to scan is the one after the right has lapsed, one
+      ply later. The rule fits in four lines:</p>
+    </div>
+
+    <div class="tw" lang="tr"><table>
+<thead><tr><th>Hamleden sonra</th><th>Tarama</th><th>Neden</th></tr></thead>
+<tbody>
+<tr><td>Hamle <b>mat</b> verdi</td><td>Bakılmaz.</td><td>Oyun matla bitti; desen kurulmuş olsa da sonuç mat.</td></tr>
+<tr><td>Yarım hamle sayacı sıfırlandı, geçerken alma hakkı <b>yok</b></td><td><b>Bakılır.</b> Sonra sayaç yeniden sıfırlanana kadar bakılmaz.</td><td>Kilit ancak geri alınamaz bir hamleyle doğar; aradaki sessiz hamleler geri oynanabildiği için yeni kilit kuramaz.</td></tr>
+<tr><td>Yarım hamle sayacı sıfırlandı, geçerken alma hakkı <b>var</b></td><td>Bakılmaz.</td><td>Hak zaten bir kilit kırıcı; pozisyon bu hâliyle ölü olamaz.</td></tr>
+<tr><td>Sayaç sıfırlanmadan bir yarım hamle geçti, geçerken alma hakkı <b>düştü</b></td><td><b>Bakılır.</b> Sonra sayaç yeniden sıfırlanana kadar bakılmaz.</td><td>Kırıcı ortadan kalktı; kilit çift adımla doğduysa şimdi görünür. Hakkı düşüren hamle sessiz olduğu için sayaç sıfırlanmaz; bu satır olmasa tarama bir daha hiç çalışmaz.</td></tr>
+</tbody>
+</table></div>
+    <div class="tw" lang="en"><table>
+<thead><tr><th>After the move</th><th>Scan</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>The move gave <b>mate</b></td><td>Don't scan.</td><td>The game ended with mate; even if the pattern is in place, the result is mate.</td></tr>
+<tr><td>The ply counter was reset and there is <b>no</b> en passant right</td><td><b>Scan.</b> Then not again until the counter resets.</td><td>A lock can only be born through an irreversible move; the quiet moves in between can be played back, so they cannot build a new one.</td></tr>
+<tr><td>The ply counter was reset and there <b>is</b> an en passant right</td><td>Don't scan.</td><td>The right is itself a lock breaker; as it stands, the position cannot be dead.</td></tr>
+<tr><td>One ply has passed without a counter reset and the en passant right has <b>lapsed</b></td><td><b>Scan.</b> Then not again until the counter resets.</td><td>The breaker is gone; if the double step created a lock, it shows now. The move that let the right lapse is quiet, so the counter does not reset; without this line the scan would never run again.</td></tr>
+</tbody>
+</table></div>
+
+    
+    
+
+    <div class="prose" lang="tr">
+      <p>Kilit bazen tahtada henüz kurulmuş değildir. Zorunlu olarak alınacak bir vezir, başka
+      hamlesi kalmamış bir piyon ya da dolmak üzere olan bir sayaç onu birkaç hamle sonra kurar, ya
+      da oyunu ondan önce matsız bitirir. Bu pozisyonlar da ölüdür, ama tanınmaları ileriye bakmayı gerektirir; bunlar üçüncü kolun konusu.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Sometimes the lock is not yet in place on the board. A queen that is bound to be captured,
+      a pawn with no other move left, or a counter about to fill brings it about a few moves later,
+      or ends the game without mate before that. Such positions are dead too, but recognising them means looking ahead; they belong to the third branch.</p>
+    </div>
+
+    <span class="anchor" id="r-forced"></span>
+    <h3 lang="tr">Üçüncü kol: zorunlu varış — tahtanın neye dönüşeceği</h3>
+    <h3 lang="en">The third branch: forced arrival — what the board is forced to become</h3>
+    <div class="ml" lang="tr"><p><b>Mateless’te.</b> Bu kol Domino araması, üçüncü basamak: 6 ply ve 100 düğümlük bir yardımlı mat araması; bir pozisyonu ancak her hat daha önce görülmüş bir pozisyonda, statik bir ispatta ya da patta bitiyorsa ölü sayıyor.</p></div>
+    <div class="ml" lang="en"><p><b>In Mateless.</b> This branch is the Domino search, rung 3: a helpmate search of 6 plies and 100 nodes, which proves a position dead only when every line ends in a position already seen, a static proof or a stalemate.</p></div>
+
+    <div class="prose" lang="tr">
+      <p>Materyal yeterliyken ve yapı kilitli değilken de mat imkânsız olabilir. Madde tahtadaki
+      taşları değil, <b>herhangi bir geçerli hamle dizisini</b> soruyor ve bazı pozisyonlarda bütün
+      diziler aynı yere akıyor: hamleler zorunlu ya da seçenekler hiçbir şeyi değiştirmiyor. Hat
+      nereye giderse gitsin matsız bir sona varıyor. Tahtanın <em>şu anki</em> hâli yanıltıcı;
+      hüküm, o tahtanın neye dönüşmek zorunda olduğundan çıkıyor.</p>
+      <p><b>Aranan şey yine bir mat, ama ileride.</b> Algoritma iki tarafın iş birliği yaptığını
+      varsayar ve önündeki bütün geçerli hamle dizilerine bakar. Bir dizi bile mata varıyorsa
+      pozisyon ölü değildir. Her dizi mattan önce bir <b>sona</b> çarpıyorsa ölüdür. Beş son var: ilk iki kol, pat, dolan yarım hamle sayacı ve beşli tekrar. Zorunlu hat tahtayı çoğu
+      zaman ilk iki koldan birine taşıyor; bu kol, onların birkaç hamle öteden görünüşü. Sayacı
+      dolduran hamle mat veriyorsa sonuç mattır.</p>
+      <p><b>Ağaç bir bütçeyle taranır.</b> Sayaç ve tekrar ağacı kuramsal olarak sonlu kılıyor, ama
+      pratikte tüketilemeyecek kadar büyük bırakabiliyor. Algoritma bu yüzden bir bütçeyle çalışır:
+      ağacı bütçe içinde sonuna kadar tükettiyse hüküm “ölü”, tüketemediyse “ölü değil”, yani
+      <a href="#r-deadscope">güvenli yöndeki</a> cevap. Zorunlu hamlelerden ya da birkaç seçenekten
+      oluşan dar bir hat bir avuç denemede tükenir; seçenekler çoğaldıkça bütçe yetmez ve kaçırma
+      başlar.</p>
+      <p>Burada da <b>iki tarafın</b> mat edememesi gerekiyor; zorunlu hattın yalnız bir taraf için
+      matsız olduğu pozisyonlar ise 6.9'un konusu; onlar <a href="#r-onesided">bir sonraki bölümde</a>. Aşağıdaki beş biçim, beş sonun her birine bir örnek.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Mate can be impossible even when the material is sufficient and nothing is locked. The
+      article asks not about the pieces on the board but about <b>any series of legal moves</b>,
+      and in some positions every series flows to the same place: the moves are forced, or the
+      choices change nothing. Wherever the line goes, it arrives at an end without mate. The board
+      <em>as it stands</em> is misleading; the ruling follows from what it is forced to become.</p>
+      <p><b>What is sought is still a mate, only further ahead.</b> The algorithm assumes the two
+      sides cooperate and looks at every series of legal moves in front of it. If even one series
+      reaches mate, the position is not dead. If every series runs into an <b>end</b> before any
+      mate, it is dead. There are five ends: the first two branches, stalemate, a ply counter that
+      fills, and the fivefold repetition. The forced line usually carries the board into one of the
+      first two branches; this branch is those two seen from a few moves away. If the move that
+      fills the counter gives mate, the result is mate.</p>
+      <p><b>The tree is searched on a budget.</b> The counter and repetition make the tree finite in
+      theory, but can leave it too large to exhaust in practice. So the algorithm works with a
+      budget: if it has exhausted the tree within the budget, the ruling is “dead”; if not, “not
+      dead”, the answer in <a href="#r-deadscope">the safe direction</a>. A narrow line of forced
+      moves, or of a few choices, runs out in a handful of tries; as the choices multiply the budget
+      no longer suffices, and misses begin.</p>
+      <p>Here too <b>neither side</b> may be able to mate; positions where the forced line is
+      mateless for one side only belong to 6.9 and to <a href="#r-onesided">the next section</a>. The five forms below are one example of each end.</p>
+    </div>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Beyaz şah b1, siyah şah d3, siyah vezir b2. Beyaz şahta ve tek geçerli hamlesi Şxb2 — veziri alıyor.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"><b class="b">♛</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"><b class="w">♚</b></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Beyaz şahta ve tek hamlesi <b>Şxb2</b>: alım yapılınca tahtada iki şahtan başka bir şey kalmıyor.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="White king b1, black king d3, black queen b2. White is in check and its only legal move is Kxb2, capturing the queen.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"><b class="b">♛</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"><b class="w">♚</b></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>White is in check and its only move is <b>Kxb2</b>: once the capture is made nothing but the two kings is left.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Zorunlu yetersiz materyal.</b> Tek geçerli hamle, mat edebilecek tek taşı alıyor: beyazın zaten şahından başka taşı yok, siyahın veziri de zorunlu olarak gidiyor. Hiçbir taraf mat edemez: pozisyon, vezir şah çektiği anda ölü. <b>Doğru hüküm: beraberlik.</b> Statik bakan bir sistem ise tahtadaki veziri görüp oyunu sürdürür. Kolun en sık rastlanan hâli de bu.</p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>Forced insufficient material.</b> The only legal move captures the one piece that could mate: White has nothing but its king to begin with, and Black's queen is forced off the board. Neither side can mate: the position is dead the moment the queen gives check. <b>Correct ruling: a draw.</b> A static check, however, sees the queen and plays on. This is also the most common shape in the whole branch.</p>
+      </div>
+    </div>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Siyah şah g8, kendi piyonları f7 ve h7, beyaz piyonlar g7 f6 h6 ve a2, beyaz şah d3. Siyahın tek oynayabileceği taş a7 piyonu.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d" data-r="8"></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"><b class="w">♟</b></i>
+<i data-r="7"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d" data-r="6"><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Siyahın şahı kendi piyonları ve rakip piyonlarla hapsolmuş: g7 piyonu f8 ile h8'i tehdit ediyor. Geriye yalnız a7 piyonunun iki hamlesi kalıyor; tükendiğinde pat.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="Black king g8 with its own pawns on f7 and h7, white pawns on g7, f6, h6 and a2, white king d3. The only black piece that can move is the a7 pawn.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d" data-r="8"></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"><b class="w">♟</b></i>
+<i data-r="7"><b class="b">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d" data-r="6"><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Black’s king is entombed by its own pawns and White’s: the g7 pawn covers both f8 and h8. Only the a7 pawn has moves left, and when they run out it is stalemate.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Zorunlu pat.</b> Aynı kalıp, başka bir varış. Zorunlu hat mata değil <b>pata</b> çıkıyor ve oyun orada bitiyor. Beyaz da mat edemez: siyah şaha şah çekebilecek bir taşı yok, a piyonu da karşısındaki piyona takılıyor. <b>Doğru hüküm: beraberlik.</b> Burada tahtadaki materyal fazlasıyla yeterli olabilir — yeterlilik meselenin dışında.</p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>Forced stalemate.</b> The same shape, a different destination. The forced line ends not in mate but in <b>stalemate</b>, and the game ends there. White cannot mate either: it has no piece that could ever give check, and its a-pawn runs into the black one. <b>Correct ruling: a draw.</b> The material here may be more than sufficient — sufficiency is beside the point.</p>
+      </div>
+    </div>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Siyah şah c6 şahta, tek hamlesi Şxb7 — b7'deki beyaz veziri alıyor. Geriye kilitli piyon yapısı ve iki şah kalıyor.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i><b class="w">♛</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♚</b></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Siyah şahta ve tek hamlesi <b>Şxb7</b>. Vezir gidince geriye kilitli piyon duvarı kalıyor: hiçbir piyon ilerleyemiyor, hiçbir şah karşıya geçemiyor.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="Black king c6 is in check and its only move is Kxb7, capturing the white queen on b7. What remains is a locked pawn structure and the two kings.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i><b class="w">♛</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="w">♚</b></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Black is in check and its only move is <b>Kxb7</b>. With the queen gone what is left is a locked wall of pawns: no pawn can advance and neither king can cross.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Zorunlu kilitli pozisyon.</b> Zorunlu hattın sonunda <a href="#r-dead">ikinci kol</a> var: materyal yeterli, mat yine de imkânsız. Tahtadaki vezir yanıltıcı; tek işi alınmak. <b>Doğru hüküm: beraberlik.</b> İki kolun birleştiği yer burası — ve taş saymakla asla bulunamayacak olan da bu.</p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>A forced blocked position.</b> At the end of the forced line lies <a href="#r-dead">the second branch</a>: the material is sufficient, mate is impossible all the same. The queen on the board is misleading; its only job is to be taken. <b>Correct ruling: a draw.</b> This is where two branches meet — and a case that counting pieces will never find.</p>
+      </div>
+    </div>
+
+    <div class="prose" lang="tr">
+      <p>Üçünde de <b>hat zorunlu, değişen yalnızca varış</b>; üçünde de tahtaya bakan biri doğru cevabı bulabilir. Kalan ikisi ise kitabın otomatik sınırlarına varıyor: biri yarım hamle sayacına, öbürü tekrara bağlı. Yani tahtaya değil, tahtanın geçmişine.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>In all three <b>the line is forced, only the destination changes</b>; and in all three
+      someone looking at the board can reach the right answer. The remaining two arrive at the
+      book's automatic limits instead: one depends on the ply counter, the other on repetition.
+      That is, not on the board but on its history.</p>
+    </div>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Beyaz şah e1 ve at g1, siyah şah e8 ve at g8. Taşlar simetrik; hükmü belirleyen tahta değil yarım hamle sayacı.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i><b class="b">♞</b></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"><b class="w">♚</b></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"><b class="w">♞</b></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Simetrik tahta: iki şah, iki at.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="White king e1 and knight g1, black king e8 and knight g8. The pieces are symmetrical; what decides the ruling is not the board but the ply counter.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i><b class="b">♞</b></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"><b class="w">♚</b></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"><b class="w">♞</b></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>A symmetrical board: two kings, two knights.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Zorunlu 75 hamle.</b> Bu pozisyon diyagramdan okunamaz — hükmü belirleyen şey tahtadaki
+        taşlar değil, <b>sayacın kaçta olduğu</b>. O yüzden FEN'i (pozisyonu sıra, rok hakları, geçerken alma karesi ve sayaçlarla birlikte tek satırda yazan standart gösterim) de yanına koymak gerekiyor:</p>
+        <pre class="snip">4k1n1/8/8/8/8/8/8/4K1N1 w - - <b>148</b> 250</pre>
+        <p>Sondan ikinci alan yarım hamle sayacı: <b>148</b>. Sayaç 150'de dolduğu için geriye <b>2 yarım hamle</b> kalıyor. Materyal yeterli; şah ile at yardımlı mat kurabilir. Ama iki yarım hamlede kurulamıyor: sayaç önce doluyor, oyun orada
+        kendiliğinden berabere bitiyor ve mat hiçbir zaman gerçekleşemiyor. Taşlar simetrik olduğu
+        için bu iki taraf için de geçerli. <b>Doğru hüküm: beraberlik.</b></p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>A forced 75-move draw.</b> This one cannot be read off the diagram — what decides it is
+        not the pieces but <b>where the counter stands</b>. Which is why the FEN (the standard one-line notation that records the position together with the side to move, castling rights, en passant square and counters) belongs beside it:</p>
+        <pre class="snip">4k1n1/8/8/8/8/8/8/4K1N1 w - - <b>148</b> 250</pre>
+        <p>The second-to-last field is the ply counter: <b>148</b>. The counter fills at 150, so <b>2 plies</b> remain. The material is sufficient: a king and knight can construct a helpmate. But not in two plies: the counter
+        fills first, the game ends in a draw of its own accord there, and the mate can never
+        happen. The pieces are symmetrical, so this holds for both sides. <b>Correct ruling: a
+        draw.</b></p>
+      </div>
+    </div>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Beyaz şah b1 ve fil c1, siyah şah h8 ve fil f8. Piyonlar b2-b3, d2-d3, e6-e7, g6-g7 karşılıklı kilitli. İki tarafın da tek hamlesi şah mekiği.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d" data-r="8"><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"><b class="w">♚</b></i>
+<i class="d" data-f="c"><b class="w">♝</b></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>İki tarafın da <b>tek hamlesi</b> var: şah mekiği. Filler kendi köşelerinde kilitli, piyonlar karşılıklı tıkalı. Pozisyon iki tam hamlede geri geliyor.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="White king b1 and bishop c1, black king h8 and bishop f8. The pawns on b2-b3, d2-d3, e6-e7 and g6-g7 are locked head to head. Each side has exactly one move: the king shuttling.">
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♝</b></i>
+<i></i>
+<i class="d" data-r="8"><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i></i>
+<i class="d"><b class="b">♟</b></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d"></i>
+<i><b class="w">♟</b></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"><b class="w">♟</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"><b class="w">♚</b></i>
+<i class="d" data-f="c"><b class="w">♝</b></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Each side has <b>exactly one move</b>: the king shuttling. The bishops are locked in their corners and the pawns blocked head to head. The position returns after two full moves.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Zorunlu beşli tekrar.</b> Zorunlu hat aynı pozisyona dönüp duruyor ve hiçbir taraf mat edemiyor. Oyun en geç beşli tekrarda kendiliğinden bitiyor. <b>Doğru hüküm: beraberlik.</b> Tekrarın kendisi oyunun geçmişine bağlı — hangi pozisyonun kaç kez görüldüğü tahtanın dizilişinden çıkarılamaz — ama bu hat sonsuza kadar döndüğü için geçmiş ne olursa olsun varış aynı.</p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>A forced fivefold repetition.</b> The forced line keeps returning to the same position, and neither side can mate. The game ends by itself at the fivefold repetition at the latest. <b>Correct ruling: a draw.</b> The repetition itself depends on the history of the game — how many times a position has been seen cannot be read off the arrangement on the board — but since this line cycles for ever, the destination is the same whatever the history.</p>
+      </div>
+    </div>
+
+    <div class="prose" lang="tr">
+      <p>Burada durup bir şeyin altını çizmek gerek: <b>ölü pozisyonu tanıyan algoritma, satranç programlamanın en zorlarından biri — bana göre en zoru.</b> Mat, pat, tekrar,
+      sayaç — hepsinin tanımı kapalı: mat ve pat hamle üretiminden çıkıyor ve perft (bir
+      pozisyondan çıkan bütün hamle dizilerini sayan standart doğruluk sınaması) ile sınanabiliyor;
+      tekrar ve sayaçlar test pozisyonları ve referans uygulamalarla birebir doğrulanabiliyor. Ölü pozisyonun tanımı da net, ama <b>her pozisyonda onu ispatlayan tanımlı bir yöntem yok</b>. Maddeyi eksiksiz çözdüğünü iddia eden biri bile bunu ispatlayamaz: ispat, iki ile otuz iki taş arasındaki
+      yaklaşık 4,8×10<sup>44</sup> geçerli pozisyonun tek tek sınanması demek; bunu bitirebilecek
+      bir bilgisayar da, onay verecek bir külliyat ya da otorite de yok.</p>
+      <p>Bu yüzden bir uygulamanın söyleyebileceği en güçlü şey “%100'e yakın”; kaçırdığı oyun
+      sayısı ölçülür, ispatlanmaz — ölçüm <a href="#r-hardhalf">bir sonraki bölümde</a>. Kesin
+      olabilecek tek şey <a href="#r-deadscope">yön</a>: ölü denen her pozisyon gerçekten ölü olmalı,
+      tanınmayan ise oynanmaya devam etmeli.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Here something has to be said plainly: <b>the algorithm that recognises a dead position is one of the hardest in chess programming — to my mind, the hardest.</b> Checkmate,
+      stalemate, repetition, the counters — each has a closed definition: checkmate and stalemate
+      follow from move generation, which can be tested with perft (the standard correctness test
+      that counts every move sequence from a position); repetition and the counters can be
+      verified exactly against test positions and reference implementations. The dead position has a clear definition too, but <b>there is no defined method that proves it in every position</b>. Even someone claiming
+      to have solved the article completely could not prove it: the proof would mean testing every
+      legal position with two to thirty-two pieces, about 4.8×10<sup>44</sup> of them, one by one;
+      there is no computer to finish that, nor a corpus or an authority to certify it.</p>
+      <p>So the strongest thing an implementation can say is “close to 100%”; the number of games
+      it misses is measured, not proved — the measurement is in <a href="#r-hardhalf">the next
+      section</a>. The one thing that can be certain is <a href="#r-deadscope">the direction</a>:
+      every position called dead must really be dead, and one that is not recognised must be
+      played on.</p>
+    </div>
+
+    
+    
+
+    <p class="cost" lang="tr"><b>Uygulama maliyeti.</b> Kitabın hem kod boyutu hem hız bakımından en pahalı maddesi. Materyal kolu taş saymaktan ibaret ve ucuz. Yapı kolu tahtanın bütününe bakmayı gerektiriyor: kilidin kalıcı olduğunu, hiçbir hamle dizisinin onu açamayacağını göstermek. Zorunlu varış ise mat ve patın tersine mevcut pozisyondan cevaplanamıyor; ileriye bakan bir arama istiyor.</p>
+    <p class="cost" lang="en"><b>What it costs to apply.</b> The most expensive article in the book, in code size and in speed alike. The material branch is a matter of counting pieces, and cheap. The structural branch needs a look at the whole board: showing that the lock is permanent, that no series of moves can open it. Forced arrival, unlike mate and stalemate, cannot be answered from the position as it stands; it needs a search that looks ahead.</p>
+
+<span class="anchor" id="r-flag"></span>
+    <h2 lang="tr">Süre bitimi, terk ve mat imkânı — 5.1.2 · 6.9</h2>
+    <h2 lang="en">Flag fall, resignation and the possibility of mate — 5.1.2 · 6.9</h2>
+    <div class="ml" lang="tr"><p><b>Mateless’te.</b> <a href="#arbiter">Hakem</a> sekmesi bu tek taraflı soruyu soruyor: bayrak düştüğünde ya da oyuncu terk ettiğinde öbür taraf hâlâ mat edebilir mi? Hiçbir geçerli hamle dizisi buna izin vermiyorsa oyun berabere.</p></div>
+    <div class="ml" lang="en"><p><b>In Mateless.</b> The <a href="#arbiter">Arbiter</a> tab asks this one-sided question: when a flag falls or a player resigns, can the other side still mate? If no series of legal moves lets it, the game is a draw.</p></div>
+    <p class="layer" lang="tr">Kitap ne diyor</p>
+    <p class="layer" lang="en">What the book says</p>
+
+    <div class="prose" lang="tr">
+      <p>Bu iki madde aynı kalıba dayanıyor. Terk eden ya da süresi biten taraf kaybeder — <b>ancak</b>
+      rakibi, hiçbir geçerli hamle dizisiyle onun şahını mat edemeyecek durumdaysa sonuç
+      beraberliktir.</p>
+      <p>Süre bitimi için bu istisna kitapta çoktandır var. Terk için <b>2023'te eklendi</b>:
+      önceki metin, terk eden tarafın her hâlükârda kaybettiğini söylüyordu. Yani aynı pozisyonda terk eden oyuncu 2022'de kaybediyordu; 2023'ten itibaren beraberlik alıyor.</p>
+      <p>Terk <b>sıraya</b> da bağlı değil. Teklif ve talebin aksine oyuncu, rakibin saati işlerken de dahil, her an terk edebilir (5.1.2).</p>
+      <p>6.9'un açılış cümlesi de gözden kaçırılmamalı: madde, 5.1.1, 5.1.2, 5.2.1,
+      5.2.2 ve 5.2.3'ten biri geçerliyse <em>hiç devreye girmiyor</em>. Mat, terk, pat, ölü pozisyon ve
+      anlaşmalı beraberlik bayrak düşmesinin önüne geçiyor. Matın bayrağa üstünlüğü de buradan
+      geliyor: mat oyunu o anda bitirir, ardından düşen bayrak sonucu değiştirmez.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>These two articles follow the same pattern. The player who resigns or runs out of time loses —
+      <b>unless</b> the opponent is in no position to checkmate that player’s king by any series
+      of legal moves, in which case the game is drawn.</p>
+      <p>For flag fall the exception has been in the book a long time. For resignation it was
+      <b>added in 2023</b>: the earlier text said the player who resigns loses, full stop. In the same position, a player who resigned in 2022 lost; one who resigns from 2023 onward gets a draw.</p>
+      <p>Resignation, moreover, is not tied to <b>the turn</b>. Unlike an offer or a claim, a player may resign at any moment, even while the opponent's clock is running (5.1.2).</p>
+      <p>Nor should the opening clause of 6.9 be overlooked: the article <em>does not apply
+      at all</em> where one of 5.1.1, 5.1.2, 5.2.1, 5.2.2 or 5.2.3 applies. Checkmate, resignation, stalemate, dead position and draw by agreement all take precedence over flag fall. That is why mate beats the flag: mate ends the game on the spot, and a flag that falls
+      afterwards changes nothing.</p>
+    </div>
+    <ul class="tight" lang="tr">
+      <li><b>Tek taraflı.</b> 5.2.2 iki tarafı birden sorar; bu iki madde ise yalnızca terk eden ya da süresi biten tarafın <em>rakibini</em> sorar. Senin mat edebiliyor olman seni kurtarmaz — soru senin ne yapabildiğin değil, rakibinin ne yapabildiği.</li>
+      <li><b>“Zorlayabilir mi” değil, “kurulabilir mi”.</b> Madde zorlamalı mat (rakip ne yaparsa yapsın gelen mat) aramıyor; kaybeden taraf en kötü hamleleri oynarsa ortaya çıkabilecek bir mat olup olmadığını soruyor. Yani <em>yardımlı mat</em>. Kaybeden taraf kendi şahının kaçışını kendi taşlarıyla kapatarak yardım edebildiği için, savunanın taşları da hesaba girer.</li>
+    </ul>
+    <ul class="tight" lang="en">
+      <li><b>It is one-sided.</b> 5.2.2 asks about both players; these two ask only about the <em>opponent</em> of the player who resigned or flagged. That you can mate does not save you — the question is not what you can do but what your opponent can.</li>
+      <li><b>Not “can they force it”, but “can it be built”.</b> The article is not looking for a forced mate (one that arrives whatever the opponent does); it asks whether a mate could arise if the losing side played the worst moves available. A <em>helpmate</em>, in other words. Since the losing side can help by shutting off its own king’s escape squares with its own pieces, the defender’s material counts too.</li>
+    </ul>
+    <p class="layer" lang="tr">Algoritmada nasıl okunur</p>
+    <p class="layer" lang="en">How an algorithm reads it</p>
+    <div class="prose" lang="tr">
+      <p><span class="dtag">dijitalde yorum payı yok</span> İnce nokta, matla bayrağın aynı ana denk geldiği durum. Kitap bunun dayanağını hamlenin tanımında veriyor: hamle, oyuncu saate bastığında tamamlanır; oyunu bitiren bir hamle — mat gibi — ise saate basılmasını beklemeden, yapıldığı anda tamamlanmış sayılır (6.2.1.1). Yani mat ile bayrak arasındaki soru, matın bayraktan önce tahtaya konup konmadığı. Tahta başında mat hamlesi süre bitimine
+      denk gelir ve hangisinin önce olduğu şüpheliyse, şüphe genellikle mat eden lehine yorumlanır.
+      Bu esnekliğin sebebi insanın kendisi: hamleyi tahtaya koymak da saate basmak da zaman alır,
+      bayrağı görmek de bir göz işidir. Belirsizlik bu kısıtlardan doğar ve tahta başındaki yorum payı onu gidermek için vardır. Dijitalde bu kısıtların hiçbiri yok. Sınır keskin, bayrak her
+      an düşebilir ve hangi olayın gerçekten önce geldiğine algoritma karar verir: mat tahtada,
+      bayrak saatte, iki ayrı katmanda tetiklenir ve doğru kabul edilmesi gereken <b>hangisi önce
+      tetiklendiyse</b> o. Dijital ortam, bu maddenin yoruma en kapalı olduğu yer.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p><span class="dtag">no leeway digitally</span> The fine point is when mate and flag coincide. The book grounds it in its definition of a move: a move is completed when the player presses the clock, but a move that ends the game — mate, for instance — counts as completed the instant it is made, without the clock being pressed (6.2.1.1). So the question between mate and flag is whether the mate reached the board before the flag fell. Over the board, if the mating move lands just as
+      time runs out and it is unclear which came first, the benefit of the doubt usually goes to the side delivering mate. The reason for that leeway is human: placing the move on the
+      board and pressing the clock both take time, and seeing the flag is a matter of eyesight. The
+      uncertainty comes from those constraints, and the room for interpretation over the board
+      exists to settle it. Digitally none of those constraints exist. The line is sharp, the flag
+      can fall at any instant, and which event truly came first is decided by the algorithm: mate
+      triggers on the board and the flag on the clock, on two separate layers, and the one to be
+      taken as correct is <b>the one that triggered first</b>. Digital play is therefore where this
+      article is least open to interpretation.</p>
+    </div>
+    <div class="prose" lang="tr">
+      <p>Bir hakem algoritmasını çevrimiçi bir uygulamaya taşıyan, sıra konusuna da dikkat etmeli:
+      teklif ve talep sıraya bağlı kalmalı, terk bağlanmamalı.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Anyone porting an arbiter algorithm into an online application should also mind the turn: offers and claims should stay tied to it, resignation should not.</p>
+    </div>
+    
+    
+
+    <span class="anchor" id="r-cheaphalf"></span>
+    <h3 lang="tr">Ucuz yarı: tahtadaki taşlar</h3>
+    <h3 lang="en">The cheap half: the pieces on the board</h3>
+
+    <div class="prose" lang="tr">
+      <p>İlk soru taş saymakla cevaplanır: rakibin elindeki taşlarla mat diye bir şey var mı? Aşağıdaki tablo cevabı durum durum veriyor. Ölü pozisyon bölümündeki tablodan farkı şu: orada iki tarafa birden
+      bakılıyordu, burada mat edecek tarafa bakılıyor — savunanın taşları ise yalnızca
+      <em>yardım edebildiği için</em> hesaba giriyor.</p>
+      <p>Tek atla mat ancak savunan tarafın, kendi şahının kaçış karesini kapatacak bir taşı varsa kurulabilir:
+      fil, at, piyon, hatta kale. Savunan vezir bu işi göremez, çünkü köşedeki kaçışı kapatabileceği
+      her kareden aynı anda mat eden atı da tehdit eder. Savunan piyon iki yoldan yeter. Piyon a ya da h dikeyindeyse köşedeki şahın kaçış karesini terfiden önce de kendisi kapatabilir; başka bir dikeydeyse terfi eder: madde herhangi bir geçerli hamle dizisine izin verdiğinden, piyon
+      sıkıştırmayı yapacak taşa dönüşebilir. Piyon için söylenenler tek fille mat için de geçerli.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>The first question is answered by counting: is mate possible at all with the pieces the opponent holds? The table below gives the answer case by case. It differs from the table in the dead-position
+      section in this: there both sides were counted together, here it is the mating side that is
+      counted — and the defender’s material enters only because it can <em>help</em>.</p>
+      <p>Mate with a lone knight can only be built if the defending side owns a piece that can block its own king's escape: a bishop, a knight, a pawn, even a rook. A defending queen cannot do the job,
+      because from every square where it could close the escape in the corner it simultaneously
+      attacks the mating knight. A defending pawn suffices in two ways. On the a- or
+      h-file it can close the cornered king's escape square itself, even before promotion. On any
+      other file it promotes: since the article allows any series of legal moves, the pawn can turn
+      into the piece that does the shutting in. What was said about the pawn holds for mate with a lone bishop too.</p>
+    </div>
+
+        <div class="tw" lang="tr"><table>
+<thead><tr><th>Mat eden</th><th>Savunan</th><th>Mat</th><th>Kurulabilen pozisyon</th></tr></thead>
+<tbody>
+<tr><td>Ş</td><td>Ş + herhangi bir taş</td><td>Yok</td><td><span class="none">kurulamaz</span></td></tr>
+<tr><td>Ş + Fil</td><td>Ş</td><td>Yok</td><td><span class="none">kurulamaz</span></td></tr>
+<tr><td>Ş + Fil</td><td>Ş + Fil <span class="sub">aynı renk</span></td><td>Yok</td><td><span class="none">kurulamaz</span></td></tr>
+<tr><td>Ş + Fil</td><td>Ş + Kale</td><td>Yok</td><td><span class="none">kurulamaz</span></td></tr>
+<tr><td>Ş + Fil</td><td>Ş + Vezir</td><td>Yok</td><td><span class="none">kurulamaz</span></td></tr>
+<tr><td>Ş + At</td><td>Ş</td><td>Yok</td><td><span class="none">kurulamaz</span></td></tr>
+<tr><td>Ş + At</td><td>Ş + Vezir</td><td>Yok</td><td><span class="none">kurulamaz</span></td></tr>
+<tr><td>Ş + At</td><td>Ş + Kale</td><td>Var</td><td><div class="mb et el mini" role="img" aria-label="şah ve at tarafına karşı şah ve kale: yardımlı mat pozisyonu">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♜</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"><b class="w">♞</b></i>
+<i data-f="a"><b class="w">♚</b></i>
+<i class="d" data-f="b"></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>Ş + At</td><td>Ş + Fil</td><td>Var</td><td><div class="mb et el mini" role="img" aria-label="şah ve at tarafına karşı şah ve fil: yardımlı mat pozisyonu">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♝</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"></i>
+<i data-f="a"><b class="w">♚</b></i>
+<i class="d" data-f="b"><b class="w">♞</b></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>Ş + At</td><td>Ş + At</td><td>Var</td><td><div class="mb et el mini" role="img" aria-label="şah ve at tarafına karşı şah ve at: yardımlı mat pozisyonu">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♞</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"><b class="w">♞</b></i>
+<i data-f="a"></i>
+<i class="d" data-f="b"><b class="w">♚</b></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>Ş + At</td><td>Ş + Piyon <span class="sub">a ya da h dikeyinde</span></td><td>Var</td><td><div class="mb et el mini" role="img" aria-label="şah ve ata karşı şah ve a piyonu: terfiden önce yardımlı mat">
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="3"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="2"><b class="w">♞</b></i>
+<i class="d" data-f="a"><b class="b">♚</b></i>
+<i data-f="b"></i>
+<i class="d" data-f="c" data-r="1"><b class="w">♚</b></i>
+</div></td></tr>
+<tr><td>Ş + At</td><td>Ş + Piyon <span class="sub">diğer dikeylerde</span></td><td>Var</td><td>Terfiden sonra<span class="sub">piyonken kurulamaz; piyon terfi edip sıkıştırmayı yapacak taşa dönüşünce mümkün</span></td></tr>
+<tr><td>Ş + Fil</td><td>Ş + At</td><td>Var</td><td><div class="mb et el mini" role="img" aria-label="şah ve fil tarafına karşı şah ve at: yardımlı mat pozisyonu">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♞</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i><b class="w">♝</b></i>
+<i class="d" data-r="7"></i>
+<i data-f="a"></i>
+<i class="d" data-f="b"><b class="w">♚</b></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>Ş + Fil</td><td>Ş + Fil <span class="sub">zıt renk</span></td><td>Var</td><td><div class="mb et el mini" role="img" aria-label="şah ve fil tarafına karşı zıt renk kareli şah ve fil: yardımlı mat pozisyonu">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♝</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"></i>
+<i data-f="a"><b class="w">♚</b></i>
+<i class="d" data-f="b"></i>
+<i data-f="c" data-r="6"><b class="w">♝</b></i>
+</div></td></tr>
+<tr><td>Ş + Fil</td><td>Ş + Piyon <span class="sub">a ya da h dikeyinde</span></td><td>Var</td><td><div class="mb et el mini" role="img" aria-label="şah ve file karşı şah ve a piyonu: terfiden önce yardımlı mat">
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="3"><b class="w">♝</b></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="2"><b class="w">♚</b></i>
+<i class="d" data-f="a"><b class="b">♚</b></i>
+<i data-f="b"></i>
+<i class="d" data-f="c" data-r="1"></i>
+</div></td></tr>
+<tr><td>Ş + Fil</td><td>Ş + Piyon <span class="sub">diğer dikeylerde</span></td><td>Var</td><td>Terfiden sonra<span class="sub">piyonken kurulamaz; piyon terfi edip sıkıştırmayı yapacak taşa dönüşünce mümkün</span></td></tr>
+<tr><td>Ş + At + At</td><td>Ş</td><td>Var</td><td><div class="mb eb er mini" role="img" aria-label="şah ve iki at tarafına karşı çıplak şah: yardımlı mat pozisyonu">
+<i><b class="w">♞</b></i>
+<i class="d"><b class="w">♚</b></i>
+<i data-r="3"></i>
+<i class="d"><b class="w">♞</b></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"><b class="b">♚</b></i>
+</div></td></tr>
+</tbody>
+</table></div>
+<div class="tw" lang="en"><table>
+<thead><tr><th>Mating side</th><th>Defender</th><th>Mate</th><th>Constructible position</th></tr></thead>
+<tbody>
+<tr><td>K</td><td>K + any piece</td><td>No</td><td><span class="none">not constructible</span></td></tr>
+<tr><td>K + B</td><td>K</td><td>No</td><td><span class="none">not constructible</span></td></tr>
+<tr><td>K + B</td><td>K + B <span class="sub">same colour</span></td><td>No</td><td><span class="none">not constructible</span></td></tr>
+<tr><td>K + B</td><td>K + R</td><td>No</td><td><span class="none">not constructible</span></td></tr>
+<tr><td>K + B</td><td>K + Q</td><td>No</td><td><span class="none">not constructible</span></td></tr>
+<tr><td>K + N</td><td>K</td><td>No</td><td><span class="none">not constructible</span></td></tr>
+<tr><td>K + N</td><td>K + Q</td><td>No</td><td><span class="none">not constructible</span></td></tr>
+<tr><td>K + N</td><td>K + R</td><td>Yes</td><td><div class="mb et el mini" role="img" aria-label="king and knight against king and rook: helpmate position">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♜</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"><b class="w">♞</b></i>
+<i data-f="a"><b class="w">♚</b></i>
+<i class="d" data-f="b"></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>K + N</td><td>K + B</td><td>Yes</td><td><div class="mb et el mini" role="img" aria-label="king and knight against king and bishop: helpmate position">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♝</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"></i>
+<i data-f="a"><b class="w">♚</b></i>
+<i class="d" data-f="b"><b class="w">♞</b></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>K + N</td><td>K + N</td><td>Yes</td><td><div class="mb et el mini" role="img" aria-label="king and knight against king and knight: helpmate position">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♞</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"><b class="w">♞</b></i>
+<i data-f="a"></i>
+<i class="d" data-f="b"><b class="w">♚</b></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>K + N</td><td>K + P <span class="sub">on the a- or h-file</span></td><td>Yes</td><td><div class="mb et el mini" role="img" aria-label="king and knight against king and a-pawn: helpmate before promotion">
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="3"></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="2"><b class="w">♞</b></i>
+<i class="d" data-f="a"><b class="b">♚</b></i>
+<i data-f="b"></i>
+<i class="d" data-f="c" data-r="1"><b class="w">♚</b></i>
+</div></td></tr>
+<tr><td>K + N</td><td>K + P <span class="sub">on any other file</span></td><td>Yes</td><td>After promotion<span class="sub">not while it is still a pawn; possible once the pawn promotes into a piece that does the shutting in</span></td></tr>
+<tr><td>K + B</td><td>K + N</td><td>Yes</td><td><div class="mb et el mini" role="img" aria-label="king and bishop against king and knight: helpmate position">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♞</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i><b class="w">♝</b></i>
+<i class="d" data-r="7"></i>
+<i data-f="a"></i>
+<i class="d" data-f="b"><b class="w">♚</b></i>
+<i data-f="c" data-r="6"></i>
+</div></td></tr>
+<tr><td>K + B</td><td>K + B <span class="sub">opposite colour</span></td><td>Yes</td><td><div class="mb et el mini" role="img" aria-label="king and bishop against king and opposite-coloured bishop: helpmate position">
+<i><b class="b">♚</b></i>
+<i class="d"><b class="b">♝</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="7"></i>
+<i data-f="a"><b class="w">♚</b></i>
+<i class="d" data-f="b"></i>
+<i data-f="c" data-r="6"><b class="w">♝</b></i>
+</div></td></tr>
+<tr><td>K + B</td><td>K + P <span class="sub">on the a- or h-file</span></td><td>Yes</td><td><div class="mb et el mini" role="img" aria-label="king and bishop against king and a-pawn: helpmate before promotion">
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="3"><b class="w">♝</b></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i data-r="2"><b class="w">♚</b></i>
+<i class="d" data-f="a"><b class="b">♚</b></i>
+<i data-f="b"></i>
+<i class="d" data-f="c" data-r="1"></i>
+</div></td></tr>
+<tr><td>K + B</td><td>K + P <span class="sub">on any other file</span></td><td>Yes</td><td>After promotion<span class="sub">not while it is still a pawn; possible once the pawn promotes into a piece that does the shutting in</span></td></tr>
+<tr><td>K + N + N</td><td>K</td><td>Yes</td><td><div class="mb eb er mini" role="img" aria-label="king and two knights against a lone king: helpmate position">
+<i><b class="w">♞</b></i>
+<i class="d"><b class="w">♚</b></i>
+<i data-r="3"></i>
+<i class="d"><b class="w">♞</b></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"><b class="b">♚</b></i>
+</div></td></tr>
+</tbody>
+</table></div>
+
+    <div class="prose" lang="tr">
+      <p>Bunlar <b>kurulabilen</b> pozisyonlar, zorlanabilen sonuçlar değil. Hiçbiri bir kazanma
+      yöntemi değil; yalnızca “bu materyalle mat diye bir şey var mı” sorusunun cevabı — ve 6.9
+      ile 5.1.2 tam olarak bunu soruyor.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>These are positions that can be <b>constructed</b>, not results that can be forced. None of
+      them is a winning method; they are only the answer to “does mate exist at all with this
+      material” — and that is exactly what 6.9 and 5.1.2 ask.</p>
+    </div>
+
+    <span class="anchor" id="r-unbuildable"></span>
+    <h3 lang="tr">Hani kurulamıyordu?</h3>
+    <h3 lang="en">Unbuildable, you said?</h3>
+
+    <div class="prose" lang="tr">
+      <p>Tabloya göre Ş+F, Ş+V'ye de Ş+K'ye de karşı mat kuramaz. <a href="#r-bishopcolour">Beşinci
+      bölümdeki</a> sonuç burada da geçerli: aynı renkte ikinci bir fil, kimin elinde olursa olsun, bu
+      satırları değiştirmez; savunanın taşı her şaha ya araya girerek ya da şah çeken fili alarak
+      karşılık verir.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>According to the table, K+B cannot build a mate against K+Q or against K+R. The result of
+      <a href="#r-bishopcolour">section 5</a> holds here too: a second bishop of the same colour, whoever
+      holds it, does not change these rows; the defender's piece answers every check either by
+      stepping in between or by taking the checking bishop.</p>
+    </div>
+
+    <div class="sidefig" lang="tr">
+      <figure class="fig fig-wide">
+<div class="mb et el er" role="img" aria-label="Siyah şah d8'de, siyah vezir c8'de, siyah kale e8'de, beyaz şah d6'da; b6 ve g5'teki beyaz filler d8'deki şaha aynı anda şah çekiyor. c7 ve e7 işaretli.">
+<i></i>
+<i class="d"></i>
+<i><b class="b">♛</b></i>
+<i class="d a"><b class="b">♚</b></i>
+<i><b class="b">♜</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d m"></i>
+<i></i>
+<i class="d m"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♚</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"><b class="w">♝</b></i>
+<i data-f="h" data-r="5"></i>
+</div>
+        <figcaption>b6 ve g5'teki koyu kareli filler d8'deki şaha aynı anda şah çekiyor. İşaretli c7 ve e7, tek bir şaha karşı ağır taşların araya gireceği kareler; çifte şaha karşı yalnızca şah hamlesi yapılabildiği için ikisi de kullanılamıyor.</figcaption>
+      </figure>
+      <div class="prose">
+        <p>Yine de tahtada böyle bir mat duruyor. Siyah şah d8'de; yanında kendi ağır taşları var: c8'de
+        vezir, e8'de kale. Beyaz şah d6'da, b6 ve g5'teki filler aynı anda şah çekiyor. Tek fil olsaydı
+        mat olmazdı: b6'daki filin çektiği şaha karşı c8'deki vezir c7'ye, g5'tekinin çektiğine karşı e8'deki kale e7'ye girerdi. Her ağır taş bir şahı karşılayabiliyor; ikisini birden ancak çifte şah aşıyor.</p>
+        <p>Ama iki çapraz ışın aynı anda şah çekemez: öndeki fil, hamleden önce zaten şah çekiyor
+        olurdu. Bu tahta çizilebiliyor ama
+        oynanamıyor.</p>
+      </div>
+    </div>
+    <div class="sidefig" lang="en">
+      <figure class="fig fig-wide">
+<div class="mb et el er" role="img" aria-label="Black king on d8, black queen on c8, black rook on e8, white king on d6; the white bishops on b6 and g5 check the king on d8 at the same time. c7 and e7 are marked.">
+<i></i>
+<i class="d"></i>
+<i><b class="b">♛</b></i>
+<i class="d a"><b class="b">♚</b></i>
+<i><b class="b">♜</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"></i>
+<i class="d"></i>
+<i></i>
+<i class="d m"></i>
+<i></i>
+<i class="d m"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"><b class="w">♝</b></i>
+<i></i>
+<i class="d"><b class="w">♚</b></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"><b class="w">♝</b></i>
+<i data-f="h" data-r="5"></i>
+</div>
+        <figcaption>The dark-squared bishops on b6 and g5 check the king on d8 at the same time. The marked c7 and e7 are where the heavy pieces would step in against a single check; against a double check only the king may move, so neither can be used.</figcaption>
+      </figure>
+      <div class="prose">
+        <p>And yet here is such a mate on the board. The black king stands on d8 with its own heavy
+        pieces beside it: the queen on c8, the rook on e8. The white king is on d6, and the bishops on b6
+        and g5 give check at the same time. With a single bishop it would not be mate: against the
+        bishop on b6 the queen on c8 would step in on c7, and against the one on g5 the rook on e8 would
+        step in on e7. Each heavy piece can answer one check; only a double check gets past both.</p>
+        <p>But two diagonal rays cannot give check at the same time: the front bishop would already
+        have been giving check before the move. This board can be drawn but not played.</p>
+      </div>
+    </div>
+
+    <div class="sidefig" lang="tr">
+      <figure class="fig">
+<div class="mb et" style="--c:3" role="img" aria-label="Siyah şah d8'de, beyaz şah hemen yanında d7'de.">
+<i></i>
+<i class="d a"><b class="b">♚</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i><b class="w">♚</b></i>
+<i class="d" data-r="7"></i>
+<i data-f="c"></i>
+<i class="d" data-f="d"></i>
+<i data-f="e" data-r="6"></i>
+</div>
+        <figcaption>İki şah yan yana; siyah şahın kaçabileceği her kare beyaz şahın yanında.</figcaption>
+      </figure>
+      <div class="prose">
+        <p>Kurulabilseydi, bunu da mat saymamız gerekirdi: siyah şah tehdit altında ve gidecek karesi yok. Tahtada yalnızca iki çıplak şah var, ama tanımın lafzına göre bu bir mat.</p>
+        <p>Bunu mat saymak oyunun önkabullerini çiğner ve o zaman hiçbir sınır kalmaz: çıplak şah bile
+        mat edebilir, materyal tablolarının hepsi çöker. İki tahta eşdeğer: ikisi de geçerli hamlelerle hiçbir zaman ortaya çıkamayan birer çizim. Sınırı nereye çektiğimiz bize kalmış, ama ikisi için
+        aynı yerden çekmeliyiz; birini mat sayan öbürünü de saymak zorunda kalır. Kural yalnızca oynanabilen pozisyonlardan söz ediyor.</p>
+      </div>
+    </div>
+    <div class="sidefig" lang="en">
+      <figure class="fig">
+<div class="mb et" style="--c:3" role="img" aria-label="Black king on d8, the white king right next to it on d7.">
+<i></i>
+<i class="d a"><b class="b">♚</b></i>
+<i data-r="8"></i>
+<i class="d"></i>
+<i><b class="w">♚</b></i>
+<i class="d" data-r="7"></i>
+<i data-f="c"></i>
+<i class="d" data-f="d"></i>
+<i data-f="e" data-r="6"></i>
+</div>
+        <figcaption>The two kings side by side; every square the black king could flee to is next to the white king.</figcaption>
+      </figure>
+      <div class="prose">
+        <p>Were it constructible, we would have to count this as checkmate too: the black king is attacked and has no square to go to. There is nothing on the board
+        but two bare kings, yet by the letter of the definition this is mate.</p>
+        <p>Counting it as mate breaks the game's premises, and then no limit is left: even a bare king
+        could mate, and every material table collapses. The two boards are equivalent: each is a
+        drawing that no series of legal moves can ever produce. Where we draw the line is up to us, but
+        it has to be drawn in the same place for both; whoever counts one as mate has to count the other
+        too. The rule speaks only of positions that can be played.</p>
+      </div>
+    </div>
+
+    <span class="anchor" id="r-hardhalf"></span>
+    <h3 lang="tr">Pahalı yarı: tahtanın zorunlu olarak neye dönüşeceği</h3>
+    <h3 lang="en">The costly half: what the board is forced to become</h3>
+
+    <div class="prose" lang="tr">
+      <p>Taş saymak sorunun yalnızca yarısını çözüyor, üstelik ucuz yarısını. Rakibinin tahtada veziri duruyor olabilir; statik bakan bir sistem “yeterli” deyip geçer. Oysa madde
+      tahtadaki taşları değil, <b>herhangi bir geçerli hamle dizisini</b> soruyor. Ve bazı pozisyonlarda bütün diziler tek bir hatta iner: başka hamle yoktur.</p>
+      <p>Tipik örnek şu: rakip vezirle şah çekmiştir, senin tek geçerli hamlen o veziri almaktır — ama almaya vakit kalmadan süren biter. Tahtada vezir görünüyor; yine de
+      rakibin seni mat etmesine giden hiçbir hamle dizisi yok, çünkü oyunun devam edebildiği tek
+      hat vezirin alınmasından geçiyor. Doğru hüküm beraberlik.</p>
+      <p>Pratikte karşılaşılan hâl çoğunlukla bu kadar yalın ve arama böyle bir dalı tek denemede
+      kapatıyor. Talep edilmek üzere olan bir üçlü tekrar ise burada işe yaramıyor: talebe bağlı
+      olduğu için hattı bitirmiyor; hattı kendiliğinden bitirenler yalnızca beşli tekrar ve 75
+      hamle. Zorunlu hat iki taraf için de matsız bir yere varıyorsa pozisyon zaten ölüdür (5.2.2). Yalnız bir taraf için
+      matsızsa hüküm asimetrik olur; o durumlar <a href="#r-onesided">aşağıda</a>.</p>
+      <p>Fark tek bir cümlede: <b>taş saymak bayrak düştüğü andaki tahtaya bakar, kitap ise o
+      tahtanın zorunlu olarak neye dönüşeceğini sorar.</b> Tahta başında bu sorun büyük ölçüde yok;
+      hakem zaten ileriye bakıyor. Haksız hükümler sunucularda birikiyor.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Counting pieces settles only half the question, and the cheap half at that. Your opponent may have a
+      queen on the board — a system that looks at the position statically says “sufficient” and
+      stops there. But the article does not ask about the pieces on the board; it asks about
+      <b>any series of legal moves</b>. And in some positions all those series come down to a single line: there is no other move.</p>
+      <p>The typical case: your opponent has given check with a queen, your only legal
+      move is to capture it — and your time runs out before you can. The queen is visible on the
+      board; yet no series of moves leads to your being mated, because the one line along which the
+      game can continue passes through that queen being taken. The correct ruling is a draw.</p>
+      <p>In practice this plain shape is what usually comes up, and the search closes such a line in a single try. A threefold repetition that was about to be claimed does not help
+      here: it needs a claim, so it does not end the line; only fivefold repetition and the
+      75-move rule end it on their own. If the forced line leads somewhere mateless for both
+      sides, the position is already dead (5.2.2). If it is mateless for one side only, the ruling becomes
+      asymmetric; those cases are <a href="#r-onesided">below</a>.</p>
+      <p>The difference fits in one sentence: <b>counting pieces looks at the board at the moment
+      the flag fell; the book asks what that board is forced to become.</b> Over the board the
+      problem barely exists; the arbiter is already looking ahead. The unfair rulings accumulate on
+      the servers.</p>
+    </div>
+    
+    
+
+    <p class="cost" lang="tr"><b>Uygulama maliyeti.</b> Bu maddeyi uygulamamanın gerekçesi hep aynı olmuştur: hesaplanamaması. Gerekçe sanıldığı kadar sağlam değil. İleriye bakmak gerekiyor, ama zorunlu dallar tanım gereği dar ve soru oyun başına en fazla bir kez, oyun kesilirken soruluyor.</p>
+    <p class="cost" lang="en"><b>What it costs to apply.</b> The reason given for not applying this article has always been the same: that it is intractable. The reason is less solid than it looks. Looking ahead is required, but forced lines are narrow by definition, and the question is asked at most once a game, as the game is cut short.</p>
+
+    <span class="anchor" id="r-onesided"></span>
+    <h3 lang="tr">Arama gerektiren tek taraflı kazançlar</h3>
+    <h3 lang="en">One-sided wins that need a search</h3>
+    <div class="prose" lang="tr">
+      <p>6.9 yalnızca tek tarafı sorduğu için hüküm asimetrik olabilir: aynı tahtada mat yalnızca bir taraf için mümkün olabilir ve sonucu bayrağın kimde düştüğü belirler.
+      <a href="#r-deadpos">5.2.2</a> böyle çalışmaz; orada soru iki taraf için birden sorulur ve cevap
+      tek olur. Bunu taş sayarak görmenin yolu yok; tahtanın neye dönüşebileceğine bakmak
+      gerekiyor. İki örnek: biri zorunlu bir hattan, biri kilitli bir yapıdan.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Because 6.9 asks about one side only, the ruling can be asymmetric: on the same board mate may be possible for one side only, and whose flag fell decides the result.
+      <a href="#r-deadpos">5.2.2</a> does not work this way; there the question is asked for both
+      sides at once and there is one answer. Counting pieces cannot show this; what the board can
+      become has to be examined. Two examples, one from a forced line and one from a locked
+      structure.</p>
+    </div>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+        <div class="mb et el eb er" role="img" aria-label="Beyaz şah e8 şahta, tek hamlesi Şxe7 — e7'deki siyah veziri alıyor. Beyaz kale h8'de; siyah şah a8, piyonları a7 ve b7.">
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"><b class="w">♜</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♛</b></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>Beyaz şahta ve tek hamlesi <b>Şxe7</b> — o hamle kalenin yolunu açarak siyaha <b>koridor matı</b> veriyor. Ama oynayacak vakit yok.</figcaption>
+      </figure>
+      <figure class="fig fig-wide" lang="en">
+        <div class="mb et el eb er" role="img" aria-label="White king e8 is in check and its only move is Kxe7, capturing the black queen on e7. White rook on h8; black king a8, pawns a7 and b7.">
+<i><b class="b">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i><b class="w">♚</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="8"><b class="w">♜</b></i>
+<i class="d"><b class="b">♟</b></i>
+<i><b class="b">♟</b></i>
+<i class="d"></i>
+<i></i>
+<i class="d"><b class="b">♛</b></i>
+<i></i>
+<i class="d"></i>
+<i data-r="7"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="6"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="5"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="4"></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i data-r="3"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d"></i>
+<i></i>
+<i class="d" data-r="2"></i>
+<i class="d" data-f="a"></i>
+<i data-f="b"></i>
+<i class="d" data-f="c"></i>
+<i data-f="d"></i>
+<i class="d" data-f="e"></i>
+<i data-f="f"></i>
+<i class="d" data-f="g"></i>
+<i data-f="h" data-r="1"></i>
+</div>
+        <figcaption>White is in check and its only move is <b>Kxe7</b> — and by clearing the rook's path, that move delivers a <b>back-rank mate</b>. But there is no time left to play it.</figcaption>
+      </figure>
+      <div class="prose" lang="tr">
+        <p><b>Zorunlu karşı mat.</b> Bayrağı düşen tarafın tek geçerli hamlesi <em>rakibini mat ediyor</em>. Ama o hamleyi oynayacak vakit kalmamıştı ve oyun bayrak düştüğü anda bitti; kazandı denemez. Rakip de sıra alamayacağı için onu hiçbir diziyle mat edemez. <b>Doğru hüküm: beraberlik.</b> 6.9, “ben mat edebilir miyim” diye değil, “rakibim beni mat edebilir mi” diye soruyor.</p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>A forced mate the other way.</b> The only legal move of the player who flagged <em>mates their opponent</em>. But there was no time left to play it, and the game ended the moment the flag fell; it cannot be called a win. Nor does the opponent ever get a turn, so no series of moves lets them mate either. <b>Correct ruling: a draw.</b> 6.9 asks not “can I mate” but “can my opponent mate me”.</p>
+      </div>
+    </div>
+
+    <div class="sidefig">
+      <span class="anchor" id="r-semilocked"></span>
+    <figure class="fig fig-wide" lang="tr">
+          <div class="mb et el eb er" role="img" aria-label="Beyaz şah d1 ve fil f7, piyonlar a6, b5, d5, f5, g4. Siyah şah d7 ve fil f8, piyonlar a7, b6, d6, f6, g5. Bütün piyonlar karşılıklı kilitli; beyaz piyonlar açık karelerde, siyah piyonlar koyu karelerde, filler zıt renkte.">
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"><b class="b">♝</b></i>
+  <i></i>
+  <i class="d" data-r="8"></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"></i>
+  <i><b class="b">♚</b></i>
+  <i class="d"></i>
+  <i><b class="w">♝</b></i>
+  <i class="d"></i>
+  <i data-r="7"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d" data-r="6"></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i data-r="5"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d" data-r="4"></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i data-r="3"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d" data-r="2"></i>
+  <i class="d" data-f="a"></i>
+  <i data-f="b"></i>
+  <i class="d" data-f="c"></i>
+  <i data-f="d"><b class="w">♚</b></i>
+  <i class="d" data-f="e"></i>
+  <i data-f="f"></i>
+  <i class="d" data-f="g"></i>
+  <i data-f="h" data-r="1"></i>
+  </div>
+          <figcaption>Piyonlar donmuş: beyazınkiler açık karelerde, siyahınkiler koyu karelerde, filler zıt renkte — tek mümkün alım, siyah şahın korumasız beyaz fili alması; o da pozisyonu ölü yapar. Şahlar da karşı tarafa geçemiyor. Ama şu hâliyle pozisyon <b>ölü değil</b>: beyaz hâlâ mat edebiliyor, siyah edemiyor.</figcaption>
+        </figure>
+      <figure class="fig fig-wide" lang="en">
+          <div class="mb et el eb er" role="img" aria-label="White king d1 and bishop f7, pawns a6, b5, d5, f5, g4. Black king d7 and bishop f8, pawns a7, b6, d6, f6, g5. All the pawns are locked head to head; the white pawns stand on light squares, the black pawns on dark, and the bishops are of opposite colours.">
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"><b class="b">♝</b></i>
+  <i></i>
+  <i class="d" data-r="8"></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"></i>
+  <i><b class="b">♚</b></i>
+  <i class="d"></i>
+  <i><b class="w">♝</b></i>
+  <i class="d"></i>
+  <i data-r="7"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d" data-r="6"></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i data-r="5"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d" data-r="4"></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i data-r="3"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d" data-r="2"></i>
+  <i class="d" data-f="a"></i>
+  <i data-f="b"></i>
+  <i class="d" data-f="c"></i>
+  <i data-f="d"><b class="w">♚</b></i>
+  <i class="d" data-f="e"></i>
+  <i data-f="f"></i>
+  <i class="d" data-f="g"></i>
+  <i data-f="h" data-r="1"></i>
+  </div>
+          <figcaption>The pawns are frozen: White’s on light squares, Black’s on dark, the bishops of opposite colours — the only possible capture is the black king taking the unprotected white bishop, and that makes the position dead. Neither king can cross either. But as it stands the position is <b>not dead</b>: White can still mate, Black cannot.</figcaption>
+        </figure>
+      <div class="prose" lang="tr">
+        <p><b>Asimetrik kilit.</b> Piyon yapısı donduğu için ulaşılabilir durum sayısı sonlu ve
+        tamamı sayılabiliyor: beyaz fil tahtada kaldığı sürece <b>68.672 durum</b>. Bunların hiçbirinde
+        beyaz mat değil; <b>58'inde</b> siyah mat. Örneğin:</p>
+      </div>
+      <div class="prose" lang="en">
+        <p><b>An asymmetric lock.</b> Because the pawn structure is frozen, the number of reachable
+        states is finite and can be counted in full: <b>68,672 states</b> while the white bishop
+        stays on the board. In none of them is White mated; in <b>58</b> Black is. For
+        instance:</p>
+      </div>
+    </div>
+
+    <div class="sidefig">
+      <figure class="fig fig-wide" lang="tr">
+          <div class="mb et el eb er" role="img" aria-label="Siyah şah a8, kendi fili b8 ve kendi piyonu a7. Beyaz fil c6 şah çekiyor, beyaz piyon a6 b7 karesini tehdit ediyor. Siyahın hiçbir geçerli hamlesi yok — mat.">
+  <i><b class="b">♚</b></i>
+  <i class="d"><b class="b">♝</b></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d" data-r="8"></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i data-r="7"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i><b class="w">♝</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d" data-r="6"></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i data-r="5"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d" data-r="4"></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i data-r="3"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d" data-r="2"></i>
+  <i class="d" data-f="a"></i>
+  <i data-f="b"></i>
+  <i class="d" data-f="c"></i>
+  <i data-f="d"><b class="w">♚</b></i>
+  <i class="d" data-f="e"></i>
+  <i data-f="f"></i>
+  <i class="d" data-f="g"></i>
+  <i data-f="h" data-r="1"></i>
+  </div>
+          <figcaption>Aynı kilitten çıkan 58 mat pozisyonundan biri. Beyaz fil <b>c6</b>’dan şah çekiyor, a6 piyonu <b>b7</b>’yi tehdit ediyor ve siyahın kaçacağı iki kareyi <b>kendi</b> fili ile <b>kendi</b> piyonu kapatıyor. Beyaz şah hâlâ d1’de — mata hiç karışmıyor.</figcaption>
+        </figure>
+      <figure class="fig fig-wide" lang="en">
+          <div class="mb et el eb er" role="img" aria-label="Black king a8 with its own bishop on b8 and its own pawn on a7. The white bishop on c6 gives check and the white pawn on a6 covers b7. Black has no legal move — mate.">
+  <i><b class="b">♚</b></i>
+  <i class="d"><b class="b">♝</b></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d" data-r="8"></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i data-r="7"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i><b class="w">♝</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i></i>
+  <i class="d" data-r="6"></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d"><b class="b">♟</b></i>
+  <i data-r="5"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i><b class="w">♟</b></i>
+  <i class="d" data-r="4"></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i data-r="3"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d"></i>
+  <i></i>
+  <i class="d" data-r="2"></i>
+  <i class="d" data-f="a"></i>
+  <i data-f="b"></i>
+  <i class="d" data-f="c"></i>
+  <i data-f="d"><b class="w">♚</b></i>
+  <i class="d" data-f="e"></i>
+  <i data-f="f"></i>
+  <i class="d" data-f="g"></i>
+  <i data-f="h" data-r="1"></i>
+  </div>
+          <figcaption>One of the 58 mates the same lock allows. The white bishop checks from <b>c6</b>, the a6 pawn covers <b>b7</b>, and the two squares Black might flee to are blocked by <b>its own</b> bishop and <b>its own</b> pawn. The white king is still on d1 — it takes no part in the mate.</figcaption>
+        </figure>
+      <div class="prose" lang="tr">
+        <p>Hüküm yine asimetrik: beyazın bayrağı düşerse <b>beraberlik</b>, siyahınki düşerse
+        <b>kayıp</b>. Pozisyon ölü olmadığı için oyun da durmuyor ve durmaması gerekiyor. Pratikte
+        milyarda bir görülecek bir yapı, ama 6.9'un 5.2.2'den neden ayrı bir madde olduğunu tek bir
+        tahtada gösteriyor.</p>
+      </div>
+      <div class="prose" lang="en">
+        <p>The ruling is asymmetric again: if White’s flag falls it is a <b>draw</b>, if Black’s it is
+        a <b>loss</b>. Since the position is not dead the game does not stop, and it should not. A
+        structure seen once in a billion games in practice, but it shows on a single board why 6.9
+        is a separate article from 5.2.2.</p>
+      </div>
+    </div>
+
+    
+    
+
+    <span class="anchor" id="r-intersection"></span>
+    <h3 lang="tr">Kesişim: ölü pozisyonun materyal tablosu</h3>
+    <h3 lang="en">The intersection: the dead-position material table</h3>
+    <div class="prose" lang="tr">
+      <p><a href="#r-cheaphalf">Ucuz yarıdaki tablo</a>, mat kurma açısından üç kurala indirgenebiliyor:</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>When it comes to building a mate, the table in <a href="#r-cheaphalf">the cheap half</a> comes down to three rules:</p>
+    </div>
+    <ul class="tight" lang="tr">
+      <li><b>Çıplak şah</b> hiçbir şeye karşı mat kuramaz.</li>
+      <li><b>Tek at</b>, karşısında vezirden başka taş yoksa mat kuramaz. At bir tane olmalı; vezir birden fazla olabilir.</li>
+      <li><b>Hepsi aynı renkteki filler</b>, karşısında kale, vezir ve aynı renkte filden başka taş yoksa mat kuramaz. Fillerin sayısı fark etmez; hepsi aynı renkte kaldığı sürece rakibin elinde bile olabilirler.</li>
+    </ul>
+    <ul class="tight" lang="en">
+      <li><b>A bare king</b> cannot build one against anything.</li>
+      <li><b>A lone knight</b> cannot build one if the other side has no piece but queens. There must be exactly one knight; there may be any number of queens.</li>
+      <li><b>Bishops all of one colour</b> cannot build one if the other side has no piece but rooks, queens and bishops of that same colour. The number of bishops does not matter; as long as they all share one colour, some may even be the opponent's.</li>
+    </ul>
+    <div class="prose" lang="tr">
+      <p>Bu tek taraflı kuralların kesişimini, yani iki tarafın da birbirine mat kuramadığı
+      bileşimleri alınca ölü pozisyon bölümündeki <a href="#r-material">ölü pozisyonun materyal
+      tablosu</a> çıkıyor: çıplak şaha karşı çıplak şah, tek at ya da hepsi aynı renkte filler;
+      aynı renkteki fillere karşı yine o renkteki filler. Başka her bileşimde en az bir taraf mat
+      kurabilir. Yani 5.2.2'nin materyal kolu, 6.9'un sorusunun iki taraf için birden sorulmuş
+      hâli.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>Take the intersection of these one-sided rules, the combinations where neither side can
+      build a mate against the other, and out comes the <a href="#r-material">dead-position material
+      table</a> of the dead-position section: a bare king against a bare king, a lone knight or bishops all of
+      one colour; bishops of one colour against bishops of that same colour. In every other
+      combination at least one side can build a mate. The material branch of 5.2.2 is 6.9's
+      question asked of both sides at once.</p>
+    </div>
+
+    <span class="anchor" id="r-twopossibilities"></span>
+    <h3 lang="tr">İki mat imkânı</h3>
+    <h3 lang="en">Two possibilities of mate</h3>
+    <div class="prose" lang="tr">
+      <p><span class="dtag">uygulayana öneri</span> Mat edebilirlik tek bir soru değil, iki: beyaz
+      siyahı mat edebilir mi, siyah beyazı mat edebilir mi? Her pozisyon için iki imkân ayrı ayrı çıkarılabilir. Tıpkı rok hakları gibi bunlar da pozisyonun taşıdığı iki küçük bilgidir ve onlar gibi yalnızca düşebilir: bir pozisyondan hiçbir hamle dizisi mata varmıyorsa,
+      ondan sonraki pozisyonlardan da varamaz. Düşen imkân oyunun sonuna kadar bir daha dönmez.
+      Burada da <a href="#r-deadscope">yön</a> aynı: imkân, düştüğü ispatlanana kadar duruyor
+      sayılır.</p>
+      <p>Bayrak düştüğünde (6.9) ya da biri terk ettiğinde (5.1.2) hükmü yalnızca rakibin imkânı
+      belirler: duruyorsa kayıp, düştüyse beraberlik. Üç sonuç çıkıyor:</p>
+    </div>
+    <div class="prose" lang="en">
+      <p><span class="dtag">for implementers</span> Mateability is not one question but two: can
+      White mate Black, and can Black mate White? For every position the two possibilities can be worked out separately. Like castling rights, they are two small pieces of information the position carries, and like them they can only be lost: if no series of moves from a position
+      leads to mate, none from any later position can either. A possibility once lost never comes
+      back for the rest of the game. <a href="#r-deadscope">The direction</a> is the same here too:
+      a possibility counts as standing until it is proved lost.</p>
+      <p>When a flag falls (6.9) or a player resigns (5.1.2), only the opponent's possibility
+      decides the ruling: if it stands, a loss; if it is lost, a draw. Three consequences
+      follow:</p>
+    </div>
+    <ul class="tight" lang="tr">
+      <li><b>İki imkân da duruyorsa</b> süre bitimi ve terk doğrudan kayıp ilan edilir.</li>
+      <li><b>Bir tarafınki düştüyse</b> o taraf artık kazanamaz; en fazla beraberlik alabilir. 6.9 ve 5.1.2'nin sorduğu tam olarak bu.</li>
+      <li><b>İkisi de düştüyse</b> pozisyon ölüdür, yani bildiğimiz 5.2.2; oyun o anda berabere biter.</li>
+    </ul>
+    <ul class="tight" lang="en">
+      <li><b>If both possibilities stand,</b> a flag fall or a resignation is a loss, declared at once.</li>
+      <li><b>If one side's is lost,</b> that side can no longer win; a draw is the most it can get. That is exactly what 6.9 and 5.1.2 ask.</li>
+      <li><b>If both are lost,</b> the position is dead, the familiar 5.2.2, and the game is drawn on the spot.</li>
+    </ul>
+    <div class="prose" lang="tr">
+      <p>İmkânlar her hamle oynanır oynanmaz güncellenebilir. O zaman süre bitiminde ve terkte yapılacak iş kalmaz: hüküm hazırdır, yalnızca okunur. Bunun maliyeti de sanıldığı kadar
+      yüksek değil, çünkü daha önceki çıkarımlar işi hafifletiyor:</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>The two possibilities can be updated as soon as each move is played. Then nothing is left to do at a flag fall or a resignation: the ruling is ready and only has to be read. The cost is
+      lower than it sounds, because what has already been worked out lightens the load:</p>
+    </div>
+    <ul class="tight" lang="tr">
+      <li>Düşmüş bir imkân bir daha sorulmaz.</li>
+      <li>Materyal ve kilit yalnızca alım ya da piyon sürmesiyle değişebildiği için (<a href="#r-deadpos">ölü pozisyon bölümünün başındaki tablo</a>), sessiz hamlelerden sonra yeniden okunmaz.</li>
+    </ul>
+    <ul class="tight" lang="en">
+      <li>A possibility once lost is never asked about again.</li>
+      <li>Material and the lock can change only through a capture or a pawn move (<a href="#r-deadpos">the table at the start of the dead-position section</a>), so they are not read again after a quiet move.</li>
+    </ul>
+    <div class="prose" lang="tr">
+      <p>Böylece her hamlede iki taraf için de tam kontrol gerekmez. İş, imkânı gerçekten
+      değiştirebilecek hamlelere kalır; hem bütçe hem işlemci rahatlar.</p>
+      <p>Hangi yolun seçileceği tercih ve önceliklere bağlı: imkânları oyun boyunca güncel tutmak
+      ya da ileriye bakan aramayı bayrağa ve terke bırakıp yalnızca o an, tek taraflı yapmak.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>So not every move needs a full check for both sides. The work falls only on the moves that
+      can actually change a possibility, which is kind to both the budget and the processor.</p>
+      <p>Which road to take is a matter of preference and priorities: keep the possibilities up to
+      date throughout the game, or leave the look-ahead search to a flag fall or a resignation and
+      run it then, one-sided, once.</p>
+    </div>
+    
+    
+
+    <span class="anchor" id="r-onesearch"></span>
+    <h3 lang="tr">Tek bir aramanın kısa devreleri</h3>
+    <h3 lang="en">Short circuits of a single search</h3>
+    <div class="prose" lang="tr">
+      <p><b>Her ölü pozisyon aslında kendiliğinden gelecek bir beraberliktir.</b> Mat imkânı yoksa
+      oyunu, sonsuza kadar sürmesini engelleyen iki sınırdan biri er geç
+      bitirir; bazı pozisyonlarda ise zorunlu bir pat daha da erken bitirir. 5.2.2 o kaçınılmaz sonu yalnızca
+      beklemeden ilan ediyor.</p>
+      <p>Buradan bir sonuç daha çıkıyor: <b>yeterli bütçesi olan bir arama hepsini kendisi
+      bulurdu.</b> Önündeki her geçerli hamle dizisini bu sonlara kadar yürüyen bir arama, materyal tablosuna da kilit desenine de ihtiyaç duymadan her ölü pozisyonu tanır; 6.9'un tek
+      taraflı sorusunu da aynı yoldan cevaplar. Aynı iki sınır ağacı sonlu kıldığı için bu kuramsal
+      olarak mümkün. Ama o ağacı tüketmek tek bir pozisyon için bile bir oyuncunun bekleyebileceği
+      sürenin çok ötesine taşabiliyor; oysa 5.2.2 her hamleden sonra, 6.9 ile 5.1.2 ise oyun
+      kesildiği anda bir hüküm istiyor.</p>
+      <p>Bu yüzden 5.2.2'nin kolları ve 6.9'un materyal tablosu gereksiz değil; <b>o aramanın kısa
+      devreleri.</b> Her biri ağacın bir bölümünü dal dal gezmeden kapatıyor:</p>
+    </div>
+    <div class="prose" lang="en">
+      <p><b>Every dead position is, in fact, a draw that would arrive on its own.</b> With no mate
+      possible, one of the two limits that keep the game from going on for
+      ever ends it sooner or later; in some positions a forced stalemate ends it earlier still.
+      5.2.2 simply declares that inevitable end without waiting for it.</p>
+      <p>A second conclusion follows: <b>a search with enough budget would find them all by
+      itself.</b> A search that walks every series of legal moves ahead of it to those ends would
+      recognise every dead position without needing a material table or a locking pattern, and
+      would answer 6.9's one-sided question the same way. Since the same two limits make the tree
+      finite, this is possible in theory. But exhausting that tree, even for a single position, can
+      take far longer than any player would wait; and 5.2.2 wants a ruling after every move, 6.9 and
+      5.1.2 the moment the game is cut short.</p>
+      <p>So the branches of 5.2.2 and the material table of 6.9 are not redundant; <b>they are
+      short circuits of that search.</b> Each closes part of the tree without walking it line by line:</p>
+    </div>
+    <ul class="tight" lang="tr">
+      <li><b>Materyal tablosu bir çıkarım.</b> Belli taşlarla mat kurulamayacağı bir kez gösterildiyse, o taşlarla oynanabilecek bütün diziler birden kapanır.</li>
+      <li><b>Kilit bir tümdengelim.</b> Desenin hiçbir hamleyle bozulamayacağı, hamle kurallarından çıkan kesin bir bilgi. Bozulamıyorsa bir sonraki pozisyonda da vardır, ondan sonrakinde de; tek bir tahta bütün geleceği söyler.</li>
+      <li><b>Zorunlu varış bir domino.</b> Hamleler zorunluysa hat dallanmaz: her hamle bir sonrakini domino taşı gibi devirir ve hat matsız bir sona varır. Arama yalnızca o hattı yürür; ağacın gerisi hiç açılmaz.</li>
+    </ul>
+    <ul class="tight" lang="en">
+      <li><b>The material table is an inference.</b> Once it has been shown that certain pieces cannot build a mate, every series that could be played with them closes at once.</li>
+      <li><b>The lock is a deduction.</b> That no move can break the pattern is certain knowledge, following from the rules of movement. If it cannot be broken, it is there in the next position, and in the one after; a single board speaks for the whole future.</li>
+      <li><b>Forced arrival is a domino.</b> When the moves are forced the line does not branch: each move topples the next like a domino, and the line reaches an end without mate. The search walks only that line; the rest of the tree is never opened.</li>
+    </ul>
+    <div class="prose" lang="tr">
+      <p>Bu kısa devreler bir yazılımın değil, problemin kendisinin özelliği. Hangi dilde, hangi
+      motorla yazılırsa yazılsın, kuralı makul sürede uygulamak isteyen her hakem bu türden kısa
+      devrelere başvurmak zorunda. Hepsi aynı soruya — herhangi bir geçerli hamle dizisi mata varır
+      mı — daha ucuz bir yoldan cevap veriyor; hiçbiri soruyu değiştirmiyor.</p>
+    </div>
+    <div class="prose" lang="en">
+      <p>These short circuits are a property of the problem itself, not of any piece of software.
+      Whatever the language, whatever the engine, an arbiter that wants to apply the rule in
+      reasonable time has to resort to short circuits of this kind. Each answers the same question
+      — does any series of legal moves reach mate — by a cheaper road; none of them changes the
+      question.</p>
+    </div>
+</div>

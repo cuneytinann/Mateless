@@ -1,8 +1,8 @@
 'use strict';
 /* The single-file engine against its sources:
      1. mateless.js and mateless.mjs are what tools/build.js builds from src/ now;
-     2. index.html embeds exactly mateless.js, and index.html and chasolver.html share one look
-        (the same <style id="site">);
+     2. index.html, the whole site in one page, is what tools/build-site.js builds from site/ now,
+        and it embeds exactly mateless.js;
      3. src/index.js (the ES modules), mateless.mjs (its named and its default exports) and
         mateless.js export the same names, the same constants and, for every function and class,
         the same source text;
@@ -19,13 +19,13 @@ const problem = m => { problems++; if (problems <= 20) console.log('PROBLEM', m)
   const b = spawnSync(process.execPath, [path.join(root, 'tools', 'build.js'), '--check'], { encoding: 'utf8' });
   if (b.status !== 0) problem((b.stdout + b.stderr).trim());
 
-  // 2. the page runs the same engine, and the two pages share their look
+  // 2. the page is built from site/ and runs the same engine
+  const s = spawnSync(process.execPath, [path.join(root, 'tools', 'build-site.js'), '--check'], { encoding: 'utf8' });
+  if (s.status !== 0) problem((s.stdout + s.stderr).trim());
   const page = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const m = page.match(/<script id="mateless-engine">\n([\s\S]*?)\n<\/script>/);
   if (!m) problem('index.html has no <script id="mateless-engine">');
-  else if (m[1] !== fs.readFileSync(path.join(root, 'mateless.js'), 'utf8').trim()) problem('index.html embeds another engine: run node tools/embed-engine.js');
-  const site = f => (fs.readFileSync(path.join(root, f), 'utf8').match(/<style id="site">[\s\S]*?<\/style>/) || [''])[0];
-  if (!site('index.html') || site('index.html') !== site('chasolver.html')) problem('index.html and chasolver.html carry different <style id="site"> blocks');
+  else if (m[1] !== fs.readFileSync(path.join(root, 'mateless.js'), 'utf8').trim()) problem('index.html embeds another engine: run node tools/build-site.js');
 
   // 3. the same exports
   const A = require(path.join(root, 'mateless.js'));

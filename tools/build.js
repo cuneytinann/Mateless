@@ -12,7 +12,7 @@
    top level of a single module (measured, docs/DESIGN.md).
      node tools/build.js            writes mateless.js and mateless.mjs
      node tools/build.js --check    fails if either is not what the sources build
-   After a build, node tools/embed-engine.js puts the engine into index.html. */
+   After a build, node tools/build-site.js puts the engine into index.html. */
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..'), src = path.join(root, 'src');
 const TARGETS = { umd: path.join(root, 'mateless.js'), esm: path.join(root, 'mateless.mjs') };

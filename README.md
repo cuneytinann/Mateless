@@ -111,28 +111,39 @@ short-lived bug). August and September 2026 come from a scan of Lichess's own mo
 the winner could never have mated (games won by a rules infraction left out). The 195,287 rows,
 classified by Mateless (JS, Rust and WebAssembly give the same answer on every row):
 
-| class | rows | share | drawn by Lichess today (scalachess 18.0.1) | drawn with the lock patch |
-|---|---|---|---|---|
-| **locked positions** (the lock detector) | **52,050** | 26.7% | 141 | **52,050** |
-| forced lines (the Domino search) | 143,201 | 73.3% | 138,431 | 138,669 |
-| unproven | 36 | 0.018% | 0 | 0 |
-| **all** | **195,287** | | **138,572** (71.0%) | **190,719** (97.7%) |
+| class | rows | share | drawn by Lichess today (scalachess 18.0.1) | with the lock patch (in-game) | at the flag instead (a-lock) |
+|---|---|---|---|---|---|
+| **locked positions** (the lock detector) | **52,050** | 26.7% | 141 | **52,034** | 52,050 |
+| forced lines (the Domino search) | 143,201 | 73.3% | 138,431 | 138,431 | 138,669 |
+| unproven | 36 | 0.018% | 0 | 0 | 0 |
+| **all** | **195,287** | | **138,572** (71.0%) | **190,465** (97.5%) | 190,719 (97.7%) |
 
 Lichess today draws most forced lines: scalachess #821 (merged in August 2026; on Lichess from
 6 September, judging by the data) added a one-move lookahead to the test that lila asks when a
 flag falls. What it still misses is, almost entirely, **locked positions**: 51,909 of its 56,715
 misses. From 7 to 30 September, with #821 in use, 460 games were still lost on time this way;
-422 of them (92%) were locks, and the lock patch draws every one. The lock patch is
-[mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'s `a-lock` (the lock
-detector alone, 181 lines of Scala, asked at the position and in #821's lookahead). The whole
+422 of them (92%) were locks.
+
+The lock patch proposed for Lichess is
+[mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'s `in-game`: the lock
+detector alone (181 lines of Scala) as a dead-position check (FIDE 5.2.2) in scalachess's
+`autoDraw`, asked for both sides when the halfmove clock is 0 or 1, right after a capture or a
+pawn move and one move later: a lock can appear only then. The game ends in a draw the moment it
+locks, so 52,034 of the rows above would have ended before the flag fell: 51,893 that Lichess
+scores as wins today, the 422 of September among them, and 141 it draws at the flag. It leaves
+16 locks of one side only (not dead: the flagged side could still mate) and 238 rows where the
+lock comes one move after the flag. The alternative, `a-lock`, asks the same
+detector only when a flag falls, at the position and in #821's lookahead; it draws those 254 too,
+but a dead game is still played on until it ends some other way: in August and September,
+8,718 drawn games went on for a median of 14 plies after such a lock had appeared. The whole
 ladder, Mateless itself or that repository's `c-ladder` patch, draws 195,251 rows (99.98%).
 
 In 117,455 rows (60%) the final position was already dead, neither side able to mate: under
 FIDE 5.2.2 those games had ended in a draw before the flag fell.
 
 The classification is in [`data/`](data), newest game first: `timeouts_classified.tsv` (every
-row: game id, date, class, Lichess today, with the lock patch, dead position),
-`locked_positions.tsv` (the 52,050 locked positions with the side that cannot mate) and
+row: game id, date, class, Lichess today, at the flag with `a-lock`, dead position, with
+`in-game`), `locked_positions.tsv` (the 52,050 locked positions with the side that cannot mate) and
 `lichess_2026-08_09.tsv` (the scanned rows with their final positions; with them 170 games
 resigned where the opponent could never mate, a draw under FIDE 5.1.2 that Lichess scores as a
 loss). Of the 36 unproven rows, 32 are cages whose reachable positions include stalemates (mostly
@@ -141,7 +152,7 @@ rook), 3 hold an open pawn pair (one empty square between a white and a black pa
 the rest locked), and 1 a knight boxed in by its own pawns. They, and whatever a platform's own
 rules leave, are what a refund after the game would cover: a complete solver (chasolver) judges
 them once the game is over. With the whole ladder that is 36 rows of 195,287; with the lock
-detector alone on top of today's Lichess, 4,568.
+detector alone on top of today's Lichess, 4,822 (`in-game`) or 4,568 (`a-lock`).
 
 **Soundness.** There is no written proof yet; there is strong test evidence.
 - No false draw against chasolver's labels (its 68,950 labelled positions, both sides;
@@ -246,8 +257,10 @@ if (r.error === undefined) Mateless.proveCannotBeMated(r.position, Mateless.BLAC
 ```
 
 **scalachess (Lichess)** has its own repository,
-[mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess): two patch sets on
-scalachess 18.0.1, the lock detector alone (proposed) and the whole ladder (for reference).
+[mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess), with patch sets on
+scalachess 18.0.1: the lock detector alone as a dead-position check in `autoDraw` (`in-game`,
+proposed), the same detector when a flag falls (`a-lock`, the alternative), and the whole ladder
+(`c-ladder`, for reference).
 
 ## Taking only the lock detector
 
@@ -262,7 +275,7 @@ exists). It generates no move and searches nothing.
 | JS | `lockCannotMate(pos, flagged)` (`src/lock.js`) |
 | WebAssembly | `lockCannotMate(fen or Position, flagged)` (`mateless-wasm.js`) |
 | Rust | `lock_test(&pos, flagged)` (`rust/src/lock.rs`) |
-| Scala (scalachess) | `chess.mateless.Lock.cannotBeMated(position, flagged)` (mateless-scalachess, `a-lock`) |
+| Scala (scalachess) | `chess.mateless.Lock.cannotBeMated(position, flagged)` (mateless-scalachess: `in-game`, `a-lock`) |
 
 **Cost** per call:
 
@@ -283,11 +296,25 @@ rows above, the 51,909 that Lichess misses today among them.
 3. **The lapse of an en passant right.** The detector fails while the right stands; any next move
    ends it.
 
-**Two ways to cover them:**
-- **A platform with a one-move lookahead** (such as scalachess #821, which looks at every move of
-  the flagged side): ask the lock at the position and at every child. All three cases come by
-  themselves; in a child no en passant right is left. On the Lichess data that added 238 rows:
-  237 steps out of a pawn's check and 1 forced capture of a rook.
+**Three ways to ask it:**
+- **A dead-position check after every move** (the `in-game` patch proposed for Lichess, in
+  scalachess's `autoDraw`): when the halfmove clock is 0 or 1, ask the lock for both sides; if
+  neither side can be mated, the position is dead (FIDE 5.2.2) and the game ends at once. A lock
+  appears only after a capture or a pawn move, at once or one move later: a pawn's check and an en
+  passant right both come from the pawn move just played, so the ply after covers their end. The
+  clock alone says when to ask; nothing has to be remembered. All three cases above are caught when
+  the move is played. It does not see a lock of one side only (that is the flag's question, FIDE
+  6.9), nor a lock that only the move after the flag fall would have completed. On the Lichess
+  data: 190,465 rows (97.5%); 52,034 of them would have ended before the flag fell, 51,893 of
+  these lost on time today.
+  ```
+  dead by lock  ⇔  halfmove clock ≤ 1  and  lock(position, White)  and  lock(position, Black)
+  ```
+- **At the flag, with a one-move lookahead** (the `a-lock` alternative; scalachess #821 looks at
+  every move of the flagged side): ask the lock at the position and at every child. All three
+  cases come by themselves; in a child no en passant right is left. On the Lichess data the
+  children added 238 rows: 237 steps out of a pawn's check and 1 forced capture of a rook. A dead
+  game, though, goes on until a flag falls or it ends some other way.
   ```
   drawn on time  ⇔  lock(position)
                     or, after every legal move of the flagged side: a checkmate it gave, a

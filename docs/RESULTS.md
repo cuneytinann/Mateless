@@ -30,45 +30,58 @@ out. That gives 3,000 games: 2,830 lost on time, classified below with the rest,
 The class is the first rung that proves the flagged side's opponent can never mate. JS, Rust and
 WebAssembly give the same class, node count and failure on every row.
 
-| class | rows | share | Lichess today | with the lock patch | with the whole ladder |
-|---|---|---|---|---|---|
-| locked positions | 52,050 | 26.7% | 141 | 52,050 | 52,050 |
-| forced lines (Domino) | 143,201 | 73.3% | 138,431 | 138,669 | 143,201 |
-| unproven | 36 | 0.018% | 0 | 0 | 0 |
-| **all** | **195,287** | | **138,572 (71.0%)** | **190,719 (97.7%)** | **195,251 (99.98%)** |
+| class | rows | share | Lichess today | with the lock patch (in-game) | at the flag (a-lock) | with the whole ladder |
+|---|---|---|---|---|---|---|
+| locked positions | 52,050 | 26.7% | 141 | 52,034 | 52,050 | 52,050 |
+| forced lines (Domino) | 143,201 | 73.3% | 138,431 | 138,431 | 138,669 | 143,201 |
+| unproven | 36 | 0.018% | 0 | 0 | 0 | 0 |
+| **all** | **195,287** | | **138,572 (71.0%)** | **190,465 (97.5%)** | 190,719 (97.7%) | **195,251 (99.98%)** |
 
 - *Lichess today*: scalachess 18.0.1's `opponentHasInsufficientMaterial`, which lila asks when a
   flag falls (`Finisher.outOfTime`), with the one-move lookahead of #821 (merged in August 2026;
   on Lichess from 6 September, judging by the data). The data up to July predates #821: scalachess
   would have drawn ~70% of the rows of every month from 2017 to 2026.
 - *The lock patch*: [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'s
-  `a-lock`, the lock detector asked at the position and in #821's lookahead. Of the 52,147 rows it
-  adds, 51,909 are locks at the position itself, 238 come through the lookahead (237 kings stepping
-  out of a pawn's check into a lock, one lock after a forced capture of a rook).
+  `in-game`, the patch proposed for Lichess: the lock detector as a dead-position check (FIDE
+  5.2.2) in scalachess's `autoDraw`, asked for both sides when the halfmove clock is 0 or 1. A lock
+  can appear only then: right after a capture or a pawn move, or one move later, once an en passant
+  right has lapsed or a king has stepped out of a pawn's check. A row counts when Lichess draws it
+  today or when its final position is a lock for both sides: the game would have ended, drawn, the
+  moment it locked. That adds 51,893 rows, every one a locked position that ends before the flag
+  falls. It leaves 16 locks of one side only (not dead: the flagged side could still mate) and the
+  238 rows that come through `a-lock`'s lookahead (the lock comes one move after the flag).
+- *At the flag*: `a-lock`, the alternative: the same detector asked only when a flag falls, at the
+  position and in #821's lookahead. Of the 52,147 rows it adds, 51,909 are locks at the position
+  itself, 238 come through the lookahead (237 kings stepping out of a pawn's check into a lock, one
+  lock after a forced capture of a rook). A dead game is still played on until it ends.
 - *The whole ladder*: `c-ladder`, or Mateless itself. No row that scalachess draws is missed.
-- What the lock patch leaves: 4,532 forced lines of more than one move, and the 36 unproven rows.
-- Both scalachess columns come from scalachess itself, built with and without the patch
-  (mateless-scalachess's `check/`).
+- What the lock patches leave: 4,532 forced lines of more than one move and the 36 unproven rows;
+  with `in-game` also those 254 (4,822 in all), with `a-lock` 4,568.
+- The Lichess today and `a-lock` columns come from scalachess itself, built with and without the
+  patch (mateless-scalachess's `check/`). The `in-game` column is Lichess today plus the rows whose
+  final position the lock detector proves for both sides (`mateless.js`; `Lock.scala` gives the
+  same answers on 3,643,939 positions).
 
 By year, newest first. Up to August the lock class is about a quarter of every period. From
 7 September, with #821 in use, the scan holds only the games Lichess still scored wrongly: of
-those 460, 422 (92%) are locks, and the lock patch draws all of them.
+those 460, 422 (92%) are locks, and both lock patches draw all of them (`in-game` before the flag
+falls).
 
-| year | rows | locked | forced lines | unproven | Lichess today | with the lock patch |
-|---|---|---|---|---|---|---|
-| 2026 September | 864 | 533 | 331 | 0 | 282 | 816 |
-| 2026 August | 1,966 | 547 | 1,419 | 0 | 1,377 | 1,926 |
-| 2026 (to 31 July) | 13,962 | 3,757 | 10,205 | 0 | 9,901 | 13,661 |
-| 2025 | 26,417 | 7,473 | 18,942 | 2 | 18,367 | 25,868 |
-| 2024 | 26,669 | 7,362 | 19,304 | 3 | 18,739 | 26,111 |
-| 2023 | 28,224 | 7,595 | 20,616 | 13 | 19,938 | 27,543 |
-| 2022 | 26,171 | 6,801 | 19,364 | 6 | 18,730 | 25,542 |
-| 2021 | 26,920 | 6,424 | 20,489 | 7 | 19,767 | 26,200 |
-| 2020 | 20,518 | 5,163 | 15,352 | 3 | 14,875 | 20,047 |
-| 2019 | 10,825 | 2,812 | 8,012 | 1 | 7,744 | 10,558 |
-| 2018 | 6,397 | 1,618 | 4,779 | 0 | 4,624 | 6,250 |
-| 2017 | 3,509 | 926 | 2,583 | 0 | 2,502 | 3,430 |
-| 2013–2016 | 2,845 | 1,039 | 1,805 | 1 | 1,726 | 2,767 |
+| year | rows | locked | forced lines | unproven | Lichess today | in-game | a-lock |
+|---|---|---|---|---|---|---|---|
+| 2026 September | 864 | 533 | 331 | 0 | 282 | 815 | 816 |
+| 2026 August | 1,966 | 547 | 1,419 | 0 | 1,377 | 1,924 | 1,926 |
+| 2026 (to 31 July) | 13,962 | 3,757 | 10,205 | 0 | 9,901 | 13,640 | 13,661 |
+| 2025 | 26,417 | 7,473 | 18,942 | 2 | 18,367 | 25,822 | 25,868 |
+| 2024 | 26,669 | 7,362 | 19,304 | 3 | 18,739 | 26,081 | 26,111 |
+| 2023 | 28,224 | 7,595 | 20,616 | 13 | 19,938 | 27,509 | 27,543 |
+| 2022 | 26,171 | 6,801 | 19,364 | 6 | 18,730 | 25,510 | 25,542 |
+| 2021 | 26,920 | 6,424 | 20,489 | 7 | 19,767 | 26,171 | 26,200 |
+| 2020 | 20,518 | 5,163 | 15,352 | 3 | 14,875 | 20,021 | 20,047 |
+| 2019 | 10,825 | 2,812 | 8,012 | 1 | 7,744 | 10,546 | 10,558 |
+| 2018 | 6,397 | 1,618 | 4,779 | 0 | 4,624 | 6,238 | 6,250 |
+| 2017 | 3,509 | 926 | 2,583 | 0 | 2,502 | 3,425 | 3,430 |
+| 2013–2016 | 2,845 | 1,039 | 1,805 | 1 | 1,726 | 2,763 | 2,767 |
 
 By the move number at the flag fall:
 
@@ -81,13 +94,20 @@ By the move number at the flag fall:
 
 **Dead before the flag fell.** In 117,455 rows (60.1%) the final position is already dead: the
 ladder proves that neither side can mate. Under FIDE 5.2.2 those games had ended, drawn, before
-the flag fell, and a check after every move would have ended them then. In the other 77,832 only
+the flag fell, and a check after every move would have ended them then. The `in-game` patch is that
+check for locks: it ends the 51,893 locked ones that Lichess misses today. In the other 77,832 only
 the flagged side's opponent cannot mate; the flagged side still could, so only the flag-fall rule
 (FIDE 6.9) draws them.
 
+**Dead games played on.** Not only timeouts: in August and September, 8,718 drawn games (mostly
+threefold repetitions and agreed draws) went on for a median of 14 plies after their position had
+become a lock for both sides, about 41 hours of clock time in all. `in-game` ends each of them the
+moment the lock appears; `a-lock`, asked only at a flag, does not.
+
 **Resignations.** Of the 3,000 scanned games, 170 were resigned in a position where the opponent
 could never mate: under FIDE 5.1.2 a draw, on Lichess scored as a loss. 95 are locks and 75
-forced lines; in 158 the position was already dead.
+forced lines; in 158 the position was already dead. In all 95 locks the final position is a lock
+for both sides: `in-game` would have ended those games, drawn, before the resignation.
 
 **The 36 unproven rows** (20 by the budget, 16 by the ply ceiling; all up to July 2026):
 - 32 are cages whose reachable positions include stalemates: mostly a king shut in a corner, where
@@ -103,7 +123,8 @@ clocks run from 0 to 70: none is lost to a move-count rule. chasolver's full sea
 them; a refund after the game would cover them.
 
 **Files** ([data/](../data)), newest game first: `timeouts_classified.tsv` (every row: game id,
-date, class, Lichess today, with the lock patch, dead position), `locked_positions.tsv` (the 52,050
+date, class, Lichess today, at the flag with `a-lock`, dead position, with `in-game`),
+`locked_positions.tsv` (the 52,050
 locked positions, with the side that cannot mate and the game id) and `lichess_2026-08_09.tsv`
 (the 3,000 scanned games with their final positions, resignations included).
 
@@ -171,7 +192,10 @@ own Rust. Rust against Rust is the comparison to quote.
 
 (Node; in Chromium the ratios are alike: ~3.1× for both proofs.) The lock detector alone, per
 call: Rust ~9 ns when a knight, rook or queen stands (most positions of a game), ~105 ns on a lock;
-the scalachess port ~30–35 ns and ~150–190 ns.
+the scalachess port ~30–35 ns and ~150–190 ns. In scalachess's `autoDraw`, which lila asks after
+every move, `in-game` adds ~7 ns per move on a mix of positions from games' openings and ~10 ns on
+a mix from their endgames (medians on JVM 21: 10.1 → 16.9 and 13.8 → 23.9 ns); the detector runs
+only at halfmove clock 0 or 1, and with a knight, rook or queen on the board it stops at once.
 
 ## 4. Soundness
 
@@ -232,5 +256,7 @@ then to be checked by machine.
 - Both sides in one pass = each side alone: 929,595 positions, every field (`test/twosided_check.js`,
   `rust/examples/twosided.rs`).
 - Rust's fast lock loop = the plain loop: 14.1 million side-positions (`rust/examples/lockcheck.rs`).
-- The scalachess port (mateless-scalachess): the whole ladder = Rust byte for byte; the lock
-  patch = `mateless.js` on 636,146 positions, both sides.
+- The scalachess port (mateless-scalachess): the whole ladder = Rust byte for byte; `Lock.scala`
+  (one file, in `in-game` and in `a-lock`) = `mateless.js` on 3,643,939 positions, both sides. On
+  the same positions `in-game`'s `autoDraw` is today's, or the halfmove clock at 0 or 1 and the
+  lock for both sides, without exception.

@@ -425,7 +425,7 @@ def lockedOut: Boolean =
 <li><a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> (Miguel Ambrona, <a href="https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.FUN.2022.2">“A Practical Algorithm for Chess Unwinnability”</a>, FUN 2022) decides unwinnability by searching for a helpmate, with an algorithm the paper shows to be sound and complete. On a lock, its fast check searches first and then analyses the structure piece by piece.</li>
 <li>Stockfish keeps no dead-position test; its search reaches 0.00 in most locks.</li>
 </ul>
-<p>To our knowledge, no other dead-position test works this way: one fixed point over a few sets per side, with no search and no analysis piece by piece. It has given no false draw in any test; its soundness is not yet proven.</p>
+<p>To our knowledge, no other dead-position test works this way: one fixed point over a few sets per side, with no search and no analysis piece by piece. The detector is sound, not complete: it never calls an open position locked, but it misses some dead positions.</p>
 
 <h2 id="limits">What it does not see</h2>
 <ul>

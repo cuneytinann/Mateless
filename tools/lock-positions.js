@@ -1,6 +1,7 @@
 'use strict';
 /* Writes lock/positions.tsv: the positions every version of the simple lock detector (lock/) is
-   tested on, each labelled by mateless.js's lock detector for both sides.
+   tested on, each labelled for both sides by mateless.js's first-version lock detector
+   (_internal.coreLockTest: the rules of lock/, without the second version's open pairs and boxed pieces).
      node tools/lock-positions.js            writes lock/positions.tsv (the same file every time)
      node tools/lock-positions.js --check    says whether it is up to date
    The positions:
@@ -18,7 +19,7 @@
    Every FEN is written as mateless.js writes it, so the en passant square appears only when a
    legal capture onto it exists. Positions where the side not to move is in check are left out. */
 const fs = require('fs'), path = require('path');
-const E = require('../mateless.js');
+const E = require('../mateless.js'), I = E._internal;
 const ROOT = path.join(__dirname, '..');
 
 let rng = 20261028;
@@ -164,7 +165,7 @@ const out = new Map();   // fen -> label; a position once
 function add(fen) {
   if (!fen || out.has(fen)) return;
   const pos = E.fromFen(fen).position;
-  out.set(fen, (E.lockCannotMate(pos, E.WHITE) ? '1' : '0') + '\t' + (E.lockCannotMate(pos, E.BLACK) ? '1' : '0'));
+  out.set(fen, (I.coreLockTest(pos, E.WHITE) ? '1' : '0') + '\t' + (I.coreLockTest(pos, E.BLACK) ? '1' : '0'));
 }
 
 /* Positions where a pawn can capture only once the cycle has run (a pawn a king can take is no

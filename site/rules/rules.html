@@ -1159,8 +1159,8 @@
     <span class="anchor" id="r-forced"></span>
     <h3 lang="tr">Üçüncü kol: zorunlu varış — tahtanın neye dönüşeceği</h3>
     <h3 lang="en">The third branch: forced arrival — what the board is forced to become</h3>
-    <div class="ml" lang="tr"><p><b>Mateless’te.</b> Bu kol Domino araması, üçüncü basamak: 6 ply ve 100 düğümlük bir yardımlı mat araması; bir pozisyonu ancak her hat daha önce görülmüş bir pozisyonda, statik bir ispatta ya da patta bitiyorsa ölü sayıyor.</p></div>
-    <div class="ml" lang="en"><p><b>In Mateless.</b> This branch is the Domino search, rung 3: a helpmate search of 6 plies and 100 nodes, which proves a position dead only when every line ends in a position already seen, a static proof or a stalemate.</p></div>
+    <div class="ml" lang="tr"><p><b>Mateless’te.</b> Bu kol Domino araması, üçüncü basamak: 6 ply ve 100 düğümlük bir yardımlı mat araması; bir pozisyonu ancak her hat daha önce görülmüş bir pozisyonda, statik bir ispatta ya da patta bitiyorsa ölü sayıyor. Mat bulmadan başarısız olursa, bütçesi tükendiyse ya da tahtada yalnızca şah, piyon ve fil varsa, 9 ply ve 10.000 düğümlük ikinci bir kademe aynı aramayı bir kez daha yapıyor.</p></div>
+    <div class="ml" lang="en"><p><b>In Mateless.</b> This branch is the Domino search, rung 3: a helpmate search of 6 plies and 100 nodes, which proves a position dead only when every line ends in a position already seen, a static proof or a stalemate. When it fails without finding a mate, on its budget or on a board of kings, pawns and bishops only, a second tier of 9 plies and 10,000 nodes runs the same search once more.</p></div>
 
     <div class="prose" lang="tr">
       <p>Materyal yeterliyken ve yapı kilitli değilken de mat imkânsız olabilir. Madde tahtadaki

@@ -69,8 +69,8 @@ export function fail(message) { throw new EngineError(message); }
    Moving a set east or west never carries a bit from one word to the other: the bit would
    land on a file the file masks clear anyway. Only vertical shifts carry bits between the
    words; a bit shifted past the 8th or 1st rank falls off the board. */
-const NOT_FILE_A = ~0x01010101;
-const NOT_FILE_H = ~(0x80808080 | 0);
+export const NOT_FILE_A = ~0x01010101;
+export const NOT_FILE_H = ~(0x80808080 | 0);
 const NOT_FILE_AB = ~0x03030303;
 const NOT_FILE_GH = ~(0xc0c0c0c0 | 0);
 export const RANK_1 = 0x000000ff;            // in the lo word
@@ -84,7 +84,7 @@ for (let sq = 0; sq < 64; sq++) { if (sq < 32) SQ_LO[sq] = 1 << sq; else SQ_HI[s
 /** Both horizontal neighbours of every square of one word. */
 export const sideways = w => ((w << 1) & NOT_FILE_A) | ((w >>> 1) & NOT_FILE_H);
 /** Two files east and west of every square of one word. */
-const sideways2 = w => ((w << 2) & NOT_FILE_AB) | ((w >>> 2) & NOT_FILE_GH);
+export const sideways2 = w => ((w << 2) & NOT_FILE_AB) | ((w >>> 2) & NOT_FILE_GH);
 /** One rank up / down: each returns one word of the shifted set. */
 export const northLo = lo => lo << 8;
 export const northHi = (lo, hi) => (hi << 8) | (lo >>> 24);

@@ -141,7 +141,7 @@ function judge(fen, ply, bud, forced) {
   const dead = proof.proven && E.proveCannotBeMated(pos, other, limits).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
-    draw: proof.proven, dead, reason, used: proof.nodes, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, deep: proof.deep, ms,
     why: proof.proven ? '' : proof.failure,
     castle: E.castlingField(pos),
   };
@@ -162,6 +162,7 @@ var $ = function (id) { return document.getElementById(id) }, ROOT = document.ge
 var ENGINE_FILE = 'mateless.js';
 var ENGINE_BYTES = new Blob([$('mateless-engine').textContent]).size;
 var LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET];     /* the game's own Domino search: plies, nodes */
+var DEEP = [E.DOMINO_DEEP_PLY, E.DOMINO_DEEP_BUDGET];   /* its second tier */
 var REPO = 'https://github.com/cuneytinann/Mateless';
 var UNFAIR = 'https://chasolver.org/unfair-games';
 
@@ -201,7 +202,7 @@ en: {
  assumeBoth: "With “judge both flags” on, each labelled position is judged twice, once for each side’s flag, whoever is to move.",
  lblPly: "ply ceiling",
  lblBud: "node budget",
- limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move",
+ limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move; where that fails without a mate, on its budget or on a board of kings, pawns and bishops, a second tier of {2} plies and {3} nodes",
  lblRange: "positions",
  lblRangeTo: "to",
  lblRangeNote: "in input order, pasted lines first; 0 = to the end",
@@ -314,6 +315,7 @@ en: {
  st2Ep: "No lock while an en passant square ({0}) stands.",
  st2Skip: "Not needed: material settled it.",
  st3Ok: "Followed every line until mate became impossible, {0} in all: {1} cannot mate. Draw by the Domino effect.",
+ st3Deep: "The first search ({0} plies, {1} nodes) ended without a proof and without a mate, so the second tier ran: {2} plies, {3} nodes.",
  st3Mate: "Found a line in which {0} mates. Win on time, proven.",
  st3Hor: "A line reached the ply ceiling ({0}) without a proof. Nothing proven: the win for {1} stands by default.",
  st3Bud: "The node budget ({0}) ran out without a proof. Nothing proven: the win for {1} stands by default.",
@@ -519,7 +521,7 @@ tr: {
  assumeBoth: "“İki bayrağı da dene” açıkken etiketli her pozisyon, sıra kimde olursa olsun, iki kez yargılanır: her iki tarafın bayrağı için birer kez.",
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
- limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar",
+ limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bu arama mat bulmadan, bütçesiyle ya da yalnızca şah, piyon ve fil olan bir tahtada başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe",
  lblRange: "pozisyonlar",
  lblRangeTo: "–",
  lblRangeNote: "giriş sırasıyla, yapıştırılanlar önce; 0 = sona kadar",
@@ -632,6 +634,7 @@ tr: {
  st2Ep: "Geçerken alma karesi ({0}) dururken kilit olmaz.",
  st2Skip: "Gerek yok: materyal çözdü.",
  st3Ok: "Her hat mat imkânsızlaşana dek izlendi, toplam {0}: {1} mat edemez. Domino etkisiyle berabere.",
+ st3Deep: "İlk arama ({0} ply, {1} düğüm) ispatsız ve matsız bitti; ikinci kademe çalıştı: {2} ply, {3} düğüm.",
  st3Mate: "{0} tarafının mat ettiği bir hat bulundu. Süreden galibiyet, ispatlı.",
  st3Hor: "Bir hat ispat olmadan ply tavanına ({0}) ulaştı. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
  st3Bud: "Düğüm bütçesi ({0}) ispat olmadan tükendi. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
@@ -1211,12 +1214,15 @@ function detailHTML(k) {
   else if (ins.lock) { s += stepRow('dec', T('s2n'), c2, F('st2Yes', op)); done = true }
   else s += stepRow('no', T('s2n'), c2, ep ? F('st2Ep', ep) : F('st2No', op));
   var c3 = 'Domino(' + who + ', ' + P + ', ' + num(B) + ')';
+  /* the second tier, when it ran: its limits are the ones the last search reached */
+  var dp = r.deep ? DEEP[0] : P, db = r.deep ? DEEP[1] : B, dn = r.deep ? ' ' + F('st3Deep', P, num(B), DEEP[0], num(DEEP[1])) : '';
+  if (r.deep) c3 += ' → Domino(' + who + ', ' + DEEP[0] + ', ' + num(DEEP[1]) + ')';
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
-  else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op));
+  else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op) + dn);
   else if (r.reason == 'stalemate') s += stepRow('dec', T('s3n'), c3, T('st3SM'));
-  else if (r.reason == 'mate') s += stepRow('win', T('s3n'), c3, r.used ? F('st3Mate', op) : T('st3Mated'));
-  else if (r.why == 'budget') s += stepRow('open', T('s3n'), c3, F('st3Bud', num(B), op));
-  else if (r.why == 'horizon') s += stepRow('open', T('s3n'), c3, F('st3Hor', P, op));
+  else if (r.reason == 'mate') s += stepRow('win', T('s3n'), c3, (r.used ? F('st3Mate', op) : T('st3Mated')) + dn);
+  else if (r.why == 'budget') s += stepRow('open', T('s3n'), c3, F('st3Bud', num(db), op) + dn);
+  else if (r.why == 'horizon') s += stepRow('open', T('s3n'), c3, F('st3Hor', dp, op) + dn);
   else s += stepRow('open', T('s3n'), c3, T('st3Root'));
   if (r.draw) s += stepRow(r.dead ? 'dead' : 'live', T('s4n'), 'proveCannotBeMated(' + (r.side ? 'BLACK' : 'WHITE') + ')', F(r.dead ? 'st4Dead' : 'st4Live', fl));
   h += '<h4>' + T('hSteps') + '</h4><p class="dim small">' + T('stepsNote') + '</p><ol class="steps">' + s + '</ol>';
@@ -1546,7 +1552,7 @@ $('pgnexp').onclick = function () { if (!PGN.res) return;
   download('games.csv', o.join('\n') + '\n') };
 
 /* ═══════════════════════════════ wiring ═══════════════════════════════ */
-function limNote() { $('limnote').textContent = F('limNote', LIMITS[0], num(LIMITS[1])) }
+function limNote() { $('limnote').textContent = F('limNote', LIMITS[0], num(LIMITS[1]), DEEP[0], num(DEEP[1])) }
 $('fold-engine').addEventListener('toggle', function () {
   if (this.open && !$('srcbox').textContent) $('srcbox').textContent = $('mateless-engine').textContent.trim() });
 function applyI18n() {

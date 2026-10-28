@@ -163,6 +163,8 @@ export class PositionSet {
    on. Most searches that fail, fail on their first line, and then the other moves of the nodes
    on that line are never generated. */
 export const DOMINO_PLY = 6, DOMINO_BUDGET = 100;
+/** The second tier (the second version, see ladder.js): 9 plies, 10,000 nodes. */
+export const DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 10000;
 
 /** The static tests the move of a piece of type `type` to `to` (with `flags`) from `pos` can
     change (testsAfter in lock.js); checked: the side to move is in a pawn's check. */

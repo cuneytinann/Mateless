@@ -65,7 +65,7 @@ fn main() {
                         for (i, flagged) in [WHITE, BLACK].into_iter().enumerate() {
                             let p = prove_cannot_be_mated(&mut s1, pos, flagged, DOMINO_PLY, DOMINO_BUDGET);
                             let q = both[i];
-                            if (p.proven, p.static_proof, p.failure, p.nodes) != (q.proven, q.static_proof, q.failure, q.nodes) { report("prove_both", fen(), &mut bad); }
+                            if (p.proven, p.static_proof, p.failure, p.nodes, p.deep) != (q.proven, q.static_proof, q.failure, q.nodes, q.deep) { report("prove_both", fen(), &mut bad); }
                         }
                         // The walk itself, root tests asked or not, one side or both; and, on every 64th
                         // position, a larger search (9 plies, 2,000 nodes) whose trees part more often.

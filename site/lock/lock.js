@@ -115,7 +115,11 @@
     s.ep = pos.ep !== Mt.NO_SQUARE;
     const t = V.trace(s, flagged);
     const color = flagged === 'w' ? Mt.WHITE : Mt.BLACK;
-    let agree = Mt.lockCannotMate(pos, color) === t.proved;
+    // The explorer draws the first version's detector (lock/, the scalachess patch); mateless.js's
+    // second version may prove more (an open pawn pair, boxed pieces), and says so below.
+    let agree = Mt._internal.coreLockTest(pos, color) === t.proved;
+    let second = null;
+    if (!t.proved && Mt.lockCannotMate(pos, color)) second = Mt._internal.lockSets(pos, color).families ? 'pair' : 'boxed';
     if (agree && t.proved) {
       const c = Mt._internal.lockSets(pos, color), lv = t.level;
       agree = big(c.wCone) === lv.cones.wCone && big(c.bCone) === lv.cones.bCone &&
@@ -124,7 +128,7 @@
         big(c.wBish) === lv.bishops.wBish && big(c.bBish) === lv.bishops.bBish;
     }
     const otherProved = V.trace(s, flagged === 'w' ? 'b' : 'w').proved;
-    return { s, t, agree, pcs: pieceArray(fen), otherProved, flagged };
+    return { s, t, agree, second, pcs: pieceArray(fen), otherProved, flagged };
   }
 
   const frozenOf = (lv, s) => lv.frozen === 'white' ? s.wk : lv.frozen === 'black' ? s.bk : 0n;
@@ -265,8 +269,11 @@
       const why = t.gate ? GATE(t.gate) : (LT[(t.levels.filter(l => !l.skipped).pop() || {}).leak] || L('no level proves it', 'hiçbir seviye ispatlamıyor'));
       vh = '<span class="chip k-open">' + L('No proof', 'İspat yok') + '</span><span class="why">' + esc(why) + '.</span>';
     }
-    vh += '<span class="agree">' + (a.agree ? L('mateless.js gives the same verdict', 'mateless.js aynı hükmü veriyor') + (t.proved ? L(' and the same sets.', ', kümeler de aynı.') : '.') :
-      L('mateless.js disagrees with this drawing: please report the FEN.', 'mateless.js bu çizimle aynı fikirde değil: lütfen FEN’i bildir.')) + '</span>';
+    vh += '<span class="agree">' + (a.agree ? L('mateless.js’s first version gives the same verdict', 'mateless.js’in ilk sürümü aynı hükmü veriyor') + (t.proved ? L(' and the same sets.', ', kümeler de aynı.') : '.') :
+      L('mateless.js’s first version disagrees with this drawing: please report the FEN.', 'mateless.js’in ilk sürümü bu çizimle aynı fikirde değil: lütfen FEN’i bildir.')) + '</span>';
+    if (a.second) vh += '<span class="agree">' + (a.second === 'pair'
+      ? L('The second version proves it: an open pawn pair (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: önü açık bir piyon çifti (bkz. <a href="#second">İkinci sürüm</a>).')
+      : L('The second version proves it: boxed pieces (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: kutulu taşlar (bkz. <a href="#second">İkinci sürüm</a>).')) + '</span>';
     $('vd').innerHTML = vh;
   }
 

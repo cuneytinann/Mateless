@@ -13,6 +13,9 @@ use crate::lock::{flagged_bit, FLAGGED_BLACK, FLAGGED_WHITE, pawn_check, static_
 /// The Domino search's defaults: ply ceiling and node budget.
 pub const DOMINO_PLY: u32 = 6;
 pub const DOMINO_BUDGET: i64 = 100;
+/// The second tier (the second version, see ladder.rs): 9 plies, 10,000 nodes.
+pub const DOMINO_DEEP_PLY: u32 = 9;
+pub const DOMINO_DEEP_BUDGET: i64 = 10_000;
 
 
 /// A set of positions: open addressing, linear probing, cleared in constant time by a generation

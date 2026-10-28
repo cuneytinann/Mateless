@@ -57,7 +57,7 @@ pub(crate) fn diagonal(w: u64) -> u64 { sideways((w << 8) | (w >> 8)) }
 struct Magic { mask: u64, magic: u64, shift: u32, offset: usize }
 
 pub(crate) struct Tables {
-    knight: [u64; 64],
+    pub(crate) knight: [u64; 64],
     pub(crate) king: [u64; 64],
     white_pawn_attacks: [u64; 64],
     black_pawn_attacks: [u64; 64],

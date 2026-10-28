@@ -53,6 +53,14 @@ draw, on Lichess scored as a loss).
 | `dead_position` | as above |
 | `fen` | the final position |
 
+## `second_version.tsv`
+
+The 36 rows that Mateless's first version leaves unproven, and what the second version makes of
+each (`test/second_version_check.js` holds the engine to it): `gameId`, `date`, `second_version`
+(`lock-open-pair`, `lock-boxed`, `domino-deep`: the search's second tier, or `unproven`), `nodes`
+(the nodes the searches played) and `fen` (the final position, the flagged side to move). The
+other files keep the first version's classification.
+
 ## Reproducing
 
 With chasolver's CSV (columns `gameId,date,utcTime,white,whiteElo,whiteTitle,black,blackElo,

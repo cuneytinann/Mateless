@@ -7,7 +7,8 @@
 //! <positions>: lines "<fen>\t<w|b>", the second field the side that should be unable to mate
 //! (chasolver's intended winner; Mateless's flagged side is its opponent).
 //! Engines: chasolver fast check; Mateless static tests only; Mateless static tests + Domino search at its
-//! defaults (6 plies, 100 nodes); the same with a larger search (9 plies, 2,000 nodes).
+//! defaults (6 plies, 100 nodes); the same with a larger search (9 plies, 2,000 nodes); the whole
+//! ladder (prove_cannot_be_mated: the search's second tier too, where it runs).
 //! BOTH=1: both sides of every position (a dead position, a game's two flags; the side field is
 //! ignored): chasolver's fast check called for each colour; Mateless for each side alone; Mateless both at
 //! once (prove_both). "proven" then counts the positions proven for both sides.
@@ -37,7 +38,7 @@ fn main() {
     let mut s2 = mateless::Domino::new();
     type Run<'a> = Box<dyn FnMut(usize) -> bool + 'a>;
     let both = std::env::var("BOTH").map(|b| b == "1").unwrap_or(false);
-    let (mut s3, mut s4) = (mateless::Domino::new(), mateless::Domino::new());
+    let (mut s3, mut s4, mut s5) = (mateless::Domino::new(), mateless::Domino::new(), mateless::Domino::new());
     let mut engines: Vec<(&str, Run)> = if both { vec![
         ("chasolver fast, each colour", Box::new(|i: usize| {
             let w = chasolver::is_unwinnable_fast(&cha[i].0, chess::Color::White);
@@ -57,6 +58,8 @@ fn main() {
             || s1.run(&lxr[i].0, lxr[i].1, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET, false).proven)),
         ("Mateless static + Domino 9/2000", Box::new(move |i: usize| mateless::cannot_mate(&lxr[i].0, lxr[i].1)
             || s2.run(&lxr[i].0, lxr[i].1, 9, 2000, false).proven)),
+        ("Mateless ladder (second tier too)", Box::new(move |i: usize|
+            mateless::prove_cannot_be_mated(&mut s5, &lxr[i].0, lxr[i].1, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET).proven)),
     ] };
     let n = rows.len();
     let proven: Vec<usize> = engines.iter_mut().map(|(_, f)| (0..n).filter(|&i| f(i)).count()).collect();

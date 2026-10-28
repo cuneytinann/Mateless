@@ -36,6 +36,10 @@ solver can judge it after the game.
 | 1. material test | `src/material.js` | the piece sets | ~0.1 µs (JS), 1–3 ns above an empty loop (Rust) |
 | 2. lock detector | `src/lock.js` | pawns, kings, bishops, the en passant square | ~0.3–0.8 µs (JS), ~50–110 ns (Rust) on a lock; a few ns when a knight, rook or queen stands |
 | 3. Domino search | `src/domino.js` | legal moves, made and taken back in place | ~1–5 µs (JS) |
+| 4. second tier (second version) | `src/ladder.js` | the same, 9 plies and 10,000 nodes, only after a failure the deeper search can mend | up to 10,000 nodes, at a few plies of a game |
+
+Rungs 2 and 4 carry the second version's rules (section 12); the first version is rungs 1–3 with
+the lock detector's first version.
 
 Each proof is permanent. Material never grows back (only a promotion adds a piece, and that needs
 a pawn the test counts). A lock or a Domino proof says that no series of legal moves from here
@@ -241,16 +245,18 @@ instructions per call). Asking too often is almost free; asking too little break
 Domino proofs end at a leaf in a static test (bare material after a forced capture, a lock after
 a forced move). Without the tests a search does not run longer, it fails earlier.
 
-## 7. Rules measured and left out
+## 7. Rules measured and left out of the first version
 
-The lock detector stays a pure static test. Four rules were built, measured and left out:
+The first version's lock detector stays a pure static test. Four rules were built, measured and
+left out of it; two of them, boxed pieces and the open pawn pair, are in the second version
+(section 12):
 
 | rule | what it did | why it was left out |
 |---|---|---|
-| boxed pieces | let knights, rooks and queens stay when every square they could step to is held by their own fixed men | one practical row in the Lichess data (`hPiwD75i`); without it the detector is shorter and ~1.5× faster in game positions |
+| boxed pieces | let knights, rooks and queens stay when every square they could step to is held by their own fixed men | one practical row in the Lichess data (`hPiwD75i`); without it the detector is shorter and ~1.5× faster in game positions (in the second version, behind a quick look that keeps most of that speed) |
 | pawn's check | started a king's reach in a pawn's check from its legal moves, so a lock entered by stepping out was proven statically | the Domino search proves those 212 rows in one ply; the rule made the detector generate moves and slowed it ~13% on locks |
 | forced capture | at the root, when every legal move takes the only knight, rook or queen, proved each position after the capture statically | the Domino search proves those ~61,000 rows in one ply; static use needed a trigger of its own ("the side to move is in check") |
-| open pawn pair | a white and a black pawn on one file with one empty square between them, the rest locked: split the reachable positions into three families (both pawns in place, the white one in the gap, the black one in the gap) and proved each like a lock; up to three pairs (27 families) | kept out for now. It proves 3 of the 36 unproven timeouts (2023–2024). In 5 drawn games of August and September 2026 it sees the dead position at once, where without it Mateless sees it 1–8 plies late in four and not at all in one (`19dcoW9q`). It costs ~300 more lines in JS (256 in Rust) and 18 KB of WebAssembly; per move in games no measurable time, +0.2 µs (JS) on each new lock |
+| open pawn pair | a white and a black pawn on one file with one empty square between them, the rest locked: split the reachable positions into three families (both pawns in place, the white one in the gap, the black one in the gap) and proved each like a lock; up to three pairs (27 families) | kept out of the first version (it is in the second). It proves 3 of the 36 unproven timeouts (2023–2024). In 5 drawn games of August and September 2026 it sees the dead position at once, where without it Mateless sees it 1–8 plies late in four and not at all in one (`19dcoW9q`). It costs ~300 more lines in JS (256 in Rust) and 18 KB of WebAssembly; per move in games no measurable time, +0.2 µs (JS) on each new lock |
 
 Why the open pair is missed: a king's reach may enter its own pawn's square ("the pawn may
 advance") and, separately, the empty square in front of it. Taken together the king walks through
@@ -339,3 +345,97 @@ calling `Flags.update` later; the first update asks the static tests whatever th
 - The scalachess port ([mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess))
   meets two more: scalachess gives a standard castle as two moves (to the king's square and to the
   rook's), taken once; and `Fen.read` drops the halfmove clock, `Fen.readWithMoveNumber` keeps it.
+
+## 12. The second version
+
+The first version is what a game server needs: the material test, the lock detector, a 6-ply
+search. The second version adds what is known to see more, toward completeness, without making
+the first slower where its rules do not apply. Every rule here keeps three properties: it never
+makes a false proof (each is checked like the first version's rules, below); it runs only when its
+own situation is on the board, so any other position takes the first version's path through the
+same code; and JS, Rust and WebAssembly give the same answers, node counts included.
+`_internal.coreLockTest` runs the first version's detector alone (it labels `lock/positions.tsv`
+and is what the lock tab draws).
+
+### Open pawn pairs
+
+As in section 7: the families A (neither pawn of the pair has moved; the gap is a wall for both
+sides' pawns but not for the kings), B (the white pawn stepped into the gap) and C (the black one).
+A pawn of the pair can only ever move into the gap, and once one has the other is blocked, so every
+reachable position is in A, or reached B or C from A by that step: B's and C's kings, capture
+squares and bishops start from A's final sets. The pair's pawns must be walls in A (taken, they
+would let the other through). k pairs give 3^k families, up to 3 pairs.
+
+*When:* the census tells in two shifts and three ANDs whether the pawns hold a gap. Without one the
+levels run as before. With one, each level tries the families first and itself after them, but not
+for the sides family A leaked to: A is the level with more walls, every set it grows is a subset
+of the level's and every leak grows with those sets, so a leak in A is a leak of the level. The
+answers are those of trying every level and then the families; only the work differs.
+
+### Boxed knights, rooks and queens
+
+A piece whose every step square holds one of its own men that never moves (a fixed pawn, or
+another boxed piece) never moves; it attacks only those squares, which its own men hold for good,
+so it never gives check and takes no part in a mate. The rule is the golfed engine's, kept in the
+history (`[boxed]`): the boxed pieces are those no enemy king or bishop reaches, recomputed on every
+pass, so the bishops join the cycle; they are walls for both sides' pawns; two more leaks (a pawn
+can capture on a piece's square; a piece has a step square not held by a fixed pawn or a boxed
+piece of its colour); and the mating net counts no flight onto a piece's square. A piece whose
+steps are all held but that an enemy king or bishop reaches is no wall: it may be taken, and until
+then it stands still.
+
+*When:* only with a knight, rook or queen on the board (the first version stops there). A first
+look at the squares beside each rook and queen, east and west, against the side's own pawns and
+pieces, ends 96% of game positions at a few operations; then all step squares; only a position
+that passes them all gets a level, the plain loop.
+
+*The trigger stays as it is.* The static tests are asked after a capture, a pawn move, the lapse of
+an en passant right or a step out of a pawn's check (section 6). A knight, rook or queen that has
+just moved quietly has an empty step square: the square it came from, for a knight; for a rook or
+queen, the neighbour on the side it came from, which it came from or slid over; a rook that has
+castled stands next to its king. So after such a move the boxed rule fails, and no other quiet
+move changes what it reads (a king or bishop stays inside its reach). Checked: after 2,436,600
+quiet knight, rook and queen moves from boxed and chasolver positions, no lock; `trigger_check.js`
+with boxed and open-pair positions, 57,000 games: no difference from the clock rule.
+
+### A second tier of the Domino search
+
+Where the 6-ply, 100-node search fails without a mate, the same search runs once more at 9 plies
+and 10,000 nodes. A failure on a mate proves nothing can be proven, so it never runs then. In the
+positions of real games the first search almost always fails on its horizon at its first line,
+where the deeper one fails on its horizon too after ~9 nodes: run there, it would double the
+search's cost in every ending. So it runs only
+
+- after a failure on the budget (every line ended within 6 plies, but more than 100 nodes of them:
+  21 of chasolver's 131,000 winnable Lichess positions), or
+- after a failure on the horizon on a board with no knight, rook or queen where some king has no
+  square to step to: each square next to it holds one of its own pawns or bishops, is attacked by an
+  enemy pawn or is next to the enemy king.
+
+Of the 36 rows the first version leaves, the second tier proves 26: 19 after a budget failure and
+7 after a horizon failure, all 7 with a king shut in. In 1,000 games played from chasolver's
+Lichess positions the first search failed on its horizon 14,755 times on boards of kings, pawns and
+bishops, and a king was shut in at 6 of them. Without the shut-in condition the second tier would
+also prove 8 composed positions of chasolver's test set; none of the Lichess data.
+
+In a game the second tier is one more walk of `Domino.run2`, for the sides it is allowed for; the
+gate is one look at the failures and, after a horizon failure, at the piece sets, and the rest is
+out of line (Rust: `second_tier`, so that the first search stays the one inlined into
+`Flags::update`).
+
+### What it costs
+
+Measured on the shared machine of section 1 (±5% between runs): a game's two flags per move,
+1,000 games from chasolver's Lichess positions, each engine in its own process, pinned to one core:
+
+| | first version | second version |
+|---|---|---|
+| Rust, per move (fastest of 12 runs) | ~422 ns | ~439 ns |
+| JS, per move (fastest of 12 runs) | ~2,060 ns | ~2,170 ns |
+
+Most of the difference is the quick look for boxed pieces: ~1.8 lock tests per move meet a knight,
+rook or queen, each ~2 ns longer in Rust (3.5 → 5.5 ns) and ~10 ns in JS (22 → 33 ns). The second
+tier's gate is under 1%. The open-pair rule costs nothing measurable without a pair; with a pair
+and no lock (rare in games: 1,169 lock tests in those 1,000 games) ~30 ns in Rust and ~100 ns in JS.
+Against chasolver the second version's ratios are the first's within the noise
+([RESULTS.md](RESULTS.md#the-second-version)).

@@ -7,7 +7,8 @@
      I2  every pawn of wFixed / bFixed still stands on its root square
      I3  each king stands in its reach; a frozen king on its root square
      I4  every bishop stands in its side's bishop reach
-     I5  no knight, rook or queen appears (a certificate has none on the board)
+     I5  no knight, rook or queen appears or moves (boxed pieces stand still); the boxed ones
+         (lockSets: boxed, the pieces no enemy king or bishop reaches) are never taken
      I6  no piece count has grown (no promotion)
      I7  the flagged king is not checkmated
    I7 is what the arbiter needs; I1–I6 are what the reasoning says. A hole in the reasoning shows
@@ -38,7 +39,15 @@ const keyStr = pos => { I.writeKey(pos, key, 0); return key.join(','); };
 function counts(pos) { const c = []; for (const col of [WHITE, BLACK]) for (const t of [PAWN, KNIGHT, BISHOP, ROOK, QUEEN]) {
   let n = 0, w = pos.lo[col | t]; while (w) { w &= w - 1; n++; } w = pos.hi[col | t]; while (w) { w &= w - 1; n++; } c.push(n); } return c; }
 
+// A certificate of the open-pair rule holds several families (lockSets: { families }): every
+// reachable position must satisfy the invariant of at least one of them.
 function violation(pos, S, root) {
+  if (!S.families) return violation1(pos, S, root);
+  let first = null;
+  for (const F of S.families) { const v = violation1(pos, F, root); if (!v) return null; first = first || `${v} (in every family; first: ${F.pairs})`; }
+  return first;
+}
+function violation1(pos, S, root) {
   const lo = pos.lo, hi = pos.hi;
   if (!sub(lo[WHITE | PAWN], hi[WHITE | PAWN], S.wCone[0], S.wCone[1])) return 'I1 white pawn outside its cone';
   if (!sub(lo[BLACK | PAWN], hi[BLACK | PAWN], S.bCone[0], S.bCone[1])) return 'I1 black pawn outside its cone';
@@ -50,7 +59,12 @@ function violation(pos, S, root) {
   if (!sub(lo[WHITE | BISHOP], hi[WHITE | BISHOP], S.wBish[0], S.wBish[1])) return 'I4 white bishop outside its reach';
   if (!sub(lo[BLACK | BISHOP], hi[BLACK | BISHOP], S.bBish[0], S.bBish[1])) return 'I4 black bishop outside its reach';
   for (const t of [KNIGHT, ROOK, QUEEN]) for (const col of [WHITE, BLACK])
-    if (!sub(lo[col | t], hi[col | t], root.lo[col | t], root.hi[col | t])) return 'I5 a knight, rook or queen appeared';
+    if (!sub(lo[col | t], hi[col | t], root.lo[col | t], root.hi[col | t])) return 'I5 a knight, rook or queen appeared or moved';
+  if (S.boxed) {
+    const xL = lo[WHITE | KNIGHT] | lo[WHITE | ROOK] | lo[WHITE | QUEEN] | lo[BLACK | KNIGHT] | lo[BLACK | ROOK] | lo[BLACK | QUEEN];
+    const xH = hi[WHITE | KNIGHT] | hi[WHITE | ROOK] | hi[WHITE | QUEEN] | hi[BLACK | KNIGHT] | hi[BLACK | ROOK] | hi[BLACK | QUEEN];
+    if (!sub(S.boxed[0], S.boxed[1], xL, xH)) return 'I5 a boxed piece fell';
+  }
   const c = counts(pos); for (let i = 0; i < c.length; i++) if (c[i] > root.counts[i]) return 'I6 a piece count grew';
   return null;
 }

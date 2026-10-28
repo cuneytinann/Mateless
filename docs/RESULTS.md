@@ -260,3 +260,71 @@ then to be checked by machine.
   (one file, in `in-game` and in `a-lock`) = `mateless.js` on 3,643,939 positions, both sides. On
   the same positions `in-game`'s `autoDraw` is today's, or the halfmove clock at 0 or 1 and the
   lock for both sides, without exception.
+
+<a id="the-second-version"></a>
+
+## 5. The second version
+
+The second version's rules (open pawn pairs, boxed knights, rooks and queens, a second tier of the
+Domino search; [DESIGN.md](DESIGN.md), section 12), measured on the same data. The data files keep
+the first version's classification; `data/second_version.tsv` lists the 36 rows it leaves and
+what the second version makes of each.
+
+**Coverage.**
+
+| | first version | second version |
+|---|---|---|
+| chasolver's Lichess rows and the August–September scan (204,060), proven | 204,024 | **204,054** |
+| of the 36 unproven: by the open-pair rule | | 3 (GyWj6Ymz, azjorRHB, lBSDAx07) |
+| by the boxed rule | | 1 (hPiwD75i) |
+| by the second tier (238–1,360 nodes each) | | 26 |
+| left: cages that hold only because the capture that opens them gives stalemate | 36 | 6 |
+| chasolver's labels (68,950 positions, both sides): static proofs | 3,334 | 3,430 (+12 open pairs, +84 boxed) |
+| the same, proven by a search | 394 | 421 |
+| false draws | 0 | 0 |
+
+Every other row keeps its class: of the 204,060, only those 30 change (26 unproven → Domino,
+4 unproven → lock).
+
+**Speed against chasolver**, both versions in the same runs as chasolver's fast check (Rust, one
+binary, `rust/examples/vs_chasolver.rs`, median of the rounds; the machine was loud, chasolver
+itself moved by up to 37% between runs, so read the ratios):
+
+| set | chasolver fast check | first version | ratio | second version | ratio |
+|---|---|---|---|---|---|
+| locked (52,050) | 6.98 / 7.78 µs | 0.092 µs | ~76× | 0.097 µs | ~80× |
+| all rows (204,060), static + Domino 6/100 | 4.68 / 4.40 µs | 0.264 µs | ~18× | 0.254 µs | ~17× |
+| all rows, the whole ladder (second tier too) | 4.61 µs | | | 0.221 µs | ~21× |
+| `lichess.txt`, both sides (65,536) | 4.80 / 6.60 µs | 0.684 µs | ~7.0× | 0.911 µs | ~7.2× |
+
+The whole ladder's slowest row is a second-tier proof: 60 µs (w1GmdvNK, 1,360 nodes).
+
+**A game's flags, per move** (1,000 games from chasolver's Lichess positions, 148,067 plies; each
+engine in its own process, pinned to one core, 12 processes each):
+
+| | first version | second version |
+|---|---|---|
+| Rust (fastest / median) | 422 / 443 ns | 439 / 448 ns |
+| JS (fastest / median) | 2,064 / 2,331 ns | 2,175 / 2,393 ns |
+
+Per move the second version asks ~1.8 lock tests that meet a knight, rook or queen (each ~2 ns
+longer in Rust, ~10 ns in JS: the quick look for boxed pieces), meets an open pair in 1 of 127
+moves, and runs the second tier at 3 moves in 148,067. In these 1,000 games no flag comes down at
+another ply than in the first version.
+
+**Checks.**
+
+| check | what | result |
+|---|---|---|
+| chasolver's labels (`classify.js 6 100 1`) | every verdict, both sides | false draws 0 |
+| boxed pieces against the golfed engine's detector (`[boxed]`, from the history) | 350,057 positions with a knight, rook or queen (chasolver's, and locks with pieces added), both sides | the same answer everywhere (5,165 boxed locks among them) |
+| invariant (`lock_invariant.js`) | 5,081 boxed and 13,085 open-pair certificates | 61.2 million positions, 0 violations; all but 15 enumerated completely |
+| chasolver's full analysis (`rust/examples/oracle.rs`) | the 5,081 boxed locks; 20,000 fuzzed certificates (`fuzz_lock_gen.js`: 232 open pairs, 2,372 boxed among them) | every one unwinnable |
+| flags in games (`game_flags_check.js`) | 7,000 games from chasolver's positions, boxed and open-pair positions and the timeouts | no flag down where chasolver finds a mate |
+| JS = Rust (`rust_compare.js`) | the 204,060 rows, chasolver's labelled files, 286,236 boxed candidates, 3,000 games | byte for byte, node counts included |
+| JS = WebAssembly (`wasm_check.js`) | chasolver's positions, 2,000 games | 0 differences |
+| both sides at once = each alone | 538,094 positions (JS), 482,630 (Rust) | 0 mismatches |
+| trigger = clock rule (`trigger_check.js`) | with boxed and open-pair positions: 156,866 positions, 57,325 games, 66,597 takebacks | 0 differences |
+| quiet knight, rook and queen moves | 2,436,600 such moves from boxed and chasolver positions | no lock after any |
+| Rust fast loop = plain loop (`lockcheck.rs`) | 25.6 million side-positions | the same |
+| the 36 rows and each rule's positions (`second_version_check.js`) | | 0 problems |

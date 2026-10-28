@@ -15,8 +15,8 @@
  * FENs, as it has them. A Position and a Flags hold memory in the module: free() returns it, and
  * a FinalizationRegistry returns it when they are collected.
  *
- * What it covers: the ladder (material test, lock detector, Domino search, both sides at once, a
- * game's flags), perft. The rules engine itself (legal moves, game status, results) is
+ * What it covers: the ladder (material test, lock detector, Domino search and its second tier, both
+ * sides at once, a game's flags), perft. The rules engine itself (legal moves, game status, results) is
  * mateless.js's.
  *
  * MIT License, © 2026 Cüneyt İnan. https://github.com/cuneytinann/Mateless
@@ -29,7 +29,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 'use strict';
 
-const WHITE = 8, BLACK = 0, FLAGGED_WHITE = 1, FLAGGED_BLACK = 2, DOMINO_PLY = 6, DOMINO_BUDGET = 100;
+const WHITE = 8, BLACK = 0, FLAGGED_WHITE = 1, FLAGGED_BLACK = 2, DOMINO_PLY = 6, DOMINO_BUDGET = 100,
+      DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 10000;
 const FEN_ERRORS = ['', 'syntax', 'kings', 'pawns', 'castling', 'en passant'];
 const FAILURES = [null, 'mate', 'horizon', 'budget'];
 
@@ -94,16 +95,17 @@ function instantiate(source) {
   }
 
   const proofAt = (o, i) => ({ proven: o[i] === 1, staticProof: o[i + 1] === 1, failure: FAILURES[o[i + 2]],
-                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3] });
+                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3], deep: o[i + 4] === 1 });
 
-  /** Can `flagged` never be mated? The static tests, then the Domino search; the same
-      { proven, staticProof, failure, foundBy, nodes } as mateless.js. */
-  function proveCannotBeMated(p, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET } = {}) {
-    return withPosition(p, h => { x.prove(h, flagged, maxPly, budget); return proofAt(out(), 0); });
+  /** Can `flagged` never be mated? The static tests, then the Domino search and, where it allows,
+      its second tier; the same { proven, staticProof, failure, foundBy, nodes, deep } as mateless.js. */
+  function proveCannotBeMated(p, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
+                                            deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
+    return withPosition(p, h => { x.prove(h, flagged, maxPly, budget, deepPly, deepBudget); return proofAt(out(), 0); });
   }
   /** Both sides in one pass: [White flagged, Black flagged]. */
-  function proveBoth(p, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET } = {}) {
-    return withPosition(p, h => { x.prove_both(h, maxPly, budget); const o = out(); return [proofAt(o, 0), proofAt(o, 4)]; });
+  function proveBoth(p, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
+    return withPosition(p, h => { x.prove_both(h, maxPly, budget, deepPly, deepBudget); const o = out(); return [proofAt(o, 0), proofAt(o, 5)]; });
   }
 
   /** The two flags of a game played move by move (Flags in mateless.js). */
@@ -133,7 +135,7 @@ function instantiate(source) {
   }
 
   return Object.freeze({
-    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET,
+    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET,
     Position, fromFen,
     materialCannotMate: (p, flagged) => withPosition(p, h => x.material_test(h, flagged) === 1),
     lockCannotMate: (p, flagged) => withPosition(p, h => x.lock_test(h, flagged) === 1),

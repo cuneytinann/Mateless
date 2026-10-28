@@ -13,6 +13,14 @@ Mateless is a library (JavaScript, Rust, WebAssembly; no dependencies) and an ar
 It is **sound but incomplete**: it never declares a draw without a proof, and what it cannot
 prove it leaves to the platform's rule (the flag loses) and to a complete solver after the game.
 
+It comes in two versions, side by side in one library. The **first version** is the fast layer,
+the one proposed for Lichess: the lock detector of [`lock/`](lock/) and of the scalachess patch,
+and a short search. The **second version** adds rules that see more: open pawn pairs, boxed
+knights, rooks and queens, and a second tier of the search. It is not complete either; it is
+wider, with completeness as its goal, and each of its rules runs only when its own situation is on
+the board, so every other position goes through the first version's code
+([the second version](#the-second-version)).
+
 **[The site](https://cuneytinann.github.io/Mateless/)** · [Türkçe](README.tr.md) ·
 [Design](docs/DESIGN.md) · [Results](docs/RESULTS.md) ·
 [for Lichess: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
@@ -41,6 +49,12 @@ the cache). A position from a real game, with a knight, rook or queen on the boa
 by the lock detector in **~9 ns**. The whole ladder averages **~0.23 µs** per Lichess timeout,
 and following a game costs **~0.35 µs per move** for both sides' flags.
 
+The tables below were measured on the first version. The second version costs about 2% more per
+move on the positions of a game, most of it a quick look for boxed pieces where a knight, rook or
+queen stands (~2 ns in Rust, ~10 ns in JavaScript); against chasolver its ratios are the same
+within the noise, and its whole ladder proves 204,054 of the 204,060 rows up to September at
+~0.22 µs a row (Rust; [docs/RESULTS.md](docs/RESULTS.md#the-second-version)).
+
 | | Rust | JavaScript |
 |---|---|---|
 | a locked position, proven | ~60–90 ns | ~0.2–0.8 µs |
@@ -62,7 +76,7 @@ Against chasolver's fast check, both in Rust, in one binary with chasolver's own
 | both sides at once, all rows | 201,060 | 6.52 µs (two calls) | 0.41 µs | **~16×** |
 | real game positions (chasolver's `lichess.txt`, both sides) | 131,072 | 2.41 µs | 0.563 µs | ~4.3× |
 
-chasolver proves all 201,060 rows, Mateless 201,024. The browser runs the same engine: the
+chasolver proves all 201,060 rows, Mateless 201,024 (the second version 201,054). The browser runs the same engine: the
 arbiter page proves a locked position in under a microsecond, and WebAssembly is 2.5–4× faster
 than JavaScript for whole proofs. Details, and why a JavaScript-against-JavaScript comparison
 flatters Mateless (~85–95×), in [docs/RESULTS.md](docs/RESULTS.md).
@@ -75,8 +89,9 @@ side can never mate brings its flag down, for good.
 | rung | asked | what it proves | cost (JS; Rust 3–5× less) |
 |---|---|---|---|
 | **1. material test** | after a capture or a pawn move (in the search: after a capture or a promotion) | the side lacks the material to mate at all | ~0.1 µs |
-| **2. lock detector** | after a capture, a pawn move, the lapse of an en passant right, or a king's step out of a pawn's check | pawns, kings and bishops form a structure no series of legal moves can open (any knight, rook or queen fails it at once) | ~0.3–0.8 µs |
+| **2. lock detector** | after a capture, a pawn move, the lapse of an en passant right, or a king's step out of a pawn's check | pawns, kings and bishops form a structure no series of legal moves can open (first version: any knight, rook or queen fails it at once; the second version lets boxed ones stay and splits open pawn pairs) | ~0.3–0.8 µs |
 | **3. Domino search** | after every move | a helpmate search of 6 plies and 100 nodes finds no mate, and every line ends in a position already seen, a static proof or a stalemate | ~1–5 µs |
+| **4. second tier** (second version) | after the Domino search fails without a mate: on its budget, or on its horizon on a board of kings, pawns and bishops where a king is shut in | the same search at 9 plies and 10,000 nodes | up to 10,000 nodes; at a few plies of a game |
 
 - **Both flags down** means a dead position (FIDE 5.2.2): the game ends in a draw.
 - **When a flag falls, or a player resigns,** nothing is computed: if the opponent's flag is
@@ -119,6 +134,9 @@ classified by Mateless (JS, Rust and WebAssembly give the same answer on every r
 | unproven | 36 | 0.018% | 0 | 0 | 0 |
 | **all** | **195,287** | | **138,572** (71.0%) | **190,465** (97.5%) | 190,719 (97.7%) |
 
+The table is the first version's classification (the data files keep it). The second version
+proves 30 of the 36 unproven rows; 6 remain ([`data/second_version.tsv`](data/second_version.tsv)).
+
 Lichess today draws most forced lines: scalachess #821 (merged in August 2026; on Lichess from
 6 September, judging by the data) added a one-move lookahead to the test that lila asks when a
 flag falls. What it still misses is, almost entirely, **locked positions**: 51,909 of its 56,715
@@ -153,7 +171,9 @@ rook), 3 hold an open pawn pair (one empty square between a white and a black pa
 the rest locked), and 1 a knight boxed in by its own pawns. They, and whatever a platform's own
 rules leave, are what a refund after the game would cover: a complete solver (chasolver) judges
 them once the game is over. With the whole ladder that is 36 rows of 195,287; with the lock
-detector alone on top of today's Lichess, 4,822 (`in-game`) or 4,568 (`a-lock`).
+detector alone on top of today's Lichess, 4,822 (`in-game`) or 4,568 (`a-lock`). The second
+version proves 30 of the 36: the second tier 26 of the cages (those that close within 9 plies and
+10,000 nodes), the open-pair rule the 3 pairs, the boxed rule the knight. The 6 left are cages.
 
 **Soundness.** There is no written proof yet; there is strong test evidence.
 - No false draw against chasolver's labels (its 68,950 labelled positions, both sides;
@@ -171,6 +191,15 @@ detector alone on top of today's Lichess, 4,822 (`in-game`) or 4,568 (`a-lock`).
   enumerated completely, which is a proof for that position. On the 1,175 locks of August and
   September (timeouts and resignations): no violation in 5.8 million positions, 1,171 enumerated
   completely.
+- **The second version's rules** went through the same checks: no false draw against chasolver's
+  labels; JS, Rust and WebAssembly give the same answers, node counts included, on 538,094
+  positions and 3,000 games; the invariant check finds no violation on 5,081 boxed-piece and
+  13,085 open-pair certificates (61 million positions, all but 15 enumerated completely);
+  chasolver's full analysis calls every new lock unwinnable (5,081 boxed locks and 20,000 fuzzed
+  certificates; for the open pairs' 130,858 new locks, an exhaustive enumeration of every
+  reachable position in their own experiment, and chasolver on samples), and finds no mate at any
+  flag that came down in 7,000 games played move by move (`test/second_version_check.js` holds
+  the 36 rows to their measured proofs).
 
 ## Usage
 
@@ -366,7 +395,7 @@ the board.
 | `src/material.js` | **rung 1:** the material test | the piece sets; no move generation |
 | `src/lock.js` | **rung 2:** the lock detector; the two static tests together | the piece sets, the en passant square, a few shifts; no move generation |
 | `src/domino.js` | **rung 3:** the Domino search (6 plies / 100 nodes) | legal moves piece by piece in a fixed order, made and taken back in place, "is there a legal move?", an exact code of a position |
-| `src/ladder.js` | **the ladder:** when each rung is asked, the proofs for one position, a game's two flags (`Flags`) | the halfmove clock and the en passant square |
+| `src/ladder.js` | **the ladder:** when each rung is asked, the second tier (rung 4), the proofs for one position, a game's two flags (`Flags`) | the halfmove clock and the en passant square |
 | `src/board.js` | a reference board: bitboards, magic bitboards, legal moves, FEN, Chess960 | — |
 | `src/game.js` | a reference game: result codes, repetitions, the 75-move rule, fivefold repetition, `Game` | — |
 | `src/index.js` | the public API | |
@@ -417,15 +446,31 @@ node page_check.js                               # the page, every tab, in headl
 node wasm_check.js                               # mateless.wasm = mateless.js
 node types_check.js                              # mateless.d.ts against the engine (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, every 50th lock
+node second_version_check.js                     # the second version's rules: the 36 rows, each rule's positions
 ```
 
-## What comes next
+## The second version
 
-This version is the fast layer: sound, small, and meant to run on a game server after every
-move. A second version will come beside it. It will not be complete either, but it will be wider
-in scope, with completeness as its goal, and it will keep growing as new rules are added. This
-version already covers 99.98% of the Lichess data, so in practice the wider one will matter
-mostly to the curious and to research; it will not be rushed.
+The first version is the fast layer: sound, small, and meant to run on a game server after every
+move; it covers 99.98% of the Lichess data. The second version stands beside it in the same
+library. It is not complete either, and does not claim to be: it is wider in scope, with
+completeness as its goal, and it keeps growing as rules are added. In practice it matters mostly to
+the curious and to research, so it is not rushed: each rule comes in only when it is known and
+measured, and only where its own situation is on the board.
+
+| rule | runs only when | proves (of the first version's 36 unproven rows) | cost elsewhere |
+|---|---|---|---|
+| **open pawn pairs**: a white and a black pawn on a file with one square between them, the rest locked; the reachable positions split into three families by what the pair's pawns have done (neither moved, the white one stepped into the gap, the black one did), each an ordinary level with walls of its own, up to 3 pairs | the pawns hold such a pair (two shifts tell) | 3 (and the death of 5 drawn games of August and September at the ply it happens) | none measurable |
+| **boxed knights, rooks and queens**: a piece whose every step square holds its own fixed pawn or boxed piece never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history) | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
+| **a second tier of the Domino search**: 9 plies, 10,000 nodes | the search failed without a mate, on its budget, or on its horizon on a board of kings, pawns and bishops where a king is shut in | 26 | at 6 of 14,755 such failures in 1,000 games |
+
+In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
+is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
+lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out.
+
+**What comes next**, in order: a cage recognizer (the 6 rows left are cages that hold only because
+the capture that would open them gives stalemate), a bounded full closure for what stays open, and
+a written proof of soundness for the detector and the rules above.
 
 ## License and credits
 

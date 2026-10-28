@@ -9,9 +9,15 @@ node counts included (`test/rust_compare.js`). Bitboards are plain `u64`; nothin
 (the lock detector's census and the move-generation context live on the stack, each `Domino`
 search owns its memory), so the library can be used from many threads, one `Domino` per thread.
 
+Both versions are here, as in `mateless.js`: the first version's lock detector and search, and the
+second version's rules, each run only when its own situation is on the board (open pawn pairs and
+boxed knights, rooks and queens in `lock`; the search's second tier, 9 plies and 10,000 nodes, in
+`ladder`: `prove_cannot_be_mated_deep` and `prove_both_deep` take its size, 0 for none).
+
 The modules are the layers of the JavaScript sources (`src/`): `material` (rung 1, the material
 test), `lock` (rung 2, the lock detector and the two static tests together), `domino` (rung 3, the
-Domino search), `ladder` (`prove_cannot_be_mated`, `prove_both`, `Flags`), and under them `board`, a
+Domino search), `ladder` (`prove_cannot_be_mated`, `prove_both`, `is_dead_position`, `Flags`, and
+rung 4, the second tier), and under them `board`, a
 reference board (bitboards, magic bitboards, legal moves, FEN). Each module's `use` lines say what it
 takes from the board. Every public item is also re-exported at the crate root (`mateless::Flags`).
 

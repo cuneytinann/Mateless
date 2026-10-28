@@ -29,7 +29,7 @@ for (const file of process.argv.slice(2)) {
       for (let i = 0; i < 2; i++) {
         const p = alone[i], q = both[i];
         if (p.proven !== q.proven || p.staticProof !== q.staticProof || p.failure !== q.failure || p.foundBy !== q.foundBy ||
-            p.nodes !== q.nodes) report('proveBoth', pos);
+            p.nodes !== q.nodes || p.deep !== q.deep) report('proveBoth', pos);
       }
       if (E.isDeadPosition(pos) !== (alone[0].proven && alone[1].proven)) report('isDeadPosition', pos);
       const limits = [[6, 100]];

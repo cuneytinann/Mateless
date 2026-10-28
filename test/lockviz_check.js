@@ -1,5 +1,6 @@
 'use strict';
-/* The lock tab's display copy of the detector (site/lock/lockviz.js) against mateless.js: the
+/* The lock tab's display copy of the detector (site/lock/lockviz.js) against mateless.js's first-version
+   detector (_internal.coreLockTest, without the second version's open pairs and boxed pieces): the
    verdict for both flagged sides, and on a proof the sets of the proving level (cones, fixed
    pawns, king reaches, bishop reaches, frozen king). Positions: the 52,050 Lichess locks, the
    final positions of the August and September scan, and three random mutations of every lock.
@@ -55,7 +56,7 @@ function check(fen) {
   s.ep = pos.ep !== Mt.NO_SQUARE;
   for (const [flag, F] of [['w', Mt.WHITE], ['b', Mt.BLACK]]) {
     stats.sides++;
-    const want = Mt.lockCannotMate(pos, F);
+    const want = Mt._internal.coreLockTest(pos, F);   // the explorer shows the first version's detector
     const t = V.trace(s, flag);
     if (t.gate) stats.gated++;
     for (const lv of t.levels) if (lv.leak) stats.leakKinds[lv.leak] = (stats.leakKinds[lv.leak] || 0) + 1;

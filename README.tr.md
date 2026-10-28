@@ -13,6 +13,13 @@ Mateless bir kütüphane (JavaScript, Rust, WebAssembly; bağımlılık yok) ve 
 **Sağlam ama eksik**: ispatı olmadan hiçbir zaman beraberlik demiyor; ispatlayamadığını
 platformun kuralına (süresi biten kaybeder) ve oyundan sonra tam bir çözücüye bırakıyor.
 
+Tek kütüphanede, yan yana iki sürüm var. **İlk sürüm** hızlı katman, Lichess'e önerilen:
+[`lock/`](lock/) klasöründeki ve scalachess yamasındaki kilit dedektörü ve kısa bir arama. **İkinci
+sürüm** daha çok şey gören kurallar ekliyor: önü açık piyon çiftleri, kutulu at, kale ve vezir, ve
+aramanın ikinci kademesi. O da tam değil; kapsamı daha geniş, hedefi tamlık. Her kuralı yalnızca
+kendi durumu tahtadayken çalışıyor, geri kalan her pozisyon ilk sürümün kodundan geçiyor
+([ikinci sürüm](#ikinci-surum)).
+
 **[Site](https://cuneytinann.github.io/Mateless/)** · [English](README.md) ·
 [Tasarım](docs/DESIGN.md) · [Sonuçlar](docs/RESULTS.md) ·
 [Lichess için: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
@@ -42,6 +49,12 @@ Kilitli bir pozisyon **yaklaşık 90 nanosaniyede** ispatlanıyor (Rust; pozisyo
 **~9 ns'de** eliyor. Merdivenin tamamı Lichess süre bitimi başına ortalama **~0,23 µs**; bir
 oyunu izlemek, iki tarafın bayrağı için **hamle başına ~0,35 µs**.
 
+Aşağıdaki tablolar ilk sürümde ölçüldü. İkinci sürüm bir oyunun pozisyonlarında hamle başına
+yaklaşık %2 daha pahalı; çoğu, tahtada at, kale ya da vezir varken kutulu taşlara hızlı bir bakış
+(Rust'ta ~2 ns, JavaScript'te ~10 ns). chasolver'a karşı oranları gürültü içinde aynı; tam
+merdiveni eylüle kadarki 204.060 satırın 204.054'ünü satır başına ~0,22 µs'de ispatlıyor (Rust;
+[docs/RESULTS.md](docs/RESULTS.md#the-second-version)).
+
 | | Rust | JavaScript |
 |---|---|---|
 | kilitli bir pozisyon, ispatıyla | ~60–90 ns | ~0,2–0,8 µs |
@@ -63,7 +76,7 @@ ortancası; `rust/examples/vs_chasolver.rs`):
 | iki taraf birden, bütün satırlar | 201.060 | 6,52 µs (iki çağrı) | 0,41 µs | **~16×** |
 | gerçek oyun pozisyonları (chasolver'ın `lichess.txt`'i, iki taraf) | 131.072 | 2,41 µs | 0,563 µs | ~4,3× |
 
-chasolver 201.060 satırın hepsini, Mateless 201.024'ünü ispatlıyor. Tarayıcı aynı motoru
+chasolver 201.060 satırın hepsini, Mateless 201.024'ünü (ikinci sürüm 201.054'ünü) ispatlıyor. Tarayıcı aynı motoru
 çalıştırıyor: hakem sayfası kilitli bir pozisyonu bir mikrosaniyenin altında ispatlıyor;
 WebAssembly bütün ispatlarda JavaScript'ten 2,5–4 kat hızlı. Ayrıntılar ve JavaScript'e karşı
 JavaScript karşılaştırmasının neden Mateless'i olduğundan iyi gösterdiği (~85–95×)
@@ -77,8 +90,9 @@ hiç mat edemeyeceğini ispatlayan ilk basamak bayrağını indiriyor, kalıcı 
 | basamak | ne zaman | neyi ispatlıyor | süre (JS; Rust 3–5 kat hızlı) |
 |---|---|---|---|
 | **1. malzeme testi** | alıştan ya da piyon hamlesinden sonra (aramada: alış ya da terfiden sonra) | mat için malzeme hiç yetmiyor | ~0,1 µs |
-| **2. kilit dedektörü** | alıştan, piyon hamlesinden, en passant hakkının düşmesinden ya da şahın piyon şahından çıkmasından sonra | piyon, şah ve fil yapısı hiçbir yasal hamle dizisiyle açılamıyor (tahtada at, kale ya da vezir varsa hemen düşüyor) | ~0,3–0,8 µs |
+| **2. kilit dedektörü** | alıştan, piyon hamlesinden, en passant hakkının düşmesinden ya da şahın piyon şahından çıkmasından sonra | piyon, şah ve fil yapısı hiçbir yasal hamle dizisiyle açılamıyor (ilk sürüm: tahtada at, kale ya da vezir varsa hemen düşüyor; ikinci sürüm kutulu olanlara izin veriyor ve önü açık piyon çiftlerini ayırıyor) | ~0,3–0,8 µs |
 | **3. Domino araması** | her hamleden sonra | 6 ply ve 100 düğümlük bir helpmate araması mat bulmuyor; her dizi görülmüş bir pozisyonda, statik bir ispatta ya da patta bitiyor | ~1–5 µs |
+| **4. ikinci kademe** (ikinci sürüm) | Domino araması mat bulmadan başarısız olunca: bütçesi tükendiyse ya da yalnızca şah, piyon ve fil olan, bir şahın kapana kısıldığı bir tahtada ufka takıldıysa | aynı arama, 9 ply ve 10.000 düğüm | en çok 10.000 düğüm; bir oyunun birkaç ply'ında |
 
 - **İki bayrak da düştüyse** pozisyon ölü (FIDE 5.2.2): oyun berabere biter.
 - **Süre bitince ya da bir taraf terk edince** hesap yapılmaz: rakibin bayrağı düşmüşse
@@ -123,6 +137,9 @@ aynı cevabı veriyor):
 | ispatlanamayan | 36 | %0,018 | 0 | 0 | 0 |
 | **hepsi** | **195.287** | | **138.572** (%71,0) | **190.465** (%97,5) | 190.719 (%97,7) |
 
+Tablo ilk sürümün sınıflaması (veri dosyaları onu tutuyor). İkinci sürüm ispatlanamayan 36
+satırın 30'unu ispatlıyor; 6'sı kalıyor ([`data/second_version.tsv`](data/second_version.tsv)).
+
 Lichess bugün zorunlu çizgilerin çoğunu berabere veriyor: scalachess #821 (Ağustos 2026'da
 birleşti; veriye göre Lichess'te 6 Eylül'den beri kullanılıyor), lila'nın süre bitince sorduğu
 teste bir hamlelik ileri bakış ekledi. Hâlâ kaçırdıkları neredeyse tamamen **kilitli
@@ -159,7 +176,9 @@ beyaz ve bir siyah piyon, aralarında tek boş kare, yapının geri kalanı kili
 piyonlarının arasına kapanmış bir at. Oyundan sonra bir puan iadesinin kapsayacağı şey bunlar ve
 platformun kendi kurallarının bıraktıkları: oyun bittikten sonra tam bir çözücü (chasolver) onlara
 bakar. Merdivenin tamamıyla bu 195.287 satırda 36 satır; bugünkü Lichess'in üstüne yalnızca kilit
-dedektörüyle 4.822 (`in-game`) ya da 4.568 (`a-lock`).
+dedektörüyle 4.822 (`in-game`) ya da 4.568 (`a-lock`). İkinci sürüm 36'nın 30'unu ispatlıyor:
+ikinci kademe kafeslerin 26'sını (9 ply ve 10.000 düğüm içinde kapananları), önü açık çift kuralı
+3 çifti, kutulu taş kuralı atı. Kalan 6'sı kafes.
 
 **Sağlamlık.** Henüz yazılı bir ispat yok; güçlü test kanıtı var.
 - chasolver'ın etiketlerine karşı yanlış beraberlik yok (68.950 etiketli pozisyonu, iki taraf;
@@ -176,6 +195,14 @@ dedektörüyle 4.822 (`in-game`) ya da 4.568 (`a-lock`).
   dolaşılan 271,8 milyon pozisyonda ihlal yok; 50.692'sinde ulaşılabilir küme sonuna kadar
   dolaşıldı, bu o pozisyon için bir ispat. Ağustos ve eylülün 1.175 kilidinde (süre kayıpları ve
   terkler) 5,8 milyon pozisyonda ihlal yok, 1.171'i sonuna kadar dolaşıldı.
+- **İkinci sürümün kuralları** aynı kontrollerden geçti: chasolver'ın etiketlerine karşı yanlış
+  beraberlik yok; JS, Rust ve WebAssembly 538.094 pozisyonda ve 3.000 oyunda, düğüm sayılarına
+  kadar aynı cevabı veriyor; değişmez kontrolü 5.081 kutulu taş ve 13.085 önü açık çift
+  sertifikasında ihlal bulmuyor (61 milyon pozisyon, 15'i dışında hepsi sonuna kadar dolaşıldı);
+  chasolver'ın tam analizi her yeni kilide "kazanılamaz" diyor (5.081 kutulu kilit ve 20.000 fuzz
+  sertifikası; önü açık çiftin 130.858 yeni kilidinde kendi deneyinde ulaşılabilen her pozisyon
+  dolaşıldı, chasolver örneklemlerde soruldu) ve hamle hamle oynanan 7.000 oyunda düşen hiçbir
+  bayrakta mat bulmuyor (`test/second_version_check.js` 36 satırı ölçülen ispatlarına bağlıyor).
 
 ## Kullanım
 
@@ -369,7 +396,7 @@ söylüyor.
 | `src/material.js` | **1. basamak:** malzeme testi | taş kümeleri; hamle üretmiyor |
 | `src/lock.js` | **2. basamak:** kilit dedektörü; iki statik test birlikte | taş kümeleri, en passant karesi, birkaç kaydırma; hamle üretmiyor |
 | `src/domino.js` | **3. basamak:** Domino araması (6 ply / 100 düğüm) | taş taş, sabit sırada legal hamleler, yerinde yapıp geri alma, "yasal hamle var mı?", pozisyonun birebir kodu |
-| `src/ladder.js` | **merdiven:** basamakların ne zaman sorulduğu, tek pozisyon için ispatlar, bir oyunun iki bayrağı (`Flags`) | yarım hamle sayacı ve en passant karesi |
+| `src/ladder.js` | **merdiven:** basamakların ne zaman sorulduğu, ikinci kademe (4. basamak), tek pozisyon için ispatlar, bir oyunun iki bayrağı (`Flags`) | yarım hamle sayacı ve en passant karesi |
 | `src/board.js` | referans tahta: bitboard, magic bitboard, legal hamleler, FEN, Chess960 | — |
 | `src/game.js` | referans oyun: sonuç kodları, tekrarlar, 75 hamle, beşli tekrar, `Game` | — |
 | `src/index.js` | genel API | |
@@ -420,15 +447,33 @@ node page_check.js                               # sayfa, her sekmesiyle, başs�
 node wasm_check.js                               # mateless.wasm = mateless.js
 node types_check.js                              # mateless.d.ts motora karşı (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü, her 50. kilit
+node second_version_check.js                     # ikinci sürümün kuralları: 36 satır, her kuralın pozisyonları
 ```
 
-## Sırada ne var
+<a id="ikinci-surum"></a>
 
-Bu sürüm hızlı katman: sağlam, küçük ve bir oyun sunucusunda her hamleden sonra çalışmak için
-yapıldı. Yanına ikinci bir sürüm gelecek. O da tam olmayacak, ama kapsamı daha geniş olacak;
-hedefi tamlık, yeni kurallar eklendikçe de büyümeye devam edecek. Bu sürüm Lichess verisinin
-%99,98'ini zaten karşılıyor; bu yüzden geniş sürüm pratikte en çok meraklıları ve araştırmayı
-ilgilendirecek, aceleye getirilmeyecek.
+## İkinci sürüm
+
+İlk sürüm hızlı katman: sağlam, küçük ve bir oyun sunucusunda her hamleden sonra çalışmak için
+yapıldı; Lichess verisinin %99,98'ini karşılıyor. İkinci sürüm aynı kütüphanede onun yanında
+duruyor. O da tam değil ve öyle olduğunu söylemiyor: kapsamı daha geniş, hedefi tamlık, yeni
+kurallar eklendikçe büyümeye devam ediyor. Pratikte en çok meraklıları ve araştırmayı
+ilgilendiriyor; bu yüzden aceleye getirilmiyor: her kural yalnızca bilindiğinde ve ölçüldüğünde
+giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
+
+| kural | yalnızca şu zaman çalışıyor | ispatladığı (ilk sürümün ispatlayamadığı 36 satırdan) | başka yerdeki bedeli |
+|---|---|---|---|
+| **önü açık piyon çiftleri**: bir sütunda aralarında tek kare olan bir beyaz ve bir siyah piyon, geri kalan kilitli; ulaşılabilen pozisyonlar çiftin piyonlarının ne yaptığına göre üç aileye ayrılıyor (hiçbiri oynamadı, beyaz boşluğa girdi, siyah girdi), her biri kendi duvarları olan sıradan bir seviye, en çok 3 çift | piyonlarda böyle bir çift var (iki kaydırma söylüyor) | 3 (ve ağustos–eylülün 5 beraberliğinde ölümü gerçekleştiği ply'da görüyor) | ölçülebilir değil |
+| **kutulu at, kale ve vezir**: adım karelerinin hepsinde kendi sabit piyonu ya da kutulu taşı olan bir taş hiç oynamıyor ve yalnızca kendi taşlarının karelerine saldırıyor; tahtada kalabiliyor (golf motorunun kuralı, geçmişten) | tahtada at, kale ya da vezir var; her kale ve vezirin yanındaki karelere bakıştan sonra (oyun pozisyonlarının %96'sı orada biter) | 1 (hPiwD75i) ve chasolver'ın test pozisyonlarındaki 84 bestelenmiş kilit | böyle bir taş varken kilit testi başına ~2 ns (Rust) / ~10 ns (JS) |
+| **Domino aramasına ikinci kademe**: 9 ply, 10.000 düğüm | arama mat bulmadan başarısız oldu: bütçesiyle ya da yalnızca şah, piyon ve fil olan, bir şahın kapana kısıldığı bir tahtada ufkuyla | 26 | 1.000 oyundaki 14.755 böyle başarısızlığın 6'sında |
+
+Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalıştırıyor;
+`_internal.coreLockTest` ilk sürümün dedektörü tek başına (`lock/`'taki, scalachess yamasındaki ve
+kilit sekmesinin çizdiği); `proveCannotBeMated(pos, side, { deepBudget: 0 })` ikinci kademeyi dışarıda bırakıyor.
+
+**Sırada ne var**, sırasıyla: bir kafes tanıyıcı (kalan 6 satır, onları açacak alış pat verdiği
+için duran kafesler), açık kalan için sınırlı tam kapanış, ve dedektörün ve yukarıdaki kuralların
+yazılı sağlamlık ispatı.
 
 ## Lisans ve teşekkür
 

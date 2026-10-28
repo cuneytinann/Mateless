@@ -8,12 +8,18 @@
  * nothing to compute. It never declares a draw where a mate is possible: it acts only on a proof,
  * and what it cannot prove it leaves to a complete solver.
  *
+ * Two versions in one: the first is the fast layer (the lock detector of lock/ and of the
+ * scalachess patch); the second adds rules that see more, each run only when its own situation is
+ * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and a
+ * second tier of the Domino search (9 plies, 10,000 nodes) where the first fails in a way a deeper
+ * search can mend. Not complete either: wider, with completeness as its goal.
+ *
  * The source is in layers, one ES module each (src/); tools/build.js joins them into mateless.js,
  * one dependency-free file. Mateless itself, what this library adds:
  *   material.js   rung 1: the material test
  *   lock.js       rung 2: the lock detector, and the two static tests together
  *   domino.js     rung 3: the Domino search
- *   ladder.js     when each rung is asked, and the two flags a game keeps
+ *   ladder.js     when each rung is asked (rung 4, the second tier, too), and the two flags a game keeps
  * Around it, so that it runs on its own:
  *   board.js      a reference board: bitboards, magic bitboards, legal moves, FEN (standard
  *                 techniques; a platform may keep its own board)
@@ -47,8 +53,8 @@ import { BISHOP, BLACK, castlingField, CastlingFiles, chess960Arrangement, color
          PIECE_LETTERS, Position, positionKey, PROMOTION_ORDER, QUEEN, rankOf, ROOK,
          SHARED_CONTEXT, squareName, STANDARD_SKELETON, toFen, typeOf, undoMove, WHITE, writeKey } from './board.js';
 import { materialCannotMate, materialTest } from './material.js';
-import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2 } from './lock.js';
-import { DOMINO_BUDGET, DOMINO_PLY, Domino, PositionSet } from './domino.js';
+import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2 } from './lock.js';
+import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, Domino, PositionSet } from './domino.js';
 import { Flags, isDeadPosition, proveBoth, proveCannotBeMated } from './ladder.js';
 import { flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
 
@@ -64,9 +70,9 @@ export {
   isAttacked, inCheck, makeMove, legalMoves, hasLegalMove, perft, positionKey,
   // the arbiter
   materialCannotMate, lockCannotMate, cannotMate, FLAGGED_WHITE, FLAGGED_BLACK, cannotMate2,
-  DOMINO_PLY, DOMINO_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
+  DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
 };
 // internals exposed for tests
 export const _internal = Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
-                                         lockTest, lockTest2, lockSets, SHARED_CONTEXT,
+                                         lockTest, lockTest2, lockSets, coreLockTest, SHARED_CONTEXT,
                                          FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS });

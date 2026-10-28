@@ -119,35 +119,34 @@ fn write_proof(at: usize, p: &Proof) {
     o[at + 1] = p.static_proof as i32;
     o[at + 2] = failure_code(p.failure);
     o[at + 3] = p.nodes as i32;
+    o[at + 4] = p.deep as i32;
 }
 
-/// The ladder for `flagged`: out[0..4] = proven, static proof, failure, nodes. Returns proven.
+/// The ladder for `flagged`, the second tier of size deep_ply / deep_budget (0: none):
+/// out[0..5] = proven, static proof, failure, nodes, second tier ran. Returns proven.
 #[no_mangle]
-pub extern "C" fn prove(h: i32, flagged: i32, max_ply: u32, budget: i32) -> i32 {
-    let p = prove_cannot_be_mated(&mut state().search, position(h), flagged as u8, max_ply, budget as i64);
+pub extern "C" fn prove(h: i32, flagged: i32, max_ply: u32, budget: i32, deep_ply: u32, deep_budget: i32) -> i32 {
+    let p = prove_cannot_be_mated_deep(&mut state().search, position(h), flagged as u8, max_ply, budget as i64, deep_ply, deep_budget as i64);
     write_proof(0, &p);
     p.proven as i32
 }
 
-/// The ladder for both sides in one pass: out[0..4] White flagged, out[4..8] Black flagged.
+/// The ladder for both sides in one pass: out[0..5] White flagged, out[5..10] Black flagged.
 /// Returns the sides proven (FLAGGED_* bits).
 #[no_mangle]
-pub extern "C" fn prove_both(h: i32, max_ply: u32, budget: i32) -> i32 {
-    let r = mateless::prove_both(&mut state().search, position(h), max_ply, budget as i64);
+pub extern "C" fn prove_both(h: i32, max_ply: u32, budget: i32, deep_ply: u32, deep_budget: i32) -> i32 {
+    let r = mateless::prove_both_deep(&mut state().search, position(h), max_ply, budget as i64, deep_ply, deep_budget as i64);
     write_proof(0, &r[0]);
-    write_proof(4, &r[1]);
+    write_proof(5, &r[1]);
     (r[0].proven as i32) | ((r[1].proven as i32) << 1)
 }
 
 /// Is the position dead (FIDE 5.2.2)? The static tests for both sides in one pass, then the
-/// searches one at a time, Black flagged first, as isDeadPosition in mateless.js.
+/// searches one side at a time, Black flagged first, as isDeadPosition in mateless.js.
 #[no_mangle]
 pub extern "C" fn is_dead(h: i32) -> i32 {
     let pos = position(h);
-    let search = &mut state().search;
-    let open = (FLAGGED_WHITE | FLAGGED_BLACK) & !mateless::cannot_mate2(pos, FLAGGED_WHITE | FLAGGED_BLACK);
-    if open & FLAGGED_BLACK != 0 && !search.run(pos, BLACK, DOMINO_PLY, DOMINO_BUDGET, false).proven { return 0; }
-    (open & FLAGGED_WHITE == 0 || search.run(pos, WHITE, DOMINO_PLY, DOMINO_BUDGET, false).proven) as i32
+    mateless::is_dead_position(&mut state().search, pos) as i32
 }
 
 /// Leaf positions after `depth` plies (as a double: exact below 2^53).

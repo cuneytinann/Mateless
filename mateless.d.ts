@@ -176,6 +176,11 @@ declare namespace Mateless {
   const DOMINO_PLY: number;
   /** The node budget of the Domino search (100); every move played counts, each promotion separately. */
   const DOMINO_BUDGET: number;
+  /** The ply ceiling of the Domino search's second tier (9): asked after a failure without a mate,
+      on the budget, or on the horizon with no knight, rook or queen on the board. */
+  const DOMINO_DEEP_PLY: number;
+  /** The node budget of the second tier (10,000). */
+  const DOMINO_DEEP_BUDGET: number;
 
   /** Why a search proved nothing: a line mates the flagged king, a line still has moves at the ply ceiling, or the budget ran out. */
   type Failure = 'mate' | 'horizon' | 'budget';
@@ -210,16 +215,23 @@ declare namespace Mateless {
     failure: Failure | null;
     /** 'search' when the search played a line that mates. */
     foundBy: 'search' | null;
-    /** The moves the search played. */
+    /** The moves the searches played (both tiers). */
     nodes: number;
+    /** The second tier ran. */
+    deep: boolean;
   }
 
   interface ProofOptions {
     maxPly?: number;
     budget?: number;
+    /** The second tier's ply ceiling (default DOMINO_DEEP_PLY). */
+    deepPly?: number;
+    /** The second tier's node budget (default DOMINO_DEEP_BUDGET); 0: no second tier. */
+    deepBudget?: number;
   }
 
-  /** Can `flagged` never be mated? The static tests, then the Domino search (6 plies, 100 nodes by default). */
+  /** Can `flagged` never be mated? The static tests, then the Domino search (6 plies, 100 nodes by
+      default) and, where it allows, its second tier (9 plies, 10,000 nodes). */
   function proveCannotBeMated(pos: Position, flagged: Color, options?: ProofOptions): Proof;
   /** proveCannotBeMated for both sides in one pass: [White flagged, Black flagged]. */
   function proveBoth(pos: Position, options?: ProofOptions): [Proof, Proof];
@@ -243,6 +255,8 @@ declare namespace Mateless {
     resigned?: boolean;
     maxPly?: number;
     budget?: number;
+    deepPly?: number;
+    deepBudget?: number;
   }
 
   /** The verdict when the flag of `side` falls (or it resigns), in a single position: a draw if its opponent can never mate. */
@@ -335,6 +349,15 @@ declare namespace Mateless {
     readonly wBish: [number, number]; readonly bBish: [number, number];
     /** The frozen king's square, [0, 0] when both kings are free. */
     readonly frozen: [number, number];
+    /** With knights, rooks or queens on the board: the boxed ones no enemy king or bishop reaches. */
+    readonly boxed?: [number, number];
+  }
+
+  /** A certificate of the open-pair rule: one family per combination of what the pairs' pawns have done. */
+  interface LockFamilies {
+    /** Each family's sets; pairs: per open pair 'A' (neither pawn moved), 'B' (the white one stepped into the gap) or 'C' (the black one). */
+    readonly families: ReadonlyArray<LockSets & { readonly pairs: string }>;
+    readonly frozen: [number, number];
   }
 
   const _internal: {
@@ -353,7 +376,9 @@ declare namespace Mateless {
     readonly lockTest: (pos: Position, flagged: Color) => boolean;
     readonly lockTest2: (pos: Position, ask: number) => FlaggedSides;
     /** The lock certificate's sets, each a [lo, hi] pair of words; null when there is no lock. */
-    readonly lockSets: (pos: Position, flagged: Color) => LockSets | null;
+    readonly lockSets: (pos: Position, flagged: Color) => LockSets | LockFamilies | null;
+    /** The first version's lock detector alone (lock/, the scalachess patch): no open pairs, no boxed pieces. */
+    readonly coreLockTest: (pos: Position, flagged: Color) => boolean;
     readonly SHARED_CONTEXT: MoveContext;
     readonly FLAG_CASTLE: 1;
     readonly FLAG_EP: 2;

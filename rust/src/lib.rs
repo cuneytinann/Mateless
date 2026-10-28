@@ -10,8 +10,13 @@
 //!   - [`material`]  rung 1: the material test
 //!   - [`lock`]      rung 2: the lock detector, and the two static tests together
 //!   - [`domino`]    rung 3: the Domino search, 6 plies and 100 nodes, no move-count rules
-//!   - [`ladder`]    the rungs put together: [`prove_cannot_be_mated`] and [`prove_both`] for one
-//!                   position, [`Flags`] for the two flags of a game played move by move
+//!   - [`ladder`]    the rungs put together: [`prove_cannot_be_mated`], [`prove_both`] and
+//!                   [`is_dead_position`] for one position, [`Flags`] for the two flags of a game
+//!                   played move by move; and rung 4, the search's second tier (the second version)
+//!
+//! Both versions are here: the first version's lock detector and search, and the second version's
+//! rules (open pawn pairs, boxed knights, rooks and queens, the second tier), each run only when its
+//! own situation is on the board.
 //!
 //! and under it [`board`], a reference board (bitboards, magic bitboards, legal moves, FEN). Every
 //! public item is also re-exported here, at the crate root.

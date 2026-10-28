@@ -52,7 +52,7 @@ for (const f of ['positions.txt', 'lichess.txt'])
 if (process.env.DATA)
   for (const l of fs.readFileSync(process.env.DATA, 'utf8').split('\n').slice(1)) if (l) fens.push(l.split(',')[12].trim());
 
-const proof = p => [p.proven, p.staticProof, p.failure, p.nodes].join(',');
+const proof = p => [p.proven, p.staticProof, p.failure, p.nodes, p.deep].join(',');
 const asked = () => [{ ...A.ASKED }, { ...B.ASKED }];
 const zero = () => { for (const E of [A, B]) { E.ASKED.material = 0; E.ASKED.lock = 0; } };
 

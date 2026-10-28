@@ -10,8 +10,8 @@
 </div>
 <div class="take">
   <a class="btn" id="lockzip" href="mateless-lock.zip" download="mateless-lock.zip"><span lang="en">Download the lock detector</span><span lang="tr">Kilit dedektörünü indir</span> <span class="dim">.zip</span></a>
-  <p class="small dim" lang="en">The detector alone, in its simplest form, in 20 languages. Every version is the same algorithm, line for line, and gives the same answers on the same 36,405 test positions. <a href="#code">In your own code</a></p>
-  <p class="small dim" lang="tr">Dedektörün kendisi, en sade hâliyle, 20 dilde. Her sürüm satır satır aynı algoritma ve aynı 36.405 test pozisyonunda aynı cevapları veriyor. <a href="#code">Kendi kodunda</a></p>
+  <p class="small dim" lang="en">The detector alone, in its simplest form, in 20 languages. Every version is the same algorithm, line for line, and gives the same answers on the same 36,406 test positions. <a href="#code">In your own code</a></p>
+  <p class="small dim" lang="tr">Dedektörün kendisi, en sade hâliyle, 20 dilde. Her sürüm satır satır aynı algoritma ve aynı 36.406 test pozisyonunda aynı cevapları veriyor. <a href="#code">Kendi kodunda</a></p>
 </div>
 
 <span class="anchor" id="question"></span>
@@ -22,6 +22,43 @@
 <p lang="tr">Tek bir cevap üç kurala hizmet ediyor. Süre bitimi (6.9) ve terk (5.1.2), rakip mat edemiyorsa beraberliktir. Hiçbir taraf mat edemiyorsa pozisyon ölüdür (5.2.2); bunun için dedektör her renk için bir kez sorulur.</p>
 <p lang="en">It matters on Lichess. Of 195,287 rated games lost on time although the opponent could never have mated, 52,050 (26.7%) ended in a lock. Today’s scalachess draws 141 of them; the rest count as wins.</p>
 <p lang="tr">Lichess’te bunun önemi büyük. Rakip hiç mat edemeyecekken süreden kaybedilmiş 195.287 puanlı oyunun 52.050’si (%26,7) bir kilitle bitti. Bugünkü scalachess bunların 141’ini berabere sayıyor; geri kalanı kazanç sayılıyor.</p>
+
+<span class="anchor" id="practice"></span>
+<h2 lang="en">What games leave on the board</h2><h2 lang="tr">Oyunlar tahtada ne bırakıyor</h2>
+<p lang="en">Lichess has stored about 8.3 billion rated games of standard chess, and the data here is every one of them lost on time although the opponent could never have mated. What stood on the board in their locks decides what a detector has to understand:</p>
+<p lang="tr">Lichess yaklaşık 8,3 milyar puanlı standart satranç oyunu saklıyor; buradaki veri, bunların rakip hiç mat edemeyecekken süreden kaybedilmiş olanlarının hepsi. Kilitlerinde tahtada ne durduğu, bir dedektörün neyi anlaması gerektiğini belirliyor:</p>
+<div class="scroll"><table class="tbl">
+<thead><tr lang="en"><th>In the lock</th><th>Games</th></tr><tr lang="tr"><th>Kilitte</th><th>Oyun</th></tr></thead>
+<tbody>
+<tr lang="en"><td>kings and pawns</td><td>48,414</td></tr>
+<tr lang="tr"><td>şahlar ve piyonlar</td><td>48.414</td></tr>
+<tr lang="en"><td>kings, pawns and bishops</td><td>3,636 (7.0%)</td></tr>
+<tr lang="tr"><td>şahlar, piyonlar ve filler</td><td>3.636 (%7,0)</td></tr>
+<tr lang="en"><td>a knight, rook or queen shut in by its own pawns</td><td>1</td></tr>
+<tr lang="tr"><td>kendi piyonlarının kapattığı bir at, kale ya da vezir</td><td>1</td></tr>
+<tr lang="en"><td>two bishops of one side on one colour</td><td>0</td></tr>
+<tr lang="tr"><td>bir tarafın aynı renkte iki fili</td><td>0</td></tr>
+</tbody></table></div>
+<p lang="en">The knight, rook or queen row was measured with a rule that allowed boxed ones, on all 201,060 games of chasolver’s list up to July 2026: it proved one game that nothing else proves, <a href="https://lichess.org/hPiwD75i">hPiwD75i</a>, a knight shut in by its own pawns. Two bishops on one colour stand in 5 games, and the material test or the short search proves each of them; none needs a lock.</p>
+<p lang="tr">At, kale ya da vezir satırı, kutulu olanlara izin veren bir kuralla, chasolver listesinin temmuz 2026’ya kadarki 201.060 oyununun hepsinde ölçüldü: başka hiçbir şeyin ispatlamadığı tek bir oyun ispatladı, <a href="https://lichess.org/hPiwD75i">hPiwD75i</a>; kendi piyonlarının kapattığı bir at. Aynı renkte iki fil 5 oyunda duruyor ve her birini malzeme testi ya da kısa arama ispatlıyor; hiçbiri bir kilide ihtiyaç duymuyor.</p>
+
+<span class="anchor" id="buried"></span>
+<h2 lang="en">Knights, rooks and queens are hard to bury</h2><h2 lang="tr">At, kale ve vezir zor gömülür</h2>
+<p lang="en">A lock is a wall of rams: a white and a black pawn head to head, file after file. A king, a pawn or a bishop is easily shut behind such a wall. A knight jumps over it, and a rook or a queen slides along it; to hold one of them, every square it could ever step to must hold a piece of its own side that can never move. Such locks can be built, and some even look reachable from the 32-piece start, standard or Chess960. Games almost never make them.</p>
+<p lang="tr">Kilit, piyon çiftlerinden örülmüş bir duvar: bir beyaz ve bir siyah piyon kafa kafaya, dikey dikey. Böyle bir duvarın arkasına bir şah, bir piyon ya da bir fil kolayca kapanır. At duvarın üstünden atlar, kale ve vezir duvar boyunca kayar; onlardan birini tutmak için, bir gün adım atabileceği her karede kendi tarafının hiç oynayamayan bir taşı durmalı. Böyle kilitler kurulabilir, hatta bazıları 32 taşlık başlangıçtan, standart ya da Chess960, ulaşılabilir görünüyor. Oyunlar onları neredeyse hiç üretmiyor.</p>
+<figure class="fig" id="f-buried"></figure>
+<p lang="en">So the detector does not try. A knight, rook or queen on the board ends the test at once, at one comparison of three words. That costs one game in 201,060, and 84 of the composed locks in chasolver’s test positions. It buys a simpler detector: six sets to keep instead of ten, and no step squares, boxed walls or extra leak tests. The lock test got about 1.4 times faster on the positions of a game, and about 7% faster on locks.</p>
+<p lang="tr">Dedektör bu yüzden denemiyor. Tahtada at, kale ya da vezir varsa test hemen, üç sözcüğün tek bir karşılaştırmasıyla biter. Bunun bedeli 201.060 oyunda bir oyun ve chasolver’ın test pozisyonlarındaki bestelenmiş kilitlerden 84’ü. Karşılığında dedektör sadeleşiyor: on yerine altı küme tutuyor; adım kareleri, kutulu duvarlar ve fazladan sızıntı testleri yok. Kilit testi bir oyunun pozisyonlarında yaklaşık 1,4 kat, kilitlerde yaklaşık %7 hızlandı.</p>
+
+<span class="anchor" id="twins"></span>
+<h2 lang="en">Two bishops on one colour: the same reasoning</h2><h2 lang="tr">Aynı renkte iki fil: aynı akıl yürütme</h2>
+<p lang="en">Two bishops of one side on squares of one colour come only from a promotion, and no lock in the data has them. The detector refuses them too, and here there is a second reason, soundness: the mating net counts a flight on the assumption that the defending side has at most one bishop of each colour (below). Without this gate a test run found 64 false locks.</p>
+<p lang="tr">Bir tarafın aynı renk karelerde iki fili yalnızca bir terfiden doğar ve verideki hiçbir kilitte yok. Dedektör onları da reddediyor; burada ikinci bir neden var, sağlamlık: mat ağı, savunan tarafın her renkte en fazla bir fili olduğunu varsayarak kaçış sayıyor (aşağıda). Bu kapı olmadan bir test koşusu 64 yanlış kilit buldu.</p>
+
+<span class="anchor" id="whole"></span>
+<h2 lang="en">Kings, pawns and bishops, as one whole</h2><h2 lang="tr">Şahlar, piyonlar ve filler: tek bir bütün</h2>
+<p lang="en">What is left is small enough to take as a whole: each side’s pawns, king and bishops, six sets. It can be written down as a handful of formulas, and grasped without them. The bishop is the one piece kept, and the reason is geometry: a bishop never changes colour. A closed pawn chain shuts it on its own side, and the pawns it meets there it often cannot touch. A locked structure is where a bishop is most likely to be powerless, and the data bears that out: 3,636 of the 52,050 locks have one, and a detector that refused bishops as it refuses knights would lose them.</p>
+<p lang="tr">Geriye kalan, bir bütün olarak ele alınacak kadar küçük: her tarafın piyonları, şahı ve filleri, altı küme. Bir avuç formülle yazılabiliyor, formülsüz de kavranabiliyor. Fil, tutulan tek taş ve nedeni geometri: fil asla renk değiştirmez. Kapalı bir piyon zinciri onu kendi tarafına kapatır ve orada karşılaştığı piyonlara çoğu zaman dokunamaz. Kilitli bir yapı, bir filin en büyük ihtimalle etkisiz kaldığı yer; veri de bunu doğruluyor: 52.050 kilidin 3.636’sında bir fil var ve filleri atlar gibi reddeden bir dedektör bunları kaybederdi.</p>
 
 <span class="anchor" id="words"></span>
 <h2 lang="en">A position is six words</h2><h2 lang="tr">Bir pozisyon altı sözcük</h2>
@@ -38,23 +75,10 @@ inline def diagonal(w: Long): Long = sideways((w &lt;&lt; 8) | (w &gt;&gt;&gt; 8
 <p lang="en">Each is one operation on the whole board. <code>zone</code> is the 3×3 block around every square of the set: the square and each step a king can make from it. <code>diagonal</code> is every square a pawn’s capture or a bishop’s single step can touch. The file masks keep a shift from wrapping from the h-file to the a-file.</p>
 <p lang="tr">Her biri bütün tahta üzerinde tek bir işlem. <code>zone</code>, kümenin her karesinin çevresindeki 3×3 blok: karenin kendisi ve bir şahın oradan atabileceği her adım. <code>diagonal</code>, bir piyonun alışının ya da bir filin tek adımının dokunabileceği her kare. Dikey maskeleri, bir kaydırmanın h dikeyinden a dikeyine taşmasını önlüyor.</p>
 
-<span class="anchor" id="gates"></span>
-<h2 lang="en">Three gates first</h2><h2 lang="tr">Önce üç kapı</h2>
-<p lang="en">Before any set is built, three facts end the test with no proof.</p>
-<p lang="tr">Daha hiçbir küme kurulmadan, üç durum testi ispatsız bitirir.</p>
-<div class="scroll"><table class="tbl">
-<thead><tr lang="en"><th>It fails at once when</th><th>Why</th></tr><tr lang="tr"><th>Hemen düşer, eğer</th><th>Neden</th></tr></thead>
-<tbody>
-<tr lang="en"><td>a knight, rook or queen stands</td><td>The model knows how kings, pawns and bishops move, nothing else. Most positions of a game end here, at one comparison of three words.</td></tr>
-<tr lang="tr"><td>tahtada at, kale ya da vezir varsa</td><td>Model yalnızca şahların, piyonların ve fillerin nasıl oynadığını biliyor. Bir oyunun pozisyonlarının çoğu burada, üç sözcüğün tek bir karşılaştırmasıyla biter.</td></tr>
-<tr lang="en"><td>a side has two bishops on one colour</td><td>The mating net counts a flight on the assumption that the flagged side has at most one bishop per colour of square. Only a promotion makes twins. Without this gate a test run found 64 false locks.</td></tr>
-<tr lang="tr"><td>bir tarafın aynı renkte iki fili varsa</td><td>Mat ağı, bayrağı düşen tarafın her kare rengi için en fazla bir fili olduğunu varsayarak kaçış sayar. İkiz fili yalnızca terfi doğurur. Bu kapı olmadan bir test koşusu 64 yanlış kilit buldu.</td></tr>
-<tr lang="en"><td>an en passant capture is possible</td><td>No cone contains the square a double step jumps over, so the model would miss that capture. Built from the Lichess locks by pulling a pawn back and replaying its double step, 150 of the first 300 positions a gateless detector called locked had a mate. The right lapses after one move.</td></tr>
-<tr lang="tr"><td>geçerken alma mümkünse</td><td>Hiçbir koni çift adımın üzerinden atladığı kareyi içermiyor; model bu alışı kaçırırdı. Lichess kilitlerinden, bir piyon geri çekilip çift adımı yeniden oynatılarak kurulan pozisyonlarda, kapısız bir dedektörün kilitli dediği ilk 300 pozisyonun 150’sinde mat vardı. Hak bir hamle sonra düşer.</td></tr>
-</tbody></table></div>
-
 <span class="anchor" id="cones"></span>
-<h2 lang="en">Cones: where a pawn may still stand</h2><h2 lang="tr">Koniler: bir piyon hâlâ nerede durabilir</h2>
+<h2 lang="en">Pawns: a capture means no lock</h2><h2 lang="tr">Piyonlar: alış varsa kilit yok</h2>
+<p lang="en">Start with pawns and kings alone. If a pawn can take, the structure is no lock: taking moves the pawn to another file. It may take or not, and the enemy may take it or not; we know of no lock that survives every one of these choices, and none has turned up in the data. So the model counts any possible capture as a leak and does not follow it. To see a capture coming, it needs every square each pawn may still reach.</p>
+<p lang="tr">Önce yalnızca piyonlar ve şahlar. Bir piyon alış yapabiliyorsa yapı kilit değildir: almak piyonu başka bir dikeye taşır. Alabilir de almayabilir de; düşman da onu alabilir de almayabilir de. Bu seçimlerin her birinde ayakta kalan bir kilit bilmiyoruz; veride de böylesi çıkmadı. Model bu yüzden mümkün olan her alışı bir sızıntı sayıyor ve izlemiyor. Bir alışın geleceğini görmek için her piyonun hâlâ ulaşabileceği her kareyi bilmesi gerekiyor.</p>
 <p lang="en">A pawn’s cone is every square it may still stand on: up its file until it meets a <em>wall</em>, an enemy pawn that can never be taken. The cone is an occluded fill, three shifts and no loop over the steps (Kogge–Stone):</p>
 <p lang="tr">Bir piyonun konisi, hâlâ durabileceği her kare: dikeyi boyunca bir <em>duvara</em>, yani hiç alınamayacak bir düşman piyonuna varana kadar. Koni bir örtülü dolgu; üç kaydırma, adımlar üzerinde döngü yok (Kogge–Stone):</p>
 <pre><code><span class="c">/** Every square reachable from g by steps north through squares of p. */</span>
@@ -139,19 +163,41 @@ val nbTake = tb | south(fillSouth(tb &amp; ~bWall, ~bWall))</code></pre>
 <p lang="en">If they hold before a move, they hold after it, whatever the move. The leak tests are the ways a move could break one of them. Starting optimistic is how the loop finds the largest set of facts that support each other; what makes the result safe is that the set is closed under every legal move. There is no written proof of this yet; the tests behind it are under <a href="#evidence">Evidence</a>.</p>
 <p lang="tr">Bir hamleden önce geçerliyseler, hamle ne olursa olsun hamleden sonra da geçerliler. Sızıntı testleri, bir hamlenin bunlardan birini bozabileceği yolları sayıyor. İyimser başlamak, döngünün birbirini destekleyen en büyük olgu kümesini bulma yolu; sonucu güvenli kılan, bu kümenin her geçerli hamleye karşı kapalı olması. Bunun henüz yazılı bir ispatı yok; arkasındaki testler <a href="#evidence">Kanıtlar</a> başlığında.</p>
 
+<span class="anchor" id="halves"></span>
+<h2 lang="en">One wall, two halves</h2><h2 lang="tr">Tek duvar, iki yarı</h2>
+<p lang="en">At the fixed point a Lichess lock is nearly always one wall from the a-file to the h-file: the fixed pawns and the squares they attack. In every one of the 52,050 locks the two kings’ reaches never meet. In 52,040 of them (99.98%) every square of the board is in one of the two reaches, holds a fixed pawn or is attacked by one: nothing is left between the halves.</p>
+<p lang="tr">Sabit noktada bir Lichess kilidi neredeyse her zaman a dikeyinden h dikeyine tek bir duvar: sabit piyonlar ve saldırdıkları kareler. 52.050 kilidin her birinde iki şahın erişimi hiç buluşmuyor. 52.040’ında (%99,98) tahtanın her karesi ya iki erişimden birinde, ya üzerinde sabit bir piyon duruyor ya da sabit bir piyonun saldırısı altında: iki yarının arasında hiçbir yer kalmıyor.</p>
+<figure class="fig" id="f-halves"></figure>
+
+<span class="anchor" id="frozen"></span>
+<h2 lang="en">A frozen king</h2><h2 lang="tr">Donmuş şah</h2>
+<p lang="en">Some locks rest on a king that cannot move at all. Boxed in a corner, it blocks an enemy pawn for ever. With the king free, the model must allow that it steps aside one day; the pawn is then not fixed and the proof falls apart. So the certificate is tried at up to three levels: both kings free, the white king frozen, the black king frozen. A frozen king is a wall for both sides. In exchange the level must show that the king really never moves: its reach has to stay its own square.</p>
+<p lang="tr">Bazı kilitler hiç oynayamayan bir şaha dayanıyor. Köşeye kapanmış şah bir düşman piyonunu sonsuza dek durdurur. Şah serbestken model onun bir gün kenara çekilebileceğini kabul etmek zorunda; o zaman piyon sabit olmaz ve ispat dağılır. Sertifika bu yüzden en çok üç seviyede deneniyor: iki şah da serbest, beyaz şah donmuş, siyah şah donmuş. Donmuş şah iki taraf için de duvardır. Karşılığında seviye, şahın gerçekten hiç oynamadığını göstermek zorunda: erişimi kendi karesinde kalmalı.</p>
+<p lang="en">A level is tried only when every square around that king holds a pawn or is attacked by one; otherwise the king could step out and the level would fail anyway. Of the 50,970 Lichess locks up to July, 99.5% are proven with both kings free; without the frozen levels 271 would be lost.</p>
+<p lang="tr">Bir seviye ancak o şahın çevresindeki her karede bir piyon duruyorsa ya da her kareye bir piyon saldırıyorsa deneniyor; yoksa şah dışarı çıkabilir ve seviye zaten düşerdi. Temmuza kadarki 50.970 Lichess kilidinin %99,5’i iki şah da serbestken ispatlanıyor; donmuş seviyeler olmasa 271’i kaybolurdu.</p>
+<figure class="fig" id="f-frozen"></figure>
+
+<span class="anchor" id="bishops"></span>
+<h2 lang="en">Bishops: a bishop that can take a pawn means no lock</h2><h2 lang="tr">Filler: piyon alabilen fil varsa kilit yok</h2>
+<p lang="en">Bishops come in last, and the pawns’ rule carries over. A bishop that can take a pawn can also be taken by it, or let itself be taken; either way a pawn changes file. So every enemy pawn must stay out of every bishop’s reach for good: on squares of the other colour, or behind fixed pawns.</p>
+<p lang="tr">Filler en son giriyor ve piyonların kuralı onlara da geçiyor. Bir piyonu alabilen fil o piyon tarafından alınabilir de, kendini aldırabilir de; iki durumda da bir piyon dikey değiştirir. Bu yüzden her düşman piyonu her filin erişiminin hep dışında kalmalı: öbür renk karelerde ya da sabit piyonların arkasında.</p>
+<p lang="en">A bishop’s reach is flooded from its square, one diagonal step at a time, through every square that no fixed pawn holds. Kings and loose pawns are no obstacle, so the reach is too large, never too small, and a sliding attack is covered too: every square a bishop attacks lies in its reach or diagonally next to it.</p>
+<p lang="tr">Bir filin erişimi kendi karesinden, her seferinde bir çapraz adımla, hiçbir sabit piyonun durmadığı her kareye yayılır. Şahlar ve serbest piyonlar engel sayılmaz; erişim bu yüzden olsa olsa fazla büyüktür, asla küçük değil, kayan saldırı da kapsanır: bir filin saldırdığı her kare ya erişiminde ya da erişiminin çapraz komşusunda.</p>
+<figure class="fig" id="f-bishops"></figure>
+<p lang="en">Inside a lock a bishop may still move about freely: 3,636 of the Lichess locks have one. In August and September 2026 alone, Lichess scored 80 games that ended in such a lock wrongly, on time or by resignation, and 829 more, a bishop still on the board, went on after the position had died and were drawn in the end.</p>
+<p lang="tr">Kilidin içinde bir fil yine de serbestçe dolaşabilir: Lichess kilitlerinin 3.636’sında bir fil var. Yalnızca ağustos ve eylül 2026’da Lichess böyle bir kilitle biten 80 oyunu süreden ya da terkle yanlış sonuçlandırdı; tahtada hâlâ bir fil olan 829 oyun daha pozisyon öldükten sonra sürdü ve sonunda berabere bitti.</p>
+
 <span class="anchor" id="leaks"></span>
 <h2 lang="en">Leaks</h2><h2 lang="tr">Sızıntılar</h2>
-<p lang="en">At the fixed point a level fails when a move could break the invariant:</p>
-<p lang="tr">Sabit noktada, bir hamle değişmezi bozabiliyorsa seviye düşer:</p>
+<p lang="en">All the ways a level fails, then: at the fixed point, a move could break the invariant when</p>
+<p lang="tr">Bir seviyenin düştüğü bütün yollar şöyle: sabit noktada bir hamle değişmezi bozabiliyorsa, yani</p>
 <ul>
 <li lang="en"><b>a pawn can promote:</b> a cone reaches the last rank;</li><li lang="tr"><b>bir piyon terfi edebilir:</b> bir koni son yataya ulaşıyor;</li>
 <li lang="en"><b>two pawns can meet:</b> a black cone square lies diagonally in front of a white one;</li><li lang="tr"><b>iki piyon karşılaşabilir:</b> bir siyah koni karesi bir beyaz koni karesinin çapraz önünde;</li>
 <li lang="en"><b>a bishop meets a pawn’s path:</b> a square diagonally next to a bishop’s reach lies in an enemy cone, so the bishop could take the pawn or be taken;</li><li lang="tr"><b>bir fil bir piyonun yoluna çıkar:</b> bir filin erişiminin çapraz komşusu olan bir kare düşman konisinde; fil piyonu alabilir ya da alınabilir;</li>
-<li lang="en"><b>the frozen king can move</b> (below);</li><li lang="tr"><b>donmuş şah oynayabilir</b> (aşağıda);</li>
+<li lang="en"><b>the frozen king can move</b> (above);</li><li lang="tr"><b>donmuş şah oynayabilir</b> (yukarıda);</li>
 <li lang="en"><b>the flagged king can be mated:</b> the mating net.</li><li lang="tr"><b>bayrağı düşen şah mat edilebilir:</b> mat ağı.</li>
 </ul>
-<p lang="en">A bishop’s reach is flooded from its square, one diagonal step at a time, through every square that no fixed pawn holds. Kings and loose pawns are no obstacle, so the reach is too large, never too small, and a sliding attack is covered too: every square a bishop attacks lies in its reach or diagonally next to it.</p>
-<p lang="tr">Bir filin erişimi kendi karesinden, her seferinde bir çapraz adımla, hiçbir sabit piyonun durmadığı her kareye yayılır. Şahlar ve serbest piyonlar engel sayılmaz; erişim bu yüzden olsa olsa fazla büyüktür, asla küçük değil, kayan saldırı da kapsanır: bir filin saldırdığı her kare ya erişiminde ya da erişiminin çapraz komşusunda.</p>
 
 <span class="anchor" id="net"></span>
 <h2 lang="en">The mating net</h2><h2 lang="tr">Mat ağı</h2>
@@ -170,14 +216,15 @@ val flight = sideways(spare) | north(spare) | south(spare) |
 <p lang="en">An attacked square has a guaranteed flight when a spare square lies beside, above or below it, or when free squares lie both beside it and above or below it. The second rule is where the twin-bishop gate pays: those two neighbours are of one colour, the flagged side has at most one bishop of that colour, and one bishop fills one square at a time. Diagonal neighbours are not counted. The rules are sufficient, not necessary: a flight they miss can only cost a proof.</p>
 <p lang="tr">Saldırı altındaki bir karenin güvenli bir kaçışı vardır: yanında, üstünde ya da altında bir yedek kare varsa, ya da hem yanında hem de üstünde veya altında boş kareler varsa. İkiz fil kapısının işe yaradığı yer ikinci kural: bu iki komşu aynı renkte, bayrağı düşen tarafın o renkte en fazla bir fili var ve bir fil aynı anda tek bir kareyi doldurur. Çapraz komşular sayılmaz. Kurallar yeterli, gerekli değil: kaçırdıkları bir kaçış olsa olsa bir ispata mal olur.</p>
 <figure class="fig" id="f-net"></figure>
+<p lang="en">The net is asked for one side at a time. When it leaks for one side only, the other side’s king is still safe for ever: a lock of one side. That is no dead position, so the game goes on; but if the safe side’s flag falls, the opponent cannot mate and the game is drawn (6.9). The data holds 16 of them.</p>
+<p lang="tr">Ağ her seferinde bir taraf için soruluyor. Yalnızca bir taraf için sızdırıyorsa öbür tarafın şahı sonsuza dek güvende: tek tarafın kilidi. Bu bir ölü pozisyon değil, oyun sürüyor; ama güvendeki tarafın süresi biterse rakip mat edemez ve oyun berabere biter (6.9). Veride bunlardan 16 tane var.</p>
 
-<span class="anchor" id="frozen"></span>
-<h2 lang="en">A frozen king</h2><h2 lang="tr">Donmuş şah</h2>
-<p lang="en">Some locks rest on a king that cannot move at all. Boxed in a corner, it blocks an enemy pawn for ever. With the king free, the model must allow that it steps aside one day; the pawn is then not fixed and the proof falls apart. So the certificate is tried at up to three levels: both kings free, the white king frozen, the black king frozen. A frozen king is a wall for both sides. In exchange the level must show that the king really never moves: its reach has to stay its own square.</p>
-<p lang="tr">Bazı kilitler hiç oynayamayan bir şaha dayanıyor. Köşeye kapanmış şah bir düşman piyonunu sonsuza dek durdurur. Şah serbestken model onun bir gün kenara çekilebileceğini kabul etmek zorunda; o zaman piyon sabit olmaz ve ispat dağılır. Sertifika bu yüzden en çok üç seviyede deneniyor: iki şah da serbest, beyaz şah donmuş, siyah şah donmuş. Donmuş şah iki taraf için de duvardır. Karşılığında seviye, şahın gerçekten hiç oynamadığını göstermek zorunda: erişimi kendi karesinde kalmalı.</p>
-<p lang="en">A level is tried only when every square around that king holds a pawn or is attacked by one; otherwise the king could step out and the level would fail anyway. Of the 50,970 Lichess locks up to July, 99.5% are proven with both kings free; without the frozen levels 271 would be lost.</p>
-<p lang="tr">Bir seviye ancak o şahın çevresindeki her karede bir piyon duruyorsa ya da her kareye bir piyon saldırıyorsa deneniyor; yoksa şah dışarı çıkabilir ve seviye zaten düşerdi. Temmuza kadarki 50.970 Lichess kilidinin %99,5’i iki şah da serbestken ispatlanıyor; donmuş seviyeler olmasa 271’i kaybolurdu.</p>
-<figure class="fig" id="f-frozen"></figure>
+<span class="anchor" id="edges"></span>
+<h2 lang="en">En passant, and a move that mates</h2><h2 lang="tr">Geçerken alma ve mat eden hamle</h2>
+<p lang="en">En passant is a capture like any other, but the sets cannot see it: the capturing pawn lands on the square the double step jumped over, and no cone holds that square. So the detector does not model it. While an en passant capture is possible it stops at once and the game goes on; if the capture is not made, the right lapses with the next move, and a lock, if there is one, is proven half a move later. Built from the Lichess locks by pulling a pawn back and replaying its double step, 150 of the first 300 positions a detector without this gate called locked had a mate.</p>
+<p lang="tr">Geçerken alma da her alış gibi bir alış, ama kümeler onu göremiyor: alan piyon, çift adımın üzerinden atladığı kareye iniyor ve o kare hiçbir konide yok. Dedektör bu yüzden onu modellemiyor. Geçerken alma mümkünken hemen duruyor ve oyun sürüyor; alış yapılmazsa hak bir sonraki hamleyle düşüyor ve kilit, varsa, yarım hamle sonra ispatlanıyor. Lichess kilitlerinden, bir piyon geri çekilip çift adımı yeniden oynatılarak kurulan pozisyonlarda, bu kapısı olmayan bir dedektörün kilitli dediği ilk 300 pozisyonun 150’sinde mat vardı.</p>
+<p lang="en">The move that completes a lock may itself give mate. That is never taken for a draw: a mate ends the game before any draw rule is asked. Inside a lock, every mate that is still possible is the mating net’s question.</p>
+<p lang="tr">Bir kilidi tamamlayan hamle kendisi mat edebilir. Bu asla beraberlik sanılmıyor: mat, hiçbir beraberlik kuralı sorulmadan oyunu bitirir. Bir kilidin içinde hâlâ mümkün olan her mat, mat ağının sorusu.</p>
 
 <span class="anchor" id="assumptions"></span>
 <h2 lang="en">Every assumption, and why it is safe</h2><h2 lang="tr">Her varsayım ve neden güvenli olduğu</h2>
@@ -186,6 +233,16 @@ val flight = sideways(spare) | north(spare) | south(spare) |
 <div class="scroll"><table class="tbl tbl3">
 <thead><tr lang="en"><th>The model assumes</th><th>Effect</th><th>Why that is safe, or needed</th></tr><tr lang="tr"><th>Model şunu varsayıyor</th><th>Etkisi</th><th>Neden güvenli ya da gerekli</th></tr></thead>
 <tbody>
+<tr lang="en"><td>no knight, rook or queen on the board</td><td>no answer</td><td>They are hard to bury, and games almost never do it: one in 201,060. Refusing them keeps the model small and the test fast.</td></tr>
+<tr lang="tr"><td>tahtada at, kale ya da vezir yok</td><td>cevap yok</td><td>Gömülmeleri zor ve oyunlar bunu neredeyse hiç yapmıyor: 201.060’ta bir. Onları reddetmek modeli küçük, testi hızlı tutuyor.</td></tr>
+<tr lang="en"><td>no two bishops of one side on one colour</td><td>no answer</td><td>Only a promotion makes them, and no lock in the data has them. The second flight rule needs this gate.</td></tr>
+<tr lang="tr"><td>bir tarafın aynı renkte iki fili yok</td><td>cevap yok</td><td>Onları yalnızca terfi doğurur ve verideki hiçbir kilitte yoklar. İkinci kaçış kuralı bu kapıya ihtiyaç duyuyor.</td></tr>
+<tr lang="en"><td>no en passant capture</td><td>no answer</td><td>The capture lands outside every cone. The right lapses after one move, and the lock is proven then.</td></tr>
+<tr lang="tr"><td>geçerken alma yok</td><td>cevap yok</td><td>Alış her koninin dışına iniyor. Hak bir hamle sonra düşüyor ve kilit o zaman ispatlanıyor.</td></tr>
+<tr lang="en"><td>a possible capture by a pawn is a leak</td><td>fewer proofs</td><td>A capture moves a pawn to another file. The model does not follow what it changes; it stops.</td></tr>
+<tr lang="tr"><td>bir piyonun mümkün her alışı bir sızıntıdır</td><td>daha az ispat</td><td>Alış bir piyonu başka bir dikeye taşır. Model onun neyi değiştirdiğini izlemiyor; duruyor.</td></tr>
+<tr lang="en"><td>a bishop next to a pawn’s path is a leak</td><td>fewer proofs</td><td>It could take the pawn or be taken by it, and a pawn changes file either way.</td></tr>
+<tr lang="tr"><td>bir piyonun yoluna komşu bir fil bir sızıntıdır</td><td>daha az ispat</td><td>Fil piyonu alabilir ya da onun tarafından alınabilir; iki durumda da bir piyon dikey değiştirir.</td></tr>
 <tr lang="en"><td>a king may go wherever its mask allows</td><td>reach too large</td><td>Order, tempo and zugzwang are ignored, and so are loose pawns and their attacks. The reach covers every future at once.</td></tr>
 <tr lang="tr"><td>bir şah maskesinin izin verdiği her yere gidebilir</td><td>erişim fazla büyük</td><td>Sıra, tempo ve zugzwang yok sayılıyor; serbest piyonlar ve saldırıları da. Erişim her geleceği bir arada kapsıyor.</td></tr>
 <tr lang="en"><td>a pawn an enemy king can reach can be taken</td><td>fewer walls</td><td>Protection by a pawn that may still move is not counted (a fixed pawn’s protection is: the king’s mask leaves that square out). A wall that falls this way can only weaken the proof.</td></tr>
@@ -194,14 +251,12 @@ val flight = sideways(spare) | north(spare) | south(spare) |
 <tr lang="tr"><td>bir koni kendi piyonlarının içinden geçer</td><td>koniler fazla büyük</td><td>Katmerli piyonlar fazladan kare kazanıyor; terfi ve temas testleri yalnızca sıkılaşıyor.</td></tr>
 <tr lang="en"><td>a bishop may go anywhere fixed pawns let it</td><td>reach too large</td><td>Kings and loose pawns are no obstacle, and sliding attacks are covered without following lines.</td></tr>
 <tr lang="tr"><td>bir fil sabit piyonların izin verdiği her yere gidebilir</td><td>erişim fazla büyük</td><td>Şahlar ve serbest piyonlar engel sayılmıyor; kayan saldırılar da hatları izlemeden kapsanıyor.</td></tr>
-<tr lang="en"><td>any possible contact is a leak</td><td>fewer proofs</td><td>The model does not follow what a capture or a promotion changes; it stops instead.</td></tr>
-<tr lang="tr"><td>mümkün olan her temas bir sızıntıdır</td><td>daha az ispat</td><td>Model bir alışın ya da terfinin neyi değiştirdiğini izlemiyor; onun yerine duruyor.</td></tr>
 <tr lang="en"><td>only the two flight rules count</td><td>fewer flights</td><td>Diagonal flights, and a single free square the king’s own bishop could fill, are not counted: flights are missed, never invented.</td></tr>
 <tr lang="tr"><td>yalnızca iki kaçış kuralı sayılır</td><td>daha az kaçış</td><td>Çapraz kaçışlar ve şahın kendi filinin doldurabileceği tek bir boş kare sayılmıyor: kaçışlar kaçırılır, asla uydurulmaz.</td></tr>
-<tr lang="en"><td>no knight, rook or queen, no twin bishops, no en passant</td><td>no answer</td><td>Outside the model; the gates refuse rather than guess.</td></tr>
-<tr lang="tr"><td>at, kale, vezir, ikiz fil ve geçerken alma yok</td><td>cevap yok</td><td>Modelin dışında; kapılar tahmin etmek yerine reddediyor.</td></tr>
 <tr lang="en"><td>every pawn starts fixed</td><td>none</td><td>A start, not a conclusion: the loop removes every fact that loses its support.</td></tr>
 <tr lang="tr"><td>her piyon sabit başlar</td><td>yok</td><td>Bir başlangıç, bir sonuç değil: döngü dayanağını kaybeden her olguyu eliyor.</td></tr>
+<tr lang="en"><td>a mate comes first</td><td>none</td><td>A move that mates ends the game before any draw rule is asked.</td></tr>
+<tr lang="tr"><td>mat önce gelir</td><td>yok</td><td>Mat eden bir hamle, hiçbir beraberlik kuralı sorulmadan oyunu bitirir.</td></tr>
 </tbody></table></div>
 
 <span class="anchor" id="game"></span>

@@ -3,7 +3,7 @@
 The lock detector of [Mateless](https://github.com/cuneytinann/Mateless), in its simplest form,
 in 20 languages. Each version is about two hundred lines and uses its language's standard library
 only. All of them are the same algorithm, line for line, and all give Mateless's answers on the
-36,405 positions of `positions.tsv`.
+36,406 positions of `positions.tsv`.
 
 [Türkçe](README.tr.md) · [How it works, with pictures](https://cuneytinann.github.io/Mateless/#lock)
 
@@ -72,7 +72,7 @@ knows that, pass it.
 | Zig | [`zig/`](zig/) | `zig run -O ReleaseFast test.zig` | Zig 0.17 |
 
 `sh test-all.sh` runs every test whose compiler is installed. Each test answers both sides for
-every position and prints `<language>: 36405 positions, 0 wrong`.
+every position and prints `<language>: 36406 positions, 0 wrong`.
 
 ## How it was tested
 

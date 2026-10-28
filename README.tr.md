@@ -188,9 +188,11 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   ve ona götüren basamaklarla gösterilir; ölü pozisyonlar işaretlenir; sonuçlar CSV olarak
   indirilir. chasolver'ın, berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları
   listeleri ([chasolver.org/unfair-games](https://chasolver.org/unfair-games)) doğrudan bırakılabilir.
-- **Kilit dedektörü**: ikinci basamağın bitboard'larla nasıl çalıştığı (koniler; duvarlar, sabit
-  piyonlar, şah erişimleri ve alım karelerinin sabit noktası; sızıntılar; mat ağı; donmuş şah),
-  her varsayım ve neden güvenli olduğuyla. Bir gezgin, her FEN için geçişleri adım adım
+- **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
+  kale, vezir ve ikiz filler neden dışarıda; sonra bitboard'larla piyonlar ve şahlar (alış varsa
+  kilit yok; koniler; duvarlar, sabit piyonlar, şah erişimleri ve alım karelerinin sabit noktası;
+  tek duvar, iki yarı; donmuş şah); sonra filler (temas, mat ağı), geçerken alma ve mat eden
+  hamle; her varsayım ve neden güvenli olduğuyla. Bir gezgin, her FEN için geçişleri adım adım
   gösteriyor; tahtaları tarayıcıda hesaplanıyor ve çizildikçe mateless.js ile denetleniyor.
   Dedektörün kendisi, 20 dilde, oradan `mateless-lock.zip` olarak iniyor.
 - **Kurallar**: FIDE 5.2.2, 6.9 ve 5.1.2; kitap ne diyor, bir algoritma onu nasıl okuyabilir.
@@ -288,7 +290,7 @@ Merdivenin geri kalanı olmadan yalnızca kilit dedektörünü almak isteyen bir
 **En sade yol:** [`mateless-lock.zip`](mateless-lock.zip) ([`lock/`](lock/) klasörü) dedektörün
 kendisini en sade hâliyle 20 dilde taşıyor: C, C++, C#, Crystal, Go, Haskell, Java, JavaScript,
 Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Her biri kendi
-dilinin standart kütüphanesi üzerinde iki yüz kadar satır ve hepsi aynı 36.405 test pozisyonunda
+dilinin standart kütüphanesi üzerinde iki yüz kadar satır ve hepsi aynı 36.406 test pozisyonunda
 aynı cevapları veriyor ([lock/README.tr.md](lock/README.tr.md)). Aşağıdaki tablo Mateless'in
 içindeki hızlı sürümler.
 

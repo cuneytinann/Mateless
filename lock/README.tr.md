@@ -2,7 +2,7 @@
 
 [Mateless](https://github.com/cuneytinann/Mateless)'in kilit dedektörü, en sade hâliyle, 20 dilde.
 Her sürüm iki yüz kadar satır ve yalnızca kendi dilinin standart kütüphanesini kullanıyor. Hepsi
-satır satır aynı algoritma ve hepsi `positions.tsv`'deki 36.405 pozisyonda Mateless'in cevaplarını
+satır satır aynı algoritma ve hepsi `positions.tsv`'deki 36.406 pozisyonda Mateless'in cevaplarını
 veriyor.
 
 [English](README.md) · [Nasıl çalışıyor, resimlerle](https://cuneytinann.github.io/Mateless/#lock)
@@ -73,7 +73,7 @@ kendin ver.
 | Zig | [`zig/`](zig/) | `zig run -O ReleaseFast test.zig` | Zig 0.17 |
 
 `sh test-all.sh`, derleyicisi kurulu olan her testi çalıştırıyor. Her test her pozisyonda iki
-tarafı da cevaplıyor ve `<dil>: 36405 positions, 0 wrong` yazıyor.
+tarafı da cevaplıyor ve `<dil>: 36406 positions, 0 wrong` yazıyor.
 
 ## Nasıl denendi
 

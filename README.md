@@ -184,9 +184,11 @@ Turkish to choose. Five tabs:
   found, no proof) and the rungs that led to it; dead positions are marked; results download as
   CSV. chasolver's lists of the Lichess games lost on time that should have been drawn,
   [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in.
-- **Lock detector**: how rung 2 works on bitboards (the cones; the fixed point of walls, fixed
-  pawns, king reaches and take squares; the leaks; the mating net; the frozen king), with every
-  assumption and why it is safe. An explorer steps through the passes for any FEN; its boards are
+- **Lock detector**: rung 2 from the simplest up. What the Lichess locks hold, and why knights,
+  rooks, queens and twin bishops are left out; then pawns and kings on bitboards (a capture means
+  no lock; the cones; the fixed point of walls, fixed pawns, king reaches and take squares; one wall
+  and two halves; the frozen king); then bishops (contact, the mating net), en passant and a move
+  that mates; every assumption and why it is safe. An explorer steps through the passes for any FEN; its boards are
   computed in the browser and checked against mateless.js as they are drawn. The detector alone,
   in 20 languages, downloads from there as `mateless-lock.zip`.
 - **Rules**: FIDE 5.2.2, 6.9 and 5.1.2, what the book says and how an algorithm can read it.
@@ -285,7 +287,7 @@ For a platform that wants the lock detector without the rest of the ladder.
 the detector alone, in its simplest form, in 20 languages: C, C++, C#, Crystal, Go, Haskell, Java,
 JavaScript, Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Each
 is about two hundred lines on its language's standard library, and all give the same answers on the
-same 36,405 test positions ([lock/README.md](lock/README.md)). The table below is the fast versions
+same 36,406 test positions ([lock/README.md](lock/README.md)). The table below is the fast versions
 inside Mateless.
 
 **What it needs:** the bitboards of the pawns, kings and bishops (by colour), whether any knight,

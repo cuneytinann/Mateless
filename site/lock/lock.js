@@ -45,6 +45,10 @@
       name: ['The same, after Kc3', 'Aynısı, Şc3’ten sonra'],
       note: ['One king move later (clock 1) the same structure is a lock.',
              'Bir şah hamlesi sonra (sayaç 1) aynı yapı bir kilit.'] },
+    { id: 'bishop', fen: '3k4/8/p1p1p1p1/P1P1P1P1/1b1K4/8/8/8 w - - 0 70', flagged: 'w',
+      name: ['A bishop that can take a pawn', 'Piyon alabilen bir fil'],
+      note: ['uxkgEMs4 with Black’s bishop on the other colour: from b4 it reaches every white pawn, so no lock.',
+             'uxkgEMs4, Siyahın fili öbür renkte: b4’ten her beyaz piyona ulaşıyor, yani kilit yok.'] },
     { id: 'knight', fen: '8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3KN3 b - - 0 92', flagged: 'w',
       name: ['A knight on the board', 'Tahtada bir at'],
       note: ['The first gate: the model has no reach for a knight.', 'İlk kapı: modelde atın erişimi yok.'] },
@@ -61,7 +65,7 @@
   }
 
   /* A board in the site's .bd grid. paint: { w, b } a pair of sets; { reach, attack, flight, caught }
-     the mating net; { one, mark } a single set with its input marked. */
+     the mating net; { one } a single set; mark: squares ringed, with any of them. */
   function boardHTML(pcs, paint, opt) {
     opt = opt || {};
     let h = '<div class="bd ' + (opt.size || 'mini') + '" role="img" aria-label="' + esc(opt.label || '') + '">';
@@ -78,7 +82,8 @@
           if (paint.caught & bit) cls.push('nc');
           else if (paint.attack & paint.reach & paint.flight & bit) cls.push('nf');
         }
-        if (paint.one !== undefined) { if (paint.one & bit) cls.push('sw'); if (paint.mark & bit) cls.push('mk'); }
+        if (paint.one !== undefined && (paint.one & bit)) cls.push('sw');
+        if (paint.mark !== undefined && (paint.mark & bit)) cls.push('mk');
       }
       const p = pcs ? pcs[i] : null;
       if (p) cls.push(p === p.toUpperCase() ? 'w' : 'b');
@@ -354,7 +359,46 @@
         'LockTest’in piyon şahındaki şahı. a5’in saldırdığı b4’te beyaz şah maskesinin dışında duruyor; erişimi oradan başlıyor, a5, b5 ve c5’ten geçiyor, her piyon alınabilir oluyor ve seviye düşüyor. Şc3’ten sonra (sayaç 1) erişim 1–2. yataylar ve a3–f3; aynı test kilidi ispatlıyor.') + '</figcaption>';
   }
 
-  function figures() { figShifts(); figCones(); figNet(); figFrozen(); figCheck(); }
+
+  const sq = (...names) => names.reduce((w, n) => w | (1n << BigInt(FILES.indexOf(n[0]) + 8 * (+n[1] - 1))), 0n);
+  function figBuried() {
+    const B = [
+      ['1n6/2Bp4/p1pPp1k1/PpP1Pp1p/1P3P1P/2K5/8/8 w - - 7 53', sq('b8'), L('Lichess hPiwD75i', 'Lichess hPiwD75i'),
+        L('Black’s knight on b8: a6, c6 and d7 hold its own fixed pawns', 'Siyahın b8’deki atı: a6, c6 ve d7’de kendi sabit piyonları')],
+      ['7k/8/8/8/p1p5/P1Pp2p1/P2P2Pp/RNB4K w - - 0 1', sq('a1', 'b1', 'c1'), L('Composed: buried at home', 'Bestelenmiş: evinde gömülü'),
+        L('White’s rook, knight and bishop never leave a1–c1', 'Beyazın kalesi, atı ve fili a1–c1’den hiç çıkamaz')],
+      ['QN1k4/PPpPp1p1/PpP1P1P1/1Pb2K2/8/8/8/8 w - - 0 1', sq('a8', 'b8'), L('Composed: buried in the enemy’s corner', 'Bestelenmiş: düşmanın köşesine gömülü'),
+        L('White’s queen and knight on a8 and b8 can never move', 'Beyazın a8 ve b8’deki veziri ve atı hiç oynayamaz')],
+    ];
+    $('f-buried').innerHTML = '<div class="row r3">' + B.map(([fen, m, t, sub]) => panelHTML(t, sub, pieceArray(fen), { mark: m }, [])).join('') +
+      '</div><figcaption>' + L('Left: Lichess hPiwD75i (2022, 1+0), the one game of the 201,060. Middle and right: two of chasolver’s composed test positions. Ringed: the buried pieces. All three positions are dead.',
+        'Solda: Lichess hPiwD75i (2022, 1+0), 201.060 oyunun tek örneği. Ortada ve sağda: chasolver’ın bestelenmiş test pozisyonlarından ikisi. Halkalı: gömülü taşlar. Üç pozisyon da ölü.') + '</figcaption>';
+  }
+
+  function figHalves() {
+    const a = analyse(EXAMPLES[0].fen, 'w'), r = lastRound(a.t.level);
+    const ww = r.wFixed | V.sideways(V.north(r.wFixed)), bw = r.bFixed | V.sideways(V.south(r.bFixed));
+    $('f-halves').innerHTML = '<div class="row r2">' +
+      panelHTML(L('The wall', 'Duvar'), L('fixed pawns and the squares they attack', 'sabit piyonlar ve saldırdıkları kareler'), a.pcs, { w: ww, b: bw }, [['w', ww, ''], ['b', bw, '']]) +
+      panelHTML(L('The two halves', 'İki yarı'), L('the king reaches: White’s below, Black’s above', 'şah erişimleri: Beyazınki altta, Siyahınki üstte'), a.pcs, { w: r.wKing, b: r.bKing }, [['w', r.wKing, ''], ['b', r.bKing, '']]) +
+      '</div><figcaption>' + L('LockTest’s first position (Lichess yCnBCwGd) at the fixed point. Every square is in a king’s reach or in the wall; none is left between them.',
+        'LockTest’in ilk pozisyonu (Lichess yCnBCwGd), sabit noktada. Her kare ya bir şahın erişiminde ya da duvarda; arada hiçbiri kalmıyor.') + '</figcaption>';
+  }
+
+  function figBishops() {
+    const a = analyse(EXAMPLES[3].fen, 'w'), la = a.t.level;
+    const b = analyse(EXAMPLES.find(e => e.id === 'bishop').fen, 'w'), lb = levelOf(b, 'none');
+    const touch = V.diagonal(lb.bishops.bBish) & lb.cones.wCone;
+    $('f-bishops').innerHTML = '<div class="row r2">' +
+      panelHTML(L('A lock: bishop and pawns apart', 'Kilit: fil ve piyonlar ayrı'), L('Black’s bishop on b5, light squares; White’s pawns all on dark', 'Siyahın fili b5’te, açık karelerde; Beyazın piyonları hep koyu karelerde'),
+        a.pcs, { w: 0n, b: la.bishops.bBish }, [['b', la.bishops.bBish, '']]) +
+      panelHTML(L('No lock: the bishop can take', 'Kilit yok: fil alabilir'), L('the same bishop on b4, dark squares: it reaches a5, c5, e5 and g5 (ringed)', 'aynı fil b4’te, koyu karelerde: a5, c5, e5 ve g5’e ulaşıyor (halkalı)'),
+        b.pcs, { w: 0n, b: lb.bishops.bBish, mark: touch }, [['b', lb.bishops.bBish, '']]) +
+      '</div><figcaption>' + L('Left: Lichess uxkgEMs4. The bishop roams White’s half, but every white pawn stands on the other colour: it can never take one, and no pawn can ever take it. Right: the bishop moved to a square of the pawns’ colour. Now it can take any of them, the structure can open, and the detector gives no proof.',
+        'Solda: Lichess uxkgEMs4. Fil Beyazın yarısında dolaşıyor, ama her beyaz piyon öbür renkte duruyor: hiçbirini alamaz, hiçbir piyon da onu alamaz. Sağda: fil piyonların rengindeki bir kareye taşındı. Artık herhangi birini alabilir, yapı açılabilir ve dedektör ispat vermiyor.') + '</figcaption>';
+  }
+
+  function figures() { figBuried(); figShifts(); figCones(); figHalves(); figFrozen(); figBishops(); figNet(); figCheck(); }
   function boot() {
     try { figures(); wireExplorer(); }
     catch (e) { const el = $('fenerr'); el.textContent = L('This page could not draw its boards: ', 'Bu sayfa tahtalarını çizemedi: ') + e.message; el.classList.remove('hide'); throw e; }

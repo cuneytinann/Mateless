@@ -3,7 +3,8 @@
 A port of `mateless.js` to Rust: the same rules, the same static tests (material test, lock
 detector) and the same Domino search (6 plies, 100 nodes, no move-count rules), with the game's
 two flags (`Flags`). Legal moves are generated in the same order as in the JavaScript engine, so a
-search plays the same nodes: on chasolver's 201,060 Lichess rows, on chasolver's labelled test
+search plays the same nodes: on chasolver's 201,060 Lichess rows and the 3,000 of the August and
+September scan, on chasolver's labelled test
 positions and in thousands of games played move by move, the two engines print the same lines,
 node counts included (`test/rust_compare.js`). Bitboards are plain `u64`; nothing is module state
 (the lock detector's census and the move-generation context live on the stack, each `Domino`

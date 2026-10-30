@@ -6,7 +6,7 @@
 <div class="speed">
   <div><b>~9 ns</b><span lang="en">per call (Rust) when a knight, rook or queen stands: the first test returns. That is most positions of a game.</span><span lang="tr">tahtada at, kale ya da vezir varken çağrı başına (Rust): ilk test döner. Bir oyunun pozisyonlarının çoğu böyle.</span></div>
   <div><b>~53–105 ns</b><span lang="en">for a whole proof on a lock (Rust), hot cache to cold: one pass of the fixed point, and one that stops.</span><span lang="tr">bir kilitte bütün ispat için (Rust), sıcak önbellekten soğuğa: sabit noktanın bir geçişi ve duran bir geçiş.</span></div>
-  <div><b>~70×</b><span lang="en">faster than chasolver’s fast check on the 50,970 Lichess locks, Rust against Rust.</span><span lang="tr">50.970 Lichess kilidinde chasolver’ın hızlı kontrolünden daha hızlı, Rust’a karşı Rust.</span></div>
+  <div><b>~70×</b><span lang="en">faster than chasolver’s fast check on the 50,970 Lichess locks up to July 2026, Rust against Rust.</span><span lang="tr">Temmuz 2026’ya kadarki 50.970 Lichess kilidinde chasolver’ın hızlı kontrolünden daha hızlı, Rust’a karşı Rust.</span></div>
 </div>
 <div class="take">
   <a class="btn" id="lockzip" href="mateless-lock.zip" download="mateless-lock.zip"><span lang="en">Download the lock detector</span><span lang="tr">Kilit dedektörünü indir</span> <span class="dim">.zip</span></a>
@@ -296,8 +296,8 @@ def lockedOut: Boolean =
 <tr><td><span lang="en">a knight, rook or queen on the board</span><span lang="tr">tahtada at, kale ya da vezir</span></td><td>~9 ns</td><td></td><td>~31–35 ns</td></tr>
 <tr><td><span lang="en">a lock, the whole fixed point</span><span lang="tr">kilit, bütün sabit nokta</span></td><td><span lang="en">~53 ns hot, ~81–105 ns cold</span><span lang="tr">sıcakta ~53 ns, soğukta ~81–105 ns</span></td><td>~0.3–0.8 µs</td><td>~150–190 ns</td></tr>
 </tbody></table></div>
-<p class="cap" lang="en">Per call, after warm-up. The Scala figures are taken over 374,739 positions of real games and the 50,970 locks, so they include fetching each position from memory; a rough loop over three positions already in the cache gives ~3.5 and ~65–72 ns. chasolver’s fast check takes 6.46–6.52 µs on the same locks (Rust): it searches first, then analyses the pieces one by one.</p>
-<p class="cap" lang="tr">Çağrı başına, ısınmadan sonra. Scala ölçümleri gerçek oyunlardan 374.739 pozisyon ve 50.970 kilit üzerinden alındı; her pozisyonun bellekten getirilmesini de içeriyor. Önbellekteki üç pozisyon üzerinde kaba bir döngü ~3,5 ve ~65–72 ns veriyor. chasolver’ın hızlı kontrolü aynı kilitlerde 6,46–6,52 µs sürüyor (Rust): önce arıyor, sonra taşları tek tek inceliyor.</p>
+<p class="cap" lang="en">Per call, after warm-up. The Scala figures are taken over 374,739 positions of real games and the 50,970 locks up to July 2026, so they include fetching each position from memory; a rough loop over three positions already in the cache gives ~3.5 and ~65–72 ns. chasolver’s fast check takes 6.46–6.52 µs on the same locks (Rust): it searches first, then analyses the pieces one by one.</p>
+<p class="cap" lang="tr">Çağrı başına, ısınmadan sonra. Scala ölçümleri gerçek oyunlardan 374.739 pozisyon ve temmuz 2026’ya kadarki 50.970 kilit üzerinden alındı; her pozisyonun bellekten getirilmesini de içeriyor. Önbellekteki üç pozisyon üzerinde kaba bir döngü ~3,5 ve ~65–72 ns veriyor. chasolver’ın hızlı kontrolü aynı kilitlerde 6,46–6,52 µs sürüyor (Rust): önce arıyor, sonra taşları tek tek inceliyor.</p>
 
 <span class="anchor" id="code"></span>
 <h2 lang="en">In your own code</h2><h2 lang="tr">Kendi kodunda</h2>

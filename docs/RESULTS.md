@@ -155,7 +155,8 @@ colour and was called twice; Mateless answers both in one pass (`BOTH=1`, 5 roun
 | `lichess.txt` | 131,072 | 3.90 µs | 0.95 µs | 0.54 µs | ~7.3× |
 | game positions (1,500 games, every ply) | 136,000 | 3.81 µs | 0.56 µs | 0.34 µs | ~11× |
 
-- **Coverage:** chasolver proves all 201,060 rows, Mateless 201,024. On `lichess.txt` both prove
+- **Coverage:** chasolver proves all 201,060 rows, Mateless 201,024. Coverage is counted on
+  chasolver's list alone: the 3,000 scanned rows were chosen as rows both prove. On `lichess.txt` both prove
   all 2,410 side-positions labelled "cannot mate".
 - **Cold and hot:** Mateless's lock test is so short that on 50,970 positions reading them from
   memory is ~30% of its time. 512 positions run again and again in a hot cache time the
@@ -249,7 +250,7 @@ root, every legal move keeps it, no position that keeps it is a mate) is still t
 then to be checked by machine.
 
 **Equal answers across ports.**
-- JS = Rust, byte for byte with node counts: the 201,060 rows, chasolver's labelled positions, the
+- JS = Rust, byte for byte with node counts: the 204,060 rows (chasolver's list and the scan), chasolver's labelled positions, the
   flags of thousands of games (`test/rust_compare.js`).
 - JS = WebAssembly: chasolver's positions and the 192,457 rows (every field, both sides), the flags
   of games ply by ply (`test/wasm_check.js`).
@@ -274,7 +275,7 @@ what the second version makes of each.
 
 | | first version | second version |
 |---|---|---|
-| chasolver's Lichess rows and the August–September scan (204,060), proven | 204,024 | **204,054** |
+| chasolver's Lichess rows up to July (201,060), proven | 201,024 | **201,054** |
 | of the 36 unproven: by the open-pair rule | | 3 (GyWj6Ymz, azjorRHB, lBSDAx07) |
 | by the boxed rule | | 1 (hPiwD75i) |
 | by the second tier (238–1,360 nodes each) | | 26 |
@@ -283,7 +284,9 @@ what the second version makes of each.
 | the same, proven by a search | 394 | 421 |
 | false draws | 0 | 0 |
 
-Every other row keeps its class: of the 204,060, only those 30 change (26 unproven → Domino,
+Coverage is counted on chasolver's list: the 3,000 rows of the August–September scan were chosen
+as rows that both chasolver and Mateless prove, so both versions prove all of them. Every other row
+keeps its class: of the 204,060, only those 30 change (26 unproven → Domino,
 4 unproven → lock).
 
 **Speed against chasolver**, both versions in the same runs as chasolver's fast check (Rust, one

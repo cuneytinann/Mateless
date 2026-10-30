@@ -2307,9 +2307,10 @@ class PositionSet {
    unless the caller has settled them already (rootStatic: false, see ladder.js).
 
    The ply ceiling and node budget default to 6 and 100 (DOMINO_PLY, DOMINO_BUDGET). With them
-   the ladder proves 201,024 of chasolver's 201,060 wrongly decided Lichess timeouts; a proof
-   takes 1 node at the median, at most 8 nodes in 99% of the rows, and a ceiling above 6 plies
-   proves no more rows. In an open position the first line runs to the ceiling and fails there,
+   the ladder proves 201,024 of chasolver's 201,060 wrongly decided Lichess timeouts (201,054 with
+   the second tier, ladder.js); a proof takes 1 node at the median, at most 8 nodes in 99% of the
+   rows, and a ceiling above 6 plies at this budget proves no more rows (the second tier raises
+   both). In an open position the first line runs to the ceiling and fails there,
    after about as many nodes as plies. The budget pays for every move played, each promotion
    separately.
 

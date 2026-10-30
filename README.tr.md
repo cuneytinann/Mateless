@@ -40,7 +40,9 @@ küçük.
 Kilitli bir pozisyon **yaklaşık 90 nanosaniyede** ispatlanıyor (Rust; pozisyon önbellekteyken
 ~60 ns). Gerçek bir oyundan, tahtasında at, kale ya da vezir olan bir pozisyonu kilit dedektörü
 **~9 ns'de** eliyor. Merdivenin tamamı Lichess süre bitimi başına ortalama **~0,23 µs**; bir
-oyunu izlemek, iki tarafın bayrağı için **hamle başına ~0,35 µs**.
+oyunu izlemek, iki tarafın bayrağı için **hamle başına ~0,35 µs**. Hızlar chasolver'ın temmuz
+2026'ya kadarki listesinde (201.060 satır, 50.970 kilit) ölçüldü; ağustos–eylül taramasının
+satırları sonradan eklendi.
 
 | | Rust | JavaScript |
 |---|---|---|
@@ -63,7 +65,9 @@ ortancası; `rust/examples/vs_chasolver.rs`):
 | iki taraf birden, bütün satırlar | 201.060 | 6,52 µs (iki çağrı) | 0,41 µs | **~16×** |
 | gerçek oyun pozisyonları (chasolver'ın `lichess.txt`'i, iki taraf) | 131.072 | 2,41 µs | 0,563 µs | ~4,3× |
 
-chasolver 201.060 satırın hepsini, Mateless 201.024'ünü ispatlıyor. Tarayıcı aynı motoru
+chasolver 201.060 satırın hepsini, Mateless 201.024'ünü ispatlıyor. Kapsam yalnızca chasolver'ın
+listesinde sayılıyor: ağustos–eylül taramasının 3.000 satırı, hem chasolver'ın hem Mateless'in
+ispatladığı satırlar olarak seçildi. Tarayıcı aynı motoru
 çalıştırıyor: hakem sayfası kilitli bir pozisyonu bir mikrosaniyenin altında ispatlıyor;
 WebAssembly bütün ispatlarda JavaScript'ten 2,5–4 kat hızlı. Ayrıntılar ve JavaScript'e karşı
 JavaScript karşılaştırmasının neden Mateless'i olduğundan iyi gösterdiği (~85–95×)
@@ -152,7 +156,8 @@ oyun kimliği, tarih, sınıf, Lichess bugün, bayrakta `a-lock` ile, ölü pozi
 `locked_positions.tsv` (52.050 kilitli pozisyon, mat edemeyen tarafla) ve
 `lichess_2026-08_09.tsv` (taranan satırlar son pozisyonlarıyla; yanlarında rakip hiçbir zaman
 mat edemezken terk edilen 170 oyun: FIDE 5.1.2'ye göre beraberlik, Lichess ise her terki kayıp
-sayıyor). İspatlanamayan 36 satırın 32'si,
+sayıyor). İspatlanamayan 36 satırın hepsi chasolver'ın temmuza kadarki listesinden (taranan
+satırlar Mateless'in ispatladıkları arasından seçildi). 32'si,
 ulaşılabilen pozisyonları arasında pat bulunan kafesler (çoğu köşeye kapanmış bir şah, son piyonu
 almak pat getiriyor; 6'sında vezir ya da kale var), 3'ü önü açık bir piyon çifti (bir sütunda bir
 beyaz ve bir siyah piyon, aralarında tek boş kare, yapının geri kalanı kilitli), 1'i kendi

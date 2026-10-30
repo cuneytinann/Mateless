@@ -39,7 +39,9 @@ fast layer in front of a complete solver, small enough to run inside a game serv
 A locked position is proven in **about 90 nanoseconds** (Rust; ~60 ns with the position already in
 the cache). A position from a real game, with a knight, rook or queen on the board, is set aside
 by the lock detector in **~9 ns**. The whole ladder averages **~0.23 µs** per Lichess timeout,
-and following a game costs **~0.35 µs per move** for both sides' flags.
+and following a game costs **~0.35 µs per move** for both sides' flags. The speeds were
+measured on chasolver's list up to July 2026 (201,060 rows, 50,970 locks), before the rows of the
+August–September scan were added.
 
 | | Rust | JavaScript |
 |---|---|---|
@@ -62,7 +64,9 @@ Against chasolver's fast check, both in Rust, in one binary with chasolver's own
 | both sides at once, all rows | 201,060 | 6.52 µs (two calls) | 0.41 µs | **~16×** |
 | real game positions (chasolver's `lichess.txt`, both sides) | 131,072 | 2.41 µs | 0.563 µs | ~4.3× |
 
-chasolver proves all 201,060 rows, Mateless 201,024. The browser runs the same engine: the
+chasolver proves all 201,060 rows, Mateless 201,024. Coverage is counted on chasolver's list
+alone: the 3,000 rows of the August–September scan were chosen as rows that both chasolver and
+Mateless prove. The browser runs the same engine: the
 arbiter page proves a locked position in under a microsecond, and WebAssembly is 2.5–4× faster
 than JavaScript for whole proofs. Details, and why a JavaScript-against-JavaScript comparison
 flatters Mateless (~85–95×), in [docs/RESULTS.md](docs/RESULTS.md).
@@ -147,7 +151,8 @@ row: game id, date, class, Lichess today, at the flag with `a-lock`, dead positi
 `in-game`), `locked_positions.tsv` (the 52,050 locked positions with the side that cannot mate) and
 `lichess_2026-08_09.tsv` (the scanned rows with their final positions; with them 170 games
 resigned where the opponent could never mate, a draw under FIDE 5.1.2 that Lichess scores as a
-loss). Of the 36 unproven rows, 32 are cages whose reachable positions include stalemates (mostly
+loss). The 36 unproven rows all come from chasolver's list up to July (the scanned rows were
+chosen as rows Mateless proves). Of them, 32 are cages whose reachable positions include stalemates (mostly
 a king shut in a corner, where taking the last pawn gives stalemate; 6 of them with a queen or a
 rook), 3 hold an open pawn pair (one empty square between a white and a black pawn on a file,
 the rest locked), and 1 a knight boxed in by its own pawns. They, and whatever a platform's own

@@ -129,7 +129,8 @@ flag falls. What it still misses is, almost entirely, **locked positions**: 51,9
 misses. From 7 to 30 September, with #821 in use, 460 games were still lost on time this way;
 422 of them (92%) were locks.
 
-The lock patch proposed for Lichess is
+The lock patch proposed for Lichess, in
+[lichess-org/scalachess#907](https://github.com/lichess-org/scalachess/pull/907), is
 [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'s `in-game`: the lock
 detector alone (181 lines of Scala) as a dead-position check (FIDE 5.2.2) in scalachess's
 `autoDraw`, asked for both sides when the halfmove clock is 0 or 1, right after a capture or a

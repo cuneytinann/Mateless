@@ -134,6 +134,7 @@ pozisyonlar**: 56.715 kaçırılan satırın 51.909'u. 7–30 Eylül'de, #821 ku
 böyle süreden kaybedildi; 422'si (%92) kilitti.
 
 Lichess için önerilen kilit yaması
+([lichess-org/scalachess#907](https://github.com/lichess-org/scalachess/pull/907))
 [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'teki `in-game`:
 yalnızca kilit dedektörü (181 satır Scala), scalachess'in `autoDraw`'unda bir ölü pozisyon
 kontrolü olarak (FIDE 5.2.2); yarım hamle sayacı 0 ya da 1 iken, yani bir alıştan ya da piyon

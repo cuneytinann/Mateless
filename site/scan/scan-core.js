@@ -182,8 +182,8 @@ function makeScanner(E, CHA) {
     if (I.lockTest(p, flagged)) return 'lock';
     return E.proveCannotBeMated(p, flagged).proven ? 'domino' : 'none';
   }
-  /** scalachess 18.0.1's rule when `flagged` (to move) runs out of time (#821's lookahead), and
-      the same with mateless-scalachess's a-lock. */
+  /** scalachess 18.0.1's rule (the same in 18.1.0) when `flagged` (to move) runs out of time
+      (#821's lookahead), and the same with mateless-scalachess's a-lock. */
   function lichessDraw(p, flagged, withLock) {
     if (I.materialTest(p, flagged)) return true;
     const n = I.generateLegalMoves(p, MOVES2, 0);

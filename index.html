@@ -6665,6 +6665,9 @@ return Object.freeze({
 </script>
 <script id="cha-engine">
 /* chasolver-js engine (board.js, deduction.js, search.js, winnability.js), bundled unchanged.
+   chasolver 3.0.0 with the stalemate-filter fix of its main branch (b28469f, f2b50c4; merged in cb1e9da),
+   plus one more fix of ours to that filter, not yet in chasolver: only the opponent's own steady
+   pieces count as walls of its king (see Analysis.filterTargets).
    Each file runs inside its own function with module/exports/require, as under Node. */
 var CHA=(function(){var defs={},cache={};
 function req(n){var m=cache[n];if(m)return m.exports;m=cache[n]={exports:{}};defs[n](m,m.exports,req);return m.exports}
@@ -7496,6 +7499,7 @@ class Analysis {
     this.steadyLo = this.combinedLo; this.steadyHi = this.combinedHi;        // under-approx: never moves nor gets captured
     this.clearLo = ~this.combinedLo; this.clearHi = ~this.combinedHi;        // under-approx: nothing ever enters
     this.attackedLo = new Int32Array(2); this.attackedHi = new Int32Array(2); // under-approx: always attacked, per colour
+    this.attackedByNonKingLo = new Int32Array(2); this.attackedByNonKingHi = new Int32Array(2); // the same, by non-king pieces
     this.capturableLo = 0; this.capturableHi = 0;                           // over-approx
     this.movableLo = 0; this.movableHi = 0;                                 // over-approx
     this.nonBishopLo = new Int32Array(2); this.nonBishopHi = new Int32Array(2); // reachable_by_non_bishop, over-approx
@@ -7521,6 +7525,7 @@ class Analysis {
   /** Recompute squares that stay attacked, from pieces guaranteed to remain on the board. */
   updateAttackedSquares() {
     this.attackedLo[0] = 0; this.attackedLo[1] = 0; this.attackedHi[0] = 0; this.attackedHi[1] = 0;
+    this.attackedByNonKingLo[0] = 0; this.attackedByNonKingLo[1] = 0; this.attackedByNonKingHi[0] = 0; this.attackedByNonKingHi[1] = 0;
     let lo = this.combinedLo & ~this.capturableLo, hi = this.combinedHi & ~this.capturableHi;
     while ((lo | hi) !== 0) {
       const s = lowestSquare(lo, hi);
@@ -7542,6 +7547,7 @@ class Analysis {
         attackedLo &= rLo; attackedHi &= rHi;
       }
       this.attackedLo[color] |= attackedLo; this.attackedHi[color] |= attackedHi;
+      if (piece !== KING) { this.attackedByNonKingLo[color] |= attackedLo; this.attackedByNonKingHi[color] |= attackedHi; }
     }
   }
 
@@ -7676,11 +7682,12 @@ class Analysis {
       const oppKingLo = oppLo & this.kingsLo, oppKingHi = oppHi & this.kingsHi;
       const oppCanOnlyMoveKing = ((~oppKingLo & oppLo & this.movableLo) | (~oppKingHi & oppHi & this.movableHi)) === 0;
       const oppKing = lowestSquare(oppKingLo, oppKingHi);
-      const regionLo = this.reachLo[oppKing] | (KING_LO[oppKing] & ~this.attackedLo[color] & ~this.steadyLo);
-      const regionHi = this.reachHi[oppKing] | (KING_HI[oppKing] & ~this.attackedHi[color] & ~this.steadyHi);
-      const bq = pieceCode(BISHOP, color), rq = pieceCode(ROOK, color), qq = pieceCode(QUEEN, color);
-      const diagLo = this.bbLo[bq] | this.bbLo[qq], diagHi = this.bbHi[bq] | this.bbHi[qq];
-      const lineLo = this.bbLo[rq] | this.bbLo[qq], lineHi = this.bbHi[rq] | this.bbHi[qq];
+      // Our own king is left out of the attacked set: this is the position *after* it has moved to
+      // `t`, where it no longer covers what it covers from `source` (chasolver b28469f).
+      // Only the opponent's own steady pieces wall its king in: ours it may capture, and their
+      // steadiness may rest on this very filter (our fix to chasolver; 8/8/8/8/1p6/kP6/P7/1K6 w).
+      const regionLo = this.reachLo[oppKing] | (KING_LO[oppKing] & ~this.attackedByNonKingLo[color] & ~(this.steadyLo & oppLo));
+      const regionHi = this.reachHi[oppKing] | (KING_HI[oppKing] & ~this.attackedByNonKingHi[color] & ~(this.steadyHi & oppHi));
       if (oppCanOnlyMoveKing) {
         let lo = tLo, hi = tHi;
         while ((lo | hi) !== 0) {
@@ -7688,12 +7695,8 @@ class Analysis {
           if (t < 32) lo ^= 1 << t; else hi ^= 1 << (t - 32);
           const fromTargetLo = KING_LO[t] | bitLo(t), fromTargetHi = KING_HI[t] | bitHi(t);
           if (((KING_LO[oppKing] & fromTargetLo) | (KING_HI[oppKing] & fromTargetHi)) === 0) continue;
-          const blockersLo = clearNotLo | bitLo(t), blockersHi = clearNotHi | bitHi(t);
-          // Vacating `source` may open a line for a friendly slider: that would be mate, not stalemate.
-          slide(source, 4, 8, blockersLo, blockersHi);
-          if (this.anyReaches(diagLo, diagHi, rLo & ~blockersLo, rHi & ~blockersHi)) continue;
-          slide(source, 0, 4, blockersLo, blockersHi);
-          if (this.anyReaches(lineLo, lineHi, rLo & ~blockersLo, rHi & ~blockersHi)) continue;
+          // Stalemate rather than mate: the opponent was not in check before, so only a discovery from
+          // `source` could give one, which would free the pieces that confine its king (chasolver f2b50c4).
           if (popcount(regionLo & ~fromTargetLo, regionHi & ~fromTargetHi) <= 1) { tLo &= ~bitLo(t); tHi &= ~bitHi(t); }
         }
       }
@@ -7729,16 +7732,6 @@ class Analysis {
       tLo = 0; tHi = 0;
     }
     rLo = tLo; rHi = tHi;
-  }
-
-  /** Does any piece standing on (piecesLo, piecesHi) have a reachable square in (lo, hi)? */
-  anyReaches(piecesLo, piecesHi, lo, hi) {
-    while ((piecesLo | piecesHi) !== 0) {
-      const s = lowestSquare(piecesLo, piecesHi);
-      if (s < 32) piecesLo ^= 1 << s; else piecesHi ^= 1 << (s - 32);
-      if (((this.reachLo[s] & lo) | (this.reachHi[s] & hi)) !== 0) return true;
-    }
-    return false;
   }
 
   updateReachable(square, lo, hi) {
@@ -8671,8 +8664,8 @@ function makeScanner(E, CHA) {
     if (I.lockTest(p, flagged)) return 'lock';
     return E.proveCannotBeMated(p, flagged).proven ? 'domino' : 'none';
   }
-  /** scalachess 18.0.1's rule when `flagged` (to move) runs out of time (#821's lookahead), and
-      the same with mateless-scalachess's a-lock. */
+  /** scalachess 18.0.1's rule (the same in 18.1.0) when `flagged` (to move) runs out of time
+      (#821's lookahead), and the same with mateless-scalachess's a-lock. */
   function lichessDraw(p, flagged, withLock) {
     if (I.materialTest(p, flagged)) return true;
     const n = I.generateLegalMoves(p, MOVES2, 0);
@@ -11398,7 +11391,7 @@ var DICT={
 en:{
  title:'chasolver',
  h1:'Can this side still mate, by any series of legal moves?',
- sub:'chasolver answers <b>winnable</b> and shows a mating line, or <b>unwinnable</b> and proves it. This is Miguel Ambrona’s chasolver 3.0.0, ported to JavaScript with the same verdicts and the same lines as the Rust original, running in your browser. Mateless is the fast layer in front of it; this is the complete solver behind.',
+ sub:'chasolver answers <b>winnable</b> and shows a mating line, or <b>unwinnable</b> and proves it. This is Miguel Ambrona’s chasolver 3.0.0 with the stalemate-filter fix of its main branch (11 November 2026) and one more fix of ours to that filter, ported to JavaScript with the same verdicts and the same lines as the Rust original, running in your browser. Mateless is the fast layer in front of it; this is the complete solver behind.',
  lblLang:'Language',
  navArb:'Arbiter',
  navCha:'chasolver',
@@ -11514,12 +11507,12 @@ en:{
  thBad:'unreadable',
  thTime:'time',
  thTot:'total',
- foot:'Engine: chasolver-js, a JavaScript port of <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0 (Copyright © 2021–2026 Miguel Ambrona) with parts derived from the <a href="https://github.com/jordanbray/chess">chess</a> crate (Copyright © 2010–2016 Jordan Bray), both MIT licensed; the licence texts are at the top of this file’s source. On 398,960 inputs its fast check gave the official Rust build’s answer on every row. Everything runs in your browser, in a background worker; no position or file leaves the page. chasolver’s own site: <a href="https://chasolver.org">chasolver.org</a>, with the Lichess games lost on time that should have been drawn at <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a>. Part of <a href="https://github.com/cuneytinann/Mateless">Mateless</a>.',
+ foot:'Engine: chasolver-js, a JavaScript port of <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0 (Copyright © 2021–2026 Miguel Ambrona) with the stalemate-filter fix of its main branch (cb1e9da, 11 November 2026) and one more fix of ours to that filter, not yet in chasolver: pieces the enemy king can capture no longer count as its walls, which ends 44 wrong “cannot win” claims on Lichess games. Parts are derived from the <a href="https://github.com/jordanbray/chess">chess</a> crate (Copyright © 2010–2016 Jordan Bray), both MIT licensed; the licence texts are at the top of this file’s source. Against the Rust build with the same fix it gave the same answer on every row: the fast check on 342,559 inputs, the full analysis, mating lines included, on 138,075. Everything runs in your browser, in a background worker; no position or file leaves the page. chasolver’s own site: <a href="https://chasolver.org">chasolver.org</a>, with the Lichess games lost on time that should have been drawn at <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a>. Part of <a href="https://github.com/cuneytinann/Mateless">Mateless</a>.',
 },
 tr:{
  title:'chasolver',
  h1:'Bu taraf herhangi bir legal hamle dizisiyle hâlâ mat edebilir mi?',
- sub:'chasolver ya <b>kazanılabilir</b> der ve bir mat hattı gösterir, ya da <b>kazanılamaz</b> der ve bunu kanıtlar. Bu, Miguel Ambrona’nın chasolver 3.0.0’ı; Rust aslıyla aynı hükümleri ve aynı hatları veren bir JavaScript çevirisi, tarayıcında çalışıyor. Mateless onun önündeki hızlı katman; bu, arkasındaki tam çözücü.',
+ sub:'chasolver ya <b>kazanılabilir</b> der ve bir mat hattı gösterir, ya da <b>kazanılamaz</b> der ve bunu kanıtlar. Bu, Miguel Ambrona’nın chasolver 3.0.0’ı, ana dalındaki pat süzgeci düzeltmesiyle (11 Kasım 2026) ve aynı süzgece bizim bir düzeltmemizle; Rust aslıyla aynı hükümleri ve aynı hatları veren bir JavaScript çevirisi, tarayıcında çalışıyor. Mateless onun önündeki hızlı katman; bu, arkasındaki tam çözücü.',
  lblLang:'Dil',
  navArb:'Hakem',
  navCha:'chasolver',
@@ -11635,7 +11628,7 @@ tr:{
  thBad:'okunamayan',
  thTime:'süre',
  thTot:'toplam',
- foot:'Motor: chasolver-js; <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0’ın (Copyright © 2021–2026 Miguel Ambrona) JavaScript çevirisi, bazı kısımları <a href="https://github.com/jordanbray/chess">chess</a> crate’inden (Copyright © 2010–2016 Jordan Bray) türetildi; ikisi de MIT lisanslı, lisans metinleri bu dosyanın kaynağının başında. 398.960 girdide hızlı kontrolü resmi Rust sürümüyle her satırda aynı cevabı verdi. Her şey tarayıcında, bir arka plan işçisinde çalışır; hiçbir pozisyon ya da dosya sayfadan çıkmaz. chasolver’ın kendi sitesi: <a href="https://chasolver.org">chasolver.org</a>; berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a> sayfasında. <a href="https://github.com/cuneytinann/Mateless">Mateless</a>’in parçası.',
+ foot:'Motor: chasolver-js; <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0’ın (Copyright © 2021–2026 Miguel Ambrona) JavaScript çevirisi; ana dalındaki pat süzgeci düzeltmesi (cb1e9da, 11 Kasım 2026) ve aynı süzgece bizim, henüz chasolver’da olmayan bir düzeltmemiz dahil: rakip şahın alabileceği taşlar artık onun duvarı sayılmıyor; bu, Lichess oyunlarındaki 44 yanlış “kazanamaz” hükmünü bitiriyor. Bazı kısımları <a href="https://github.com/jordanbray/chess">chess</a> crate’inden (Copyright © 2010–2016 Jordan Bray) türetildi; ikisi de MIT lisanslı, lisans metinleri bu dosyanın kaynağının başında. Aynı düzeltmeli Rust sürümüyle her satırda aynı cevabı verdi: hızlı kontrol 342.559 girdide, tam analiz, mat hatları dahil, 138.075 girdide. Her şey tarayıcında, bir arka plan işçisinde çalışır; hiçbir pozisyon ya da dosya sayfadan çıkmaz. chasolver’ın kendi sitesi: <a href="https://chasolver.org">chasolver.org</a>; berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a> sayfasında. <a href="https://github.com/cuneytinann/Mateless">Mateless</a>’in parçası.',
 }};
 var lang='en';
 function T(k){var v=DICT[lang][k];return v===undefined?DICT.en[k]:v}

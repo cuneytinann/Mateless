@@ -7,7 +7,7 @@ var DICT={
 en:{
  title:'chasolver',
  h1:'Can this side still mate, by any series of legal moves?',
- sub:'chasolver answers <b>winnable</b> and shows a mating line, or <b>unwinnable</b> and proves it. This is Miguel Ambrona’s chasolver 3.0.0, ported to JavaScript with the same verdicts and the same lines as the Rust original, running in your browser. Mateless is the fast layer in front of it; this is the complete solver behind.',
+ sub:'chasolver answers <b>winnable</b> and shows a mating line, or <b>unwinnable</b> and proves it. This is Miguel Ambrona’s chasolver 3.0.0 with the stalemate-filter fix of its main branch (11 November 2026) and one more fix of ours to that filter, ported to JavaScript with the same verdicts and the same lines as the Rust original, running in your browser. Mateless is the fast layer in front of it; this is the complete solver behind.',
  lblLang:'Language',
  navArb:'Arbiter',
  navCha:'chasolver',
@@ -123,12 +123,12 @@ en:{
  thBad:'unreadable',
  thTime:'time',
  thTot:'total',
- foot:'Engine: chasolver-js, a JavaScript port of <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0 (Copyright © 2021–2026 Miguel Ambrona) with parts derived from the <a href="https://github.com/jordanbray/chess">chess</a> crate (Copyright © 2010–2016 Jordan Bray), both MIT licensed; the licence texts are at the top of this file’s source. On 398,960 inputs its fast check gave the official Rust build’s answer on every row. Everything runs in your browser, in a background worker; no position or file leaves the page. chasolver’s own site: <a href="https://chasolver.org">chasolver.org</a>, with the Lichess games lost on time that should have been drawn at <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a>. Part of <a href="https://github.com/cuneytinann/Mateless">Mateless</a>.',
+ foot:'Engine: chasolver-js, a JavaScript port of <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0 (Copyright © 2021–2026 Miguel Ambrona) with the stalemate-filter fix of its main branch (cb1e9da, 11 November 2026) and one more fix of ours to that filter, not yet in chasolver: pieces the enemy king can capture no longer count as its walls, which ends 44 wrong “cannot win” claims on Lichess games. Parts are derived from the <a href="https://github.com/jordanbray/chess">chess</a> crate (Copyright © 2010–2016 Jordan Bray), both MIT licensed; the licence texts are at the top of this file’s source. Against the Rust build with the same fix it gave the same answer on every row: the fast check on 342,559 inputs, the full analysis, mating lines included, on 138,075. Everything runs in your browser, in a background worker; no position or file leaves the page. chasolver’s own site: <a href="https://chasolver.org">chasolver.org</a>, with the Lichess games lost on time that should have been drawn at <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a>. Part of <a href="https://github.com/cuneytinann/Mateless">Mateless</a>.',
 },
 tr:{
  title:'chasolver',
  h1:'Bu taraf herhangi bir legal hamle dizisiyle hâlâ mat edebilir mi?',
- sub:'chasolver ya <b>kazanılabilir</b> der ve bir mat hattı gösterir, ya da <b>kazanılamaz</b> der ve bunu kanıtlar. Bu, Miguel Ambrona’nın chasolver 3.0.0’ı; Rust aslıyla aynı hükümleri ve aynı hatları veren bir JavaScript çevirisi, tarayıcında çalışıyor. Mateless onun önündeki hızlı katman; bu, arkasındaki tam çözücü.',
+ sub:'chasolver ya <b>kazanılabilir</b> der ve bir mat hattı gösterir, ya da <b>kazanılamaz</b> der ve bunu kanıtlar. Bu, Miguel Ambrona’nın chasolver 3.0.0’ı, ana dalındaki pat süzgeci düzeltmesiyle (11 Kasım 2026) ve aynı süzgece bizim bir düzeltmemizle; Rust aslıyla aynı hükümleri ve aynı hatları veren bir JavaScript çevirisi, tarayıcında çalışıyor. Mateless onun önündeki hızlı katman; bu, arkasındaki tam çözücü.',
  lblLang:'Dil',
  navArb:'Hakem',
  navCha:'chasolver',
@@ -244,7 +244,7 @@ tr:{
  thBad:'okunamayan',
  thTime:'süre',
  thTot:'toplam',
- foot:'Motor: chasolver-js; <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0’ın (Copyright © 2021–2026 Miguel Ambrona) JavaScript çevirisi, bazı kısımları <a href="https://github.com/jordanbray/chess">chess</a> crate’inden (Copyright © 2010–2016 Jordan Bray) türetildi; ikisi de MIT lisanslı, lisans metinleri bu dosyanın kaynağının başında. 398.960 girdide hızlı kontrolü resmi Rust sürümüyle her satırda aynı cevabı verdi. Her şey tarayıcında, bir arka plan işçisinde çalışır; hiçbir pozisyon ya da dosya sayfadan çıkmaz. chasolver’ın kendi sitesi: <a href="https://chasolver.org">chasolver.org</a>; berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a> sayfasında. <a href="https://github.com/cuneytinann/Mateless">Mateless</a>’in parçası.',
+ foot:'Motor: chasolver-js; <a href="https://github.com/miguel-ambrona/chasolver">chasolver</a> 3.0.0’ın (Copyright © 2021–2026 Miguel Ambrona) JavaScript çevirisi; ana dalındaki pat süzgeci düzeltmesi (cb1e9da, 11 Kasım 2026) ve aynı süzgece bizim, henüz chasolver’da olmayan bir düzeltmemiz dahil: rakip şahın alabileceği taşlar artık onun duvarı sayılmıyor; bu, Lichess oyunlarındaki 44 yanlış “kazanamaz” hükmünü bitiriyor. Bazı kısımları <a href="https://github.com/jordanbray/chess">chess</a> crate’inden (Copyright © 2010–2016 Jordan Bray) türetildi; ikisi de MIT lisanslı, lisans metinleri bu dosyanın kaynağının başında. Aynı düzeltmeli Rust sürümüyle her satırda aynı cevabı verdi: hızlı kontrol 342.559 girdide, tam analiz, mat hatları dahil, 138.075 girdide. Her şey tarayıcında, bir arka plan işçisinde çalışır; hiçbir pozisyon ya da dosya sayfadan çıkmaz. chasolver’ın kendi sitesi: <a href="https://chasolver.org">chasolver.org</a>; berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları <a href="https://chasolver.org/unfair-games">chasolver.org/unfair-games</a> sayfasında. <a href="https://github.com/cuneytinann/Mateless">Mateless</a>’in parçası.',
 }};
 var lang='en';
 function T(k){var v=DICT[lang][k];return v===undefined?DICT.en[k]:v}

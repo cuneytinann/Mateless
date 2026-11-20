@@ -1,4 +1,7 @@
 /* chasolver-js engine (board.js, deduction.js, search.js, winnability.js), bundled unchanged.
+   chasolver 3.0.0 with the stalemate-filter fix of its main branch (b28469f, f2b50c4; merged in cb1e9da),
+   plus one more fix of ours to that filter, not yet in chasolver: only the opponent's own steady
+   pieces count as walls of its king (see Analysis.filterTargets).
    Each file runs inside its own function with module/exports/require, as under Node. */
 var CHA=(function(){var defs={},cache={};
 function req(n){var m=cache[n];if(m)return m.exports;m=cache[n]={exports:{}};defs[n](m,m.exports,req);return m.exports}
@@ -830,6 +833,7 @@ class Analysis {
     this.steadyLo = this.combinedLo; this.steadyHi = this.combinedHi;        // under-approx: never moves nor gets captured
     this.clearLo = ~this.combinedLo; this.clearHi = ~this.combinedHi;        // under-approx: nothing ever enters
     this.attackedLo = new Int32Array(2); this.attackedHi = new Int32Array(2); // under-approx: always attacked, per colour
+    this.attackedByNonKingLo = new Int32Array(2); this.attackedByNonKingHi = new Int32Array(2); // the same, by non-king pieces
     this.capturableLo = 0; this.capturableHi = 0;                           // over-approx
     this.movableLo = 0; this.movableHi = 0;                                 // over-approx
     this.nonBishopLo = new Int32Array(2); this.nonBishopHi = new Int32Array(2); // reachable_by_non_bishop, over-approx
@@ -855,6 +859,7 @@ class Analysis {
   /** Recompute squares that stay attacked, from pieces guaranteed to remain on the board. */
   updateAttackedSquares() {
     this.attackedLo[0] = 0; this.attackedLo[1] = 0; this.attackedHi[0] = 0; this.attackedHi[1] = 0;
+    this.attackedByNonKingLo[0] = 0; this.attackedByNonKingLo[1] = 0; this.attackedByNonKingHi[0] = 0; this.attackedByNonKingHi[1] = 0;
     let lo = this.combinedLo & ~this.capturableLo, hi = this.combinedHi & ~this.capturableHi;
     while ((lo | hi) !== 0) {
       const s = lowestSquare(lo, hi);
@@ -876,6 +881,7 @@ class Analysis {
         attackedLo &= rLo; attackedHi &= rHi;
       }
       this.attackedLo[color] |= attackedLo; this.attackedHi[color] |= attackedHi;
+      if (piece !== KING) { this.attackedByNonKingLo[color] |= attackedLo; this.attackedByNonKingHi[color] |= attackedHi; }
     }
   }
 
@@ -1010,11 +1016,12 @@ class Analysis {
       const oppKingLo = oppLo & this.kingsLo, oppKingHi = oppHi & this.kingsHi;
       const oppCanOnlyMoveKing = ((~oppKingLo & oppLo & this.movableLo) | (~oppKingHi & oppHi & this.movableHi)) === 0;
       const oppKing = lowestSquare(oppKingLo, oppKingHi);
-      const regionLo = this.reachLo[oppKing] | (KING_LO[oppKing] & ~this.attackedLo[color] & ~this.steadyLo);
-      const regionHi = this.reachHi[oppKing] | (KING_HI[oppKing] & ~this.attackedHi[color] & ~this.steadyHi);
-      const bq = pieceCode(BISHOP, color), rq = pieceCode(ROOK, color), qq = pieceCode(QUEEN, color);
-      const diagLo = this.bbLo[bq] | this.bbLo[qq], diagHi = this.bbHi[bq] | this.bbHi[qq];
-      const lineLo = this.bbLo[rq] | this.bbLo[qq], lineHi = this.bbHi[rq] | this.bbHi[qq];
+      // Our own king is left out of the attacked set: this is the position *after* it has moved to
+      // `t`, where it no longer covers what it covers from `source` (chasolver b28469f).
+      // Only the opponent's own steady pieces wall its king in: ours it may capture, and their
+      // steadiness may rest on this very filter (our fix to chasolver; 8/8/8/8/1p6/kP6/P7/1K6 w).
+      const regionLo = this.reachLo[oppKing] | (KING_LO[oppKing] & ~this.attackedByNonKingLo[color] & ~(this.steadyLo & oppLo));
+      const regionHi = this.reachHi[oppKing] | (KING_HI[oppKing] & ~this.attackedByNonKingHi[color] & ~(this.steadyHi & oppHi));
       if (oppCanOnlyMoveKing) {
         let lo = tLo, hi = tHi;
         while ((lo | hi) !== 0) {
@@ -1022,12 +1029,8 @@ class Analysis {
           if (t < 32) lo ^= 1 << t; else hi ^= 1 << (t - 32);
           const fromTargetLo = KING_LO[t] | bitLo(t), fromTargetHi = KING_HI[t] | bitHi(t);
           if (((KING_LO[oppKing] & fromTargetLo) | (KING_HI[oppKing] & fromTargetHi)) === 0) continue;
-          const blockersLo = clearNotLo | bitLo(t), blockersHi = clearNotHi | bitHi(t);
-          // Vacating `source` may open a line for a friendly slider: that would be mate, not stalemate.
-          slide(source, 4, 8, blockersLo, blockersHi);
-          if (this.anyReaches(diagLo, diagHi, rLo & ~blockersLo, rHi & ~blockersHi)) continue;
-          slide(source, 0, 4, blockersLo, blockersHi);
-          if (this.anyReaches(lineLo, lineHi, rLo & ~blockersLo, rHi & ~blockersHi)) continue;
+          // Stalemate rather than mate: the opponent was not in check before, so only a discovery from
+          // `source` could give one, which would free the pieces that confine its king (chasolver f2b50c4).
           if (popcount(regionLo & ~fromTargetLo, regionHi & ~fromTargetHi) <= 1) { tLo &= ~bitLo(t); tHi &= ~bitHi(t); }
         }
       }
@@ -1063,16 +1066,6 @@ class Analysis {
       tLo = 0; tHi = 0;
     }
     rLo = tLo; rHi = tHi;
-  }
-
-  /** Does any piece standing on (piecesLo, piecesHi) have a reachable square in (lo, hi)? */
-  anyReaches(piecesLo, piecesHi, lo, hi) {
-    while ((piecesLo | piecesHi) !== 0) {
-      const s = lowestSquare(piecesLo, piecesHi);
-      if (s < 32) piecesLo ^= 1 << s; else piecesHi ^= 1 << (s - 32);
-      if (((this.reachLo[s] & lo) | (this.reachHi[s] & hi)) !== 0) return true;
-    }
-    return false;
   }
 
   updateReachable(square, lo, hi) {

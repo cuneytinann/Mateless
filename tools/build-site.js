@@ -2,7 +2,7 @@
 /* Builds index.html, the whole site in one file, from site/ (see site/README.md) and the engines:
      mateless.js             the engine, as <script id="mateless-engine"> (test/build_check.js
                              checks that it is the current one)
-     site/second/mateless.js the second version's engine (built on the tam-kol branch), as text in
+     site/second/mateless.js the second version's engine (built on the second-version branch), as text in
                              <script id="mateless-engine-2" type="text/plain">: the arbiter runs it
                              only when the reader picks the second version
      site/chasolver/*.js     chasolver's JavaScript port, run by the chasolver tab and, as text,

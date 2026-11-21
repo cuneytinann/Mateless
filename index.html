@@ -12414,7 +12414,7 @@ var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
 var $ = function (id) { return document.getElementById(id) }, ROOT = document.getElementById('tab-arbiter');
 var ENGINE_FILE = 'mateless.js';
 /* Two versions, one engine each. 1: mateless.js, the fast layer, the rules proposed to Lichess; it is
-   window.Mateless. 2: the second version (the tam-kol branch), which adds open pawn pairs and boxed
+   window.Mateless. 2: the second version (the second-version branch), which adds open pawn pairs and boxed
    knights, rooks and queens to the lock detector and a second tier to the Domino search. Its engine is
    kept as text and run only the first time it is picked, so a reader who never picks it runs exactly
    the first; its wrapper sees a `module` and leaves window.Mateless alone. */
@@ -12767,7 +12767,7 @@ en: {
  pk_moves: "Moves",
  secEngine: "The engine on this page",
  engineNote: "<code>mateless.js</code>, exactly as it runs here ({0} bytes): a reference board, the material test, the lock detector, the Domino search and a flag per side that a game keeps move by move. The same engine is in the repository, with its Rust port and WebAssembly build.",
- engineNote2: "The second version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, and a second tier of the Domino search. It is built on the repository’s <code>tam-kol</code> branch (its Rust port and WebAssembly build do not have the rules of November yet).",
+ engineNote2: "The second version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, and a second tier of the Domino search. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers.",
  foot: "Mateless never declares a draw without a proof: a position it cannot prove falls to the win and is left to a complete solver after the game. Its verdicts were checked against chasolver’s labels, and every flag that came down in thousands of games against chasolver’s full analysis, with no false draw. MIT License, © 2026 Cüneyt İnan. Source, Rust port and data: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess data: Miguel Ambrona’s <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a>.",
 },
 tr: {
@@ -13102,7 +13102,7 @@ tr: {
  pk_moves: "Hamleler",
  secEngine: "Bu sayfadaki motor",
  engineNote: "<code>mateless.js</code>, burada çalıştığı haliyle ({0} bayt): bir referans tahta, materyal testi, kilit dedektörü, Domino araması ve bir oyunun hamle hamle tuttuğu taraf başına bir bayrak. Aynı motor, Rust çevirisi ve WebAssembly derlemesiyle birlikte repoda.",
- engineNote2: "İkinci sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında ikinci bir kademe olan <code>mateless.js</code>. Reponun <code>tam-kol</code> dalında derleniyor (Rust çevirisi ve WebAssembly derlemesi Kasım kurallarını henüz içermiyor).",
+ engineNote2: "İkinci sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında ikinci bir kademe olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi aynı cevapları veriyor.",
  foot: "Mateless ispatı olmadan hiçbir zaman beraberlik demez: ispatlayamadığı pozisyon galibiyete düşer ve oyundan sonra tam bir çözücüye kalır. Hükümleri chasolver’ın etiketlerine, binlerce oyunda düşen her bayrak da chasolver’ın tam analizine karşı denetlendi; hiç yanlış beraberlik çıkmadı. MIT Lisansı, © 2026 Cüneyt İnan. Kaynak, Rust çevirisi ve veri: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess verisi: Miguel Ambrona’nın <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a> sayfası.",
 }};
 var lang = 'en';

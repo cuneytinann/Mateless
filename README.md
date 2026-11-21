@@ -195,7 +195,7 @@ Turkish to choose. Five tabs:
   CSV. chasolver's lists of the Lichess games lost on time that should have been drawn,
   [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in. Two versions
   to choose from: the fast one (this library, the rules proposed to Lichess) and the second version
-  (the `tam-kol` branch, below); a box runs the chosen version's lock detector alone, to see which
+  (the `second-version` branch, below); a box runs the chosen version's lock detector alone, to see which
   positions it catches.
 - **Lock detector**: rung 2 from the simplest up. What the Lichess locks hold, and why knights,
   rooks, queens and twin bishops are left out; then pawns and kings on bitboards (a capture means
@@ -439,7 +439,7 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, 
 ## What comes next
 
 This version is the fast layer: sound, small, and meant to run on a game server after every
-move. A second version stands beside it, on the `tam-kol` branch, and the arbiter page runs it when
+move. A second version stands beside it, on the `second-version` branch, and the arbiter page runs it when
 it is chosen. It is not complete either, but wider in scope, with completeness as its goal, and it
 keeps growing as new rules are added: open pawn pairs, boxed knights, rooks and queens, a second tier
 of the Domino search, twin bishops, and four rules for the ways a game of kings and pawns runs into

@@ -12,6 +12,13 @@ lock/rust/target/
 lock/rust/Cargo.lock
 lock/csharp/bin/
 lock/csharp/obj/
+lock/second/*/test
+lock/second/haskell/build/
+lock/second/kotlin/lock.jar
+lock/second/rust/target/
+lock/second/rust/Cargo.lock
+lock/second/csharp/bin/
+lock/second/csharp/obj/
 lock/**/*.class
 lock/**/*.o
 lock/**/*.ppu

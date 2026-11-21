@@ -8,8 +8,9 @@
         the same source text;
      4. all of them give the same answers on chasolver's positions (CHASOLVER, every 16th) and on
         games played from them;
-     5. lock/positions.tsv is what tools/lock-positions.js writes now (labelled by mateless.js),
-        and mateless-lock.zip is what tools/build-lock-zip.js builds from lock/ now.
+     5. lock/positions.tsv and lock/second/positions.tsv are what tools/lock-positions.js writes now
+        (labelled by mateless.js), and mateless-lock.zip is what tools/build-lock-zip.js builds from
+        lock/ now.
    Usage: node build_check.js */
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 const root = path.join(__dirname, '..');

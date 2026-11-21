@@ -1,9 +1,11 @@
 'use strict';
 /* Writes lock/positions.tsv: the positions every version of the simple lock detector (lock/) is
    tested on, each labelled for both sides by mateless.js's first-version lock detector
-   (_internal.coreLockTest: the rules of lock/, without the second version's open pairs and boxed pieces).
-     node tools/lock-positions.js            writes lock/positions.tsv (the same file every time)
-     node tools/lock-positions.js --check    says whether it is up to date
+   (_internal.coreLockTest: the rules of lock/, without the second version's open pairs and boxed pieces);
+   and lock/second/positions.tsv, those of the second version (lock/second/), labelled by the second
+   version's detector (lockCannotMate), with more positions where its rules decide (see the end).
+     node tools/lock-positions.js            writes both files (the same files every time)
+     node tools/lock-positions.js --check    says whether they are up to date
    The positions:
      - the lock tab's examples, and a few positions of a rare kind (LATE_CAPTURES below);
      - an even sample of data/locked_positions.tsv (locks from Lichess games) and their mirror
@@ -232,22 +234,121 @@ for (let i = 0; i < 16000; i++) {
 // Random positions.
 for (let i = 0; i < 4000; i++) add(normal(randomPosition()));
 
-const rows = [...out].map(([fen, label]) => fen + '\t' + label);
-const both = rows.filter(r => r.endsWith('1\t1')).length, white = rows.filter(r => /\t1\t0$/.test(r)).length,
-      black = rows.filter(r => /\t0\t1$/.test(r)).length;
-const head = [
-  '# The positions the lock detector is tested on, in every language: written by tools/lock-positions.js,',
-  '# labelled by mateless.js. One line per position: the FEN, then 1 if White can never be mated (the',
-  '# lock detector proves it) or 0, then the same for Black.',
-  '# ' + rows.length + ' positions: ' + both + ' locked for both sides, ' + white + ' for White only, ' + black + ' for Black only, ' +
-    (rows.length - both - white - black) + ' for neither.',
+/* The second version's positions: every position above, relabelled, and positions where its rules
+   decide: the rows of data/second_version.tsv and the rule examples of test/second_version_check.js
+   (each with its mirror image), and the Lichess locks changed so that a rule has a chance: a ram
+   pulled apart into an open pair, a knight, rook or queen boxed in by its own pawns, the king of the
+   side to move stepped into a pawn's check, both kings moved anywhere (stalemate guards and stuck
+   maters come from those); for each lock and change, one position the rule proves and one it does
+   not, when they come within a few tries. */
+const SECOND_CASES = [
+  '8/4k1p1/1p2p1Pp/1p1pPp2/1P1P1P1P/4K3/8/8 w - - 0 33', '8/4k1p1/1p2p1PP/1p1pPp2/1P1P1P2/4K3/8/8 b - - 0 33',
+  '1n6/2Bp4/p1pPp1k1/PpP1Pp1p/1P3P1P/2K5/8/8 w - - 7 53', '1n6/2Bp4/p2Pp1k1/PpP1Pp1p/1P3P1P/2K5/8/8 w - - 7 53',
+  '4k3/8/8/1p3p1p/1P1p1P1P/3PpP1P/1K2P2P/6NR b - - 0 1', '4k3/8/8/1p3p1p/1P1p1P1P/3PpP1P/1K2P2P/7R b - - 0 1',
+  '8/8/7p/5p1P/5p1K/5Pp1/6P1/1k6 w - - 70 83', '8/8/8/5p1P/5p1K/5Pp1/6P1/1k6 w - - 70 83',
+  '8/8/5k2/p2p2p1/P2P1KP1/8/8/8 w - - 0 51', '8/8/5k2/p2p4/P2P1K2/8/8/8 w - - 0 51',
+  '8/7p/5p1P/5kpK/6P1/8/8/8 b - - 0 48', '8/7p/5p1P/5kpK/6P1/8/P7/8 b - - 0 48',
+  '8/8/8/8/8/6p1/4k1Pp/6K1 w - - 0 64', '8/8/8/8/8/6p1/k5Pp/6K1 w - - 0 64',
+  'k3b1b1/Pp1b1b1p/1Pb1p1pP/1p1pP1P1/1P1P4/8/8/4K3 w - - 0 1', '5k2/2b4B/1p3b2/pPp1p1p1/P1P1P1P1/7K/8/8 w - - 0 1',
 ];
-const text = head.join('\n') + '\n' + rows.join('\n') + '\n', file = path.join(ROOT, 'lock/positions.tsv');
-if (process.argv.includes('--check')) {
-  if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== text) { console.log('lock/positions.tsv is out of date: run node tools/lock-positions.js'); process.exit(1); }
-  console.log('lock/positions.tsv is up to date (' + rows.length + ' positions)');
-} else {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, text);
-  console.log(head[3].slice(2));
+// The squares a knight, rook or queen on sq steps to.
+function stepSquares(kind, sq) {
+  const f = sq & 7, r = sq >> 3, out = [];
+  const d = kind === 'N' ? [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]]
+          : kind === 'R' ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
+          : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  for (const [df, dr] of d) if (f + df >= 0 && f + df < 8 && r + dr >= 0 && r + dr < 8) out.push(8 * (r + dr) + f + df);
+  return out;
 }
+const SECOND_MUTATIONS = [
+  function openPair(p) {    // a ram pulled apart: one empty square between its two pawns
+    const s = pick(squaresOf(p.a, /P/).filter(s => s < 56 && p.a[s + 8] === 'p')); if (s === undefined) return false;
+    if (rand() < 0.5) { if (s - 8 < 8 || p.a[s - 8] !== '.') return false; p.a[s - 8] = 'P'; p.a[s] = '.'; }
+    else { if (s + 16 > 55 || p.a[s + 16] !== '.') return false; p.a[s + 16] = 'p'; p.a[s + 8] = '.'; }
+    return true; },
+  function boxPiece(p) {    // a knight, rook or queen with its own pawns on all its step squares
+    const white = rand() < 0.5, kind = pick(['N', 'N', 'R', 'Q']), own = white ? 'P' : 'p', sq = pick(empties(p.a));
+    const st = stepSquares(kind, sq);
+    if (st.some(t => t < 8 || t > 55 || (p.a[t] !== '.' && p.a[t] !== own)) || st.filter(t => p.a[t] === '.').length > 4) return false;
+    for (const t of st) p.a[t] = own;
+    p.a[sq] = white ? kind : kind.toLowerCase(); return true; },
+  function checkKing(p) {   // the king of the side to move steps into a pawn's check
+    const white = p.side === 'w', k = p.a.indexOf(white ? 'K' : 'k'), to = [];
+    for (const s of squaresOf(p.a, white ? /p/ : /P/)) {
+      const t = white ? s - 8 : s + 8;
+      for (const u of [t - 1, t + 1]) if (u >= 0 && u < 64 && (u >> 3) === (t >> 3) && p.a[u] === '.') to.push(u);
+    }
+    const t = pick(to); if (t === undefined) return false;
+    p.a[k] = '.'; p.a[t] = white ? 'K' : 'k'; return true; },
+  function moveKings(p) {   // both kings anywhere, either side to move
+    for (const c of 'Kk') { p.a[p.a.indexOf(c)] = '.'; p.a[pick(empties(p.a))] = c; }
+    p.side = rand() < 0.5 ? 'w' : 'b'; return true; },
+];
+const second = new Map();
+function add2(fen) {
+  if (!fen || second.has(fen)) return;
+  const pos = E.fromFen(fen).position;
+  second.set(fen, (E.lockCannotMate(pos, E.WHITE) ? '1' : '0') + '\t' + (E.lockCannotMate(pos, E.BLACK) ? '1' : '0'));
+}
+for (const fen of out.keys()) add2(fen);
+const secondRows = fs.readFileSync(path.join(ROOT, 'data/second_version.tsv'), 'utf8').split('\n').slice(1).filter(Boolean).map(l => l.split('\t')[4]);
+for (const fen of [...secondRows, ...SECOND_CASES]) { add2(normal(parse(fen))); add2(normal(mirror(parse(fen)))); }
+rng = 20261121;
+// For each seed and each mutation: one position where the rule the mutation aims at proves a side
+// (a hit, if one comes within 30 tries) and one where it does not (a near miss).
+const HIT = {
+  openPair: c => c.families, boxPiece: c => c.boxed, checkKing: c => c.forced || c.level, moveKings: c => c.stuck || c.level,
+};
+function secondKind(fen) {   // the certificate kinds of the second version's proofs that the first version lacks
+  const pos = E.fromFen(fen).position, kind = {};
+  for (const side of [E.WHITE, E.BLACK]) {
+    if (!E.lockCannotMate(pos, side) || I.coreLockTest(pos, side)) continue;
+    const c = I.lockSets(pos, side);
+    if (c.families) kind.families = true; else if (c.boxed) kind.boxed = true;
+    else if (c.stuck) kind.stuck = true; else if (c.forced) kind.forced = true; else kind.level = true;
+  }
+  return kind;
+}
+for (const fen of seeds) for (const mutation of SECOND_MUTATIONS) {
+  let hits = 0, misses = 0;
+  const most = mutation.name === 'openPair' || mutation.name === 'boxPiece' ? 100 : 30;
+  for (let tries = 0; tries < most && (!hits || !misses); tries++) {
+    const p = rand() < 0.5 ? parse(fen) : mirror(parse(fen));
+    if (rand() < 0.5) p.side = p.side === 'w' ? 'b' : 'w';
+    if (!mutation(p)) continue;
+    const n = normal(p);
+    if (!n || second.has(n)) continue;
+    if (HIT[mutation.name](secondKind(n))) { if (!hits++) add2(n); }
+    else if (!misses++) add2(n);
+  }
+}
+
+function fileText(map, labelledBy) {
+  const rows = [...map].map(([fen, label]) => fen + '\t' + label);
+  const both = rows.filter(r => r.endsWith('1\t1')).length, white = rows.filter(r => /\t1\t0$/.test(r)).length,
+        black = rows.filter(r => /\t0\t1$/.test(r)).length;
+  const head = [
+    '# The positions the lock detector is tested on, in every language: written by tools/lock-positions.js,',
+    '# labelled by mateless.js' + labelledBy + '. One line per position: the FEN, then 1 if White can never be mated (the',
+    '# lock detector proves it) or 0, then the same for Black.',
+    '# ' + rows.length + ' positions: ' + both + ' locked for both sides, ' + white + ' for White only, ' + black + ' for Black only, ' +
+      (rows.length - both - white - black) + ' for neither.',
+  ];
+  return { text: head.join('\n') + '\n' + rows.join('\n') + '\n', summary: head[3].slice(2) };
+}
+const files = [
+  [path.join(ROOT, 'lock/positions.tsv'), fileText(out, ''), 'lock/positions.tsv'],
+  [path.join(ROOT, 'lock/second/positions.tsv'), fileText(second, " (the second version's detector)"), 'lock/second/positions.tsv'],
+];
+let stale = false;
+for (const [file, { text, summary }, name] of files) {
+  if (process.argv.includes('--check')) {
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== text) { console.log(name + ' is out of date: run node tools/lock-positions.js'); stale = true; }
+    else console.log(name + ' is up to date (' + summary.split(':')[0] + ')');
+  } else {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+    console.log(name + ': ' + summary);
+  }
+}
+if (stale) process.exit(1);

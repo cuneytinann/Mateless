@@ -7,6 +7,10 @@ only. All of them are the same algorithm, line for line, and all give Mateless's
 
 [Türkçe](README.tr.md) · [How it works, with pictures](https://cuneytinann.github.io/Mateless/#lock)
 
+This is the first version. The second version, which adds seven rules (open pawn pairs, boxed
+knights, rooks and queens, twin bishops, and four for pawns' checks and stalemates), is in
+[`second/`](second/), in the same 20 languages and tested the same way.
+
 ## What it answers
 
 **Can this side never be mated?** Yes, when the pawns, the kings and the bishops form a structure

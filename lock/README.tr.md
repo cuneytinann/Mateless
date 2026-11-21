@@ -7,6 +7,10 @@ veriyor.
 
 [English](README.md) · [Nasıl çalışıyor, resimlerle](https://cuneytinann.github.io/Mateless/#lock)
 
+Bu ilk sürüm. Yedi kural ekleyen ikinci sürüm (önü açık piyon çiftleri, kutulu at, kale ve vezir,
+ikiz filler, piyon şahları ve patlar için dört kural) [`second/`](second/) klasöründe, aynı 20
+dilde ve aynı biçimde denenmiş olarak duruyor.
+
 ## Neyi cevaplıyor
 
 **Bu taraf asla mat edilemez mi?** Piyonlar, şahlar ve filler hiçbir geçerli hamle dizisinin

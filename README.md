@@ -233,7 +233,8 @@ Turkish to choose. Five tabs:
   and two halves; the frozen king); then bishops (contact, the mating net), en passant and a move
   that mates; every assumption and why it is safe. An explorer steps through the passes for any FEN; its boards are
   computed in the browser and checked against mateless.js as they are drawn. The detector alone,
-  in 20 languages, downloads from there as `mateless-lock.zip`.
+  in 20 languages (the first version, and the second in its folder `second/`), downloads from
+  there as `mateless-lock.zip`.
 - **Rules**: FIDE 5.2.2, 6.9 and 5.1.2, what the book says and how an algorithm can read it.
 - **Lichess scan**: drop one of Lichess's monthly databases (`.pgn.zst`) and it is scanned in
   the browser, on every core, without unpacking it first: the games won although the winner could
@@ -334,8 +335,10 @@ For a platform that wants the lock detector without the rest of the ladder.
 the detector alone, in its simplest form, in 20 languages: C, C++, C#, Crystal, Go, Haskell, Java,
 JavaScript, Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Each
 is about two hundred lines on its language's standard library, and all give the same answers on the
-same 36,406 test positions ([lock/README.md](lock/README.md)). The table below is the fast versions
-inside Mateless.
+same 36,406 test positions ([lock/README.md](lock/README.md)). Its folder `second/` holds the
+second version the same way: 430 to 650 lines in each of the same 20 languages, the same answers on
+60,471 test positions ([lock/second/README.md](lock/second/README.md)). The table below is the fast
+versions inside Mateless.
 
 **What it needs:** the bitboards of the pawns, kings and bishops (by colour), whether any knight,
 rook or queen is on the board, and the en passant square (only when a legal capture onto it
@@ -432,7 +435,8 @@ mateless.d.ts        TypeScript types
 mateless.wasm        the Rust port as WebAssembly (tools/build-wasm.js); bridge: mateless-wasm.js
 index.html           the whole site in one page: arbiter, lock detector, rules, Lichess scan, chasolver
 lock/                the lock detector alone, in its simplest form, in 20 languages, and the
-                     positions that test them all (lock/README.md)
+                     positions that test them all (lock/README.md); lock/second/: the second
+                     version, the same way (lock/second/README.md)
 mateless-lock.zip    lock/ as one download (tools/build-lock-zip.js)
 site/                its sources, one folder per tab; tools/build-site.js joins them (site/README.md)
 rust/                the Rust port: library, command-line tool, comparisons with chasolver;
@@ -458,8 +462,9 @@ node game_flags_check.js 1 3000 200              # every flag that comes down, a
 node twosided_check.js <files>                   # both sides in one pass = each side alone, every field
 node trigger_check.js                            # testsAfter = the clock rule, takebacks included
 node build_check.js                              # mateless.js and .mjs = a build of src/, the page carries the same engine,
-                                                 # lock/positions.tsv and mateless-lock.zip are up to date
+                                                 # lock/positions.tsv, lock/second/positions.tsv and mateless-lock.zip are up to date
 (cd ../lock && sh test-all.sh)                   # the lock detector alone, every language, on lock/positions.tsv
+(cd ../lock/second && sh test-all.sh)            # its second version, every language, on lock/second/positions.tsv
 node page_check.js                               # the page, every tab, in headless Chromium
 node wasm_check.js                               # mateless.wasm = mateless.js
 node types_check.js                              # mateless.d.ts against the engine (npm i --no-save typescript)
@@ -503,8 +508,8 @@ The four rules of November (stalemate guard, check seed, stuck mater, forced ste
 204,060 rows from the search to the lock and prove 4 of the 6 cages that were left; every new lock
 was checked by walking all the positions reachable from it, chasolver's labels give no false draw,
 and the invariant check knows their certificates ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
-They are in the JavaScript, Rust and WebAssembly engines, with the same answers and node counts; the
-lock detector of the other languages (`lock/`) is the first version's.
+They are in the JavaScript, Rust and WebAssembly engines, with the same answers and node counts, and
+in the simple detector's 20 languages (`lock/second/`, the same answers on 60,471 positions).
 
 **What comes next**, in order: the 2 cages left (RwnQJq1k, bKHPqNEw), a bounded full closure for
 what stays open, and a written proof of soundness for the detector and the rules above.

@@ -384,6 +384,15 @@ Speed (Rust, the 204,060 rows): the lock test for both sides ~40 → ~54 ns (+~1
 counted with Valgrind); the whole ladder per row, both sides, ~300 → ~320 ns (+~5% instructions);
 one side's ladder over all the rows the same within the noise (~255 ms with reading the file).
 
+**The 20 languages** (21 November): the second version in its simplest form (`lock/second/`, one
+unified level that grows every set in each pass) is written in the 20 languages of `lock/`. Its
+JavaScript form matches `mateless.js`'s `lockCannotMate`, both sides, on 220,349 distinct positions
+(the rows, the stress positions above, both test files of `lock/`). `lock/second/positions.tsv`
+holds 60,471 positions labelled by `mateless.js`, with 6,541 answers the first version does not give
+(5,651 from the new level, 618 forced steps, 114 boxed pieces, 92 open pairs, 66 stuck maters);
+every language gives all of them (`sh test-all.sh`: 20 passed). The first version's language files
+answer 3,353 of these positions otherwise, so the file tells the two apart.
+
 <a id="twin-bishops"></a>
 
 ### Twin bishops

@@ -234,7 +234,8 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   tek duvar, iki yarı; donmuş şah); sonra filler (temas, mat ağı), geçerken alma ve mat eden
   hamle; her varsayım ve neden güvenli olduğuyla. Bir gezgin, her FEN için geçişleri adım adım
   gösteriyor; tahtaları tarayıcıda hesaplanıyor ve çizildikçe mateless.js ile denetleniyor.
-  Dedektörün kendisi, 20 dilde, oradan `mateless-lock.zip` olarak iniyor.
+  Dedektörün kendisi, 20 dilde (ilk sürüm, ikincisi de `second/` klasöründe), oradan
+  `mateless-lock.zip` olarak iniyor.
 - **Kurallar**: FIDE 5.2.2, 6.9 ve 5.1.2; kitap ne diyor, bir algoritma onu nasıl okuyabilir.
 - **Lichess taraması**: Lichess'in aylık veritabanlarından birini (`.pgn.zst`) bırak, tarayıcıda,
   bütün çekirdeklerle, dosya açılmadan taransın: kazananın hiç mat edemeyeceği hâlde kazançla
@@ -334,8 +335,10 @@ Merdivenin geri kalanı olmadan yalnızca kilit dedektörünü almak isteyen bir
 kendisini en sade hâliyle 20 dilde taşıyor: C, C++, C#, Crystal, Go, Haskell, Java, JavaScript,
 Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Her biri kendi
 dilinin standart kütüphanesi üzerinde iki yüz kadar satır ve hepsi aynı 36.406 test pozisyonunda
-aynı cevapları veriyor ([lock/README.tr.md](lock/README.tr.md)). Aşağıdaki tablo Mateless'in
-içindeki hızlı sürümler.
+aynı cevapları veriyor ([lock/README.tr.md](lock/README.tr.md)). İçindeki `second/` klasörü
+ikinci sürümü aynı biçimde taşıyor: aynı 20 dilin her birinde 430 ile 650 satır arası, 60.471 test
+pozisyonunda aynı cevaplar ([lock/second/README.tr.md](lock/second/README.tr.md)). Aşağıdaki tablo
+Mateless'in içindeki hızlı sürümler.
 
 **Ne istiyor:** piyonların, şahların ve fillerin (renkleriyle) bitboard'ları, tahtada at, kale ya
 da vezir olup olmadığı ve en passant karesi (yalnızca o kareye yasal bir alış varsa). Hamle
@@ -431,7 +434,8 @@ mateless.d.ts        TypeScript tipleri
 mateless.wasm        Rust çevirisi, WebAssembly olarak (tools/build-wasm.js); köprüsü mateless-wasm.js
 index.html           bütün site tek sayfada: hakem, kilit dedektörü, kurallar, Lichess taraması, chasolver
 lock/                kilit dedektörünün kendisi, en sade hâliyle, 20 dilde, ve hepsini deneyen
-                     pozisyonlar (lock/README.tr.md)
+                     pozisyonlar (lock/README.tr.md); lock/second/: ikinci sürüm, aynı biçimde
+                     (lock/second/README.tr.md)
 mateless-lock.zip    lock/ tek bir indirme olarak (tools/build-lock-zip.js)
 site/                kaynakları, her sekmeye bir klasör; tools/build-site.js birleştiriyor (site/README.md)
 rust/                Rust çevirisi: kütüphane, komut satırı aracı, chasolver karşılaştırmaları;
@@ -457,8 +461,9 @@ node game_flags_check.js 1 3000 200              # düşen her bayrak, chasolver
 node twosided_check.js <dosyalar>                # iki taraf tek geçişte = taraf taraf, her alanda
 node trigger_check.js                            # testsAfter = sayaç kuralı, geri almalar dahil
 node build_check.js                              # mateless.js ve .mjs = src/'nin derlemesi, sayfa aynı motoru taşıyor,
-                                                 # lock/positions.tsv ve mateless-lock.zip güncel
+                                                 # lock/positions.tsv, lock/second/positions.tsv ve mateless-lock.zip güncel
 (cd ../lock && sh test-all.sh)                   # kilit dedektörünün kendisi, her dilde, lock/positions.tsv üzerinde
+(cd ../lock/second && sh test-all.sh)            # ikinci sürümü, her dilde, lock/second/positions.tsv üzerinde
 node page_check.js                               # sayfa, her sekmesiyle, başsız Chromium'da
 node wasm_check.js                               # mateless.wasm = mateless.js
 node types_check.js                              # mateless.d.ts motora karşı (npm i --no-save typescript)
@@ -504,8 +509,8 @@ Kasım'ın dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zor
 481'ini aramadan kilide taşıyor ve kalan 6 kafesin 4'ünü ispatlıyor; her yeni kilit, ondan
 ulaşılabilen bütün pozisyonlar dolaşılarak denetlendi, chasolver'ın etiketleri hiç yanlış beraberlik
 vermiyor ve değişmez kontrolü sertifikalarını tanıyor ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
-JavaScript, Rust ve WebAssembly motorlarında, düğüm sayılarına kadar aynı cevaplarla; öbür
-dillerdeki kilit dedektörü (`lock/`) ilk sürümünki.
+JavaScript, Rust ve WebAssembly motorlarında düğüm sayılarına kadar aynı cevaplarla, sade
+dedektörün 20 dilinde de var (`lock/second/`, 60.471 pozisyonda aynı cevaplar).
 
 **Sırada ne var**, sırasıyla: kalan 2 kafes (RwnQJq1k, bKHPqNEw), açık kalan için sınırlı tam
 kapanış, ve dedektörün ve yukarıdaki kuralların yazılı sağlamlık ispatı.

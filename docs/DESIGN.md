@@ -356,7 +356,9 @@ own situation is on the board, so any other position takes the first version's p
 same code; and JS, Rust and WebAssembly give the same answers, node counts included (the four rules
 of November and twin bishops too, since 21 November).
 `_internal.coreLockTest` runs the first version's detector alone (it labels `lock/positions.tsv`
-and is what the lock tab draws).
+and is what the lock tab draws); `lockCannotMate` runs the second version's and labels
+`lock/second/positions.tsv`, on which the second version's simplest form in 20 languages
+(`lock/second/`) gives the same answers.
 
 ### Open pawn pairs
 

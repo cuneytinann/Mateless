@@ -466,6 +466,10 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, 
 node second_version_check.js                     # the second version's rules: the 36 rows, each rule's positions
 ```
 
+Until the November rules and twin bishops are ported to Rust, the WebAssembly and Rust builds answer
+as before them: `wasm_check.js` and `rust_compare.js` differ where those rules apply, and
+`trigger_check.js` is run with `NO_WASM=1`.
+
 ## The second version
 
 The first version is the fast layer: sound, small, and meant to run on a game server after every
@@ -484,10 +488,16 @@ measured, and only where its own situation is on the board.
 | **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
 | **the stuck mater**: the flagged side is to move and, whatever it plays, the mater has no legal move (the game ends at the mater's turn); read from the bitboards, no move is made | kings and pawns, the flagged side to move, the lock found nothing | | |
 | **the forced step**: a king in a pawn's check with one legal move, a step: the lock of the position after it | as for the check seed | | |
+| **twin bishops**: two or more bishops of one side on one colour (only a promotion makes them) no longer fail the detector; the mating net does not count its second flight rule (a free square vertically and one horizontally next to the king, two squares of one colour) for the flagged side on the king squares where its twins may hold both | a side has twin bishops | none in the Lichess data; 227 more answers on chasolver's labelled positions (899 of them have twins) | |
 
 In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
 is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
 lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out.
+
+Twin bishops matter where the mater can check on the other colour: in a composed position of
+chasolver's kind, Black's two dark bishops on a7 and b8 hold both flights of a king on a8 while
+White's light bishop gives check from c6, a mate the net would miss if it counted the flights; the
+rule leaves them out there, and nowhere else.
 
 The four rules of November (stalemate guard, check seed, stuck mater, forced step) move 481 of the
 204,060 rows from the search to the lock and prove 4 of the 6 cages that were left; every new lock

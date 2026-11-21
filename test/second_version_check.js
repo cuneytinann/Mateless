@@ -63,6 +63,12 @@ const CASES = [
   ['8/8/8/8/8/6p1/4k1Pp/6K1 w - - 0 64', true, true, 'forced'],
   // with Black's king away, White has Kf1 too: no forced step
   ['8/8/8/8/8/6p1/k5Pp/6K1 w - - 0 64', false, false, null],
+  // twin bishops (chasolver's positions.txt, dead): Black's four bishops, two on each colour, behind a lock;
+  // the first version refuses any twins
+  ['k3b1b1/Pp1b1b1p/1Pb1p1pP/1p1pP1P1/1P1P4/8/8/4K3 w - - 0 1', true, true, 'levels'],
+  // Black's twins on dark may hold both flights of a8 (a7 and b8) while White's light bishop checks from
+  // c6: a mate (chasolver, 23 plies), so no lock for Black; White, whom Black cannot mate, is proven
+  ['5k2/2b4B/1p3b2/pPp1p1p1/P1P1P1P1/7K/8/8 w - - 0 1', true, false, 'levels'],
 ];
 for (const [fen, w, b, kind] of CASES) {
   const s = E.fromFen(fen); if (s.error) { problem('bad FEN ' + fen); continue; }

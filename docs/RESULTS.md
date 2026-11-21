@@ -373,3 +373,24 @@ no flag comes down where chasolver's full analysis finds a mate (6,000 games); `
 **Speed** (JavaScript, the 204,060 rows, best of 5, three rounds): the lock test ~140 → ~160 ns
 (+~13%), the whole ladder ~670 → ~700 ns per row (+~4%), a game's flags ~2% per move.
 
+<a id="twin-bishops"></a>
+
+### Twin bishops
+
+Two or more bishops of one side on one colour no longer fail the second version; the mating net
+leaves out its second flight rule on the king squares where the flagged side's twins may hold both
+flights ([DESIGN.md](DESIGN.md), section 12). The Lichess data has no such row that the lock could
+newly prove beyond 4 answers of bishops-only positions (already won by material or the search).
+chasolver's labelled positions (68,950; 899 with twins): 227 more side answers proven by the lock,
+none lost, no false draw.
+
+**Soundness.** The danger is real: with the gate gone and the second rule counted everywhere, lock
+structures of the 204,060 rows given two flagged bishops of one colour and (mostly) a mater's bishop of
+the other, kings at random (139,679 legal positions), yield 1,732 locks of which chasolver's full
+analysis finds 190 winnable, such as `5k2/2b4B/1p3b2/pPp1p1p1/P1P1P1P1/7K/8/8 w`, Black flagged: a mate
+in 23 plies ending with Black's king on a8, its dark bishops on a7 and b8, White's light bishop on c6
+(replayed by the engine: checkmate). With the rule as it is, the same positions yield 1,152 locks and
+chasolver finds every one unwinnable. On chasolver's 227: `test/lock_invariant.js` finds no violation
+(9.1 million positions visited, cap 50,000 each); walking their reachable positions to the end (cap 2
+million each) has found no mate.
+

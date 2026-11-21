@@ -1238,8 +1238,9 @@ function materialCannotMate(pos, flagged) { return materialTest(pos, flagged); }
    stalemate or a lock: the stalemate guard (a pawn whose capture always stalemates its owner stays
    a wall), the check seed (a king in a pawn's check starts its reach from the squares it can step
    to), the stuck mater (whatever the flagged side plays, the mater has no move) and the forced step
-   (a king in a pawn's check with one legal move: the position after it). It is not complete
-   either; it sees more.
+   (a king in a pawn's check with one legal move: the position after it); and twin bishops (two or
+   more of one side on one colour, which the first version refuses: the mating net then leaves out its
+   second flight rule where they may hold both flights). It is not complete either; it sees more.
    They are the first two rungs of a ladder: the material test, the lock detector, then the
    Domino search (domino.js), which asks the same two tests at its nodes. In the first version a
    king that must step out of a pawn's check into a lock, or must take the last queen or rook, is
@@ -1259,8 +1260,23 @@ const C_WHITE_PAWNS = 0, C_BLACK_PAWNS = 2, C_WHITE_KING = 4, C_BLACK_KING = 6,
       C_WHITE_BISHOPS = 8, C_BLACK_BISHOPS = 10;
 
 let censusPos = null;      // the position of the last census (the check seed reads its side to move)
+/* Twin bishops (the second version). Two bishops of one side on one colour come only from a promotion.
+   The mating net's second flight rule (a free square vertically and one horizontally next to the
+   king) counts on the flagged side having at most one bishop on their colour, which is the colour
+   opposite the king's square: with two there they may hold both flights at once. So for each side,
+   the king squares where that rule is not counted: the light squares if it has two or more bishops
+   on dark squares, the dark ones if on light squares. Everything else in the detector counts a
+   side's bishops through their reach, whatever their number. */
+let wNoPairL = 0, wNoPairH = 0, bNoPairL = 0, bNoPairH = 0;
+function noPairSquares(lo, hi) {
+  const dark = popcount(lo & DARK_SQUARES) + popcount(hi & DARK_SQUARES) > 1;
+  const light = popcount(lo & ~DARK_SQUARES) + popcount(hi & ~DARK_SQUARES) > 1;
+  return (dark ? ~DARK_SQUARES : 0) | (light ? DARK_SQUARES : 0);   // the same pattern in both words
+}
 function takeCensus(pos) {
   censusPos = pos;
+  wNoPairL = wNoPairH = noPairSquares(pos.lo[WHITE | BISHOP], pos.hi[WHITE | BISHOP]);
+  bNoPairL = bNoPairH = noPairSquares(pos.lo[BLACK | BISHOP], pos.hi[BLACK | BISHOP]);
   const lo = pos.lo, hi = pos.hi, c = census;
   for (let side = 0; side < 2; side++) {
     const color = side ? BLACK : WHITE, at = 2 * side;   // White's entries first, Black's two words later
@@ -1629,10 +1645,12 @@ function netLeaks(flagged, occL, occH) {
     freeH = ~(bConeH | occH | zoneHi(wKingL, wKingH) | attackH);
     spareL = freeL & ~bBishL; spareH = freeH & ~bBishH;
   }
+  // the second rule, not on the squares where the flagged side's twin bishops may hold both flights
+  const noL = flagged === WHITE ? wNoPairL : bNoPairL, noH = flagged === WHITE ? wNoPairH : bNoPairH;
   const flightL = sideways(spareL) | northLo(spareL) | southLo(spareL, spareH) |
-                  ((northLo(freeL) | southLo(freeL, freeH)) & sideways(freeL));
+                  ((northLo(freeL) | southLo(freeL, freeH)) & sideways(freeL) & ~noL);
   const flightH = sideways(spareH) | northHi(spareL, spareH) | southHi(spareH) |
-                  ((northHi(freeL, freeH) | southHi(freeH)) & sideways(freeH));
+                  ((northHi(freeL, freeH) | southHi(freeH)) & sideways(freeH) & ~noH);
   return ((attackL & reachL & ~flightL) | (attackH & reachH & ~flightH)) !== 0;
 }
 
@@ -2049,7 +2067,6 @@ function boxedTest(pos, ask) {
   const wsL = stepLo, wsH = stepHi;
   if (!boxedIn(bnL, bnH, brL, brH, bqL, bqH, bownL, bownH)) return 0;
   if (pos.ep !== NO_SQUARE) return 0;
-  if (twinBishops(lo[WHITE | BISHOP], hi[WHITE | BISHOP]) || twinBishops(lo[BLACK | BISHOP], hi[BLACK | BISHOP])) return 0;
   takeCensus(pos);
   const x = BOX;
   x[X_WHITE] = wxL; x[X_WHITE + 1] = wxH; x[X_BLACK] = bxL; x[X_BLACK + 1] = bxH;
@@ -2086,7 +2103,6 @@ function lockTest(pos, flagged) {
       lo[WHITE | QUEEN] | hi[WHITE | QUEEN] | lo[BLACK | QUEEN] | hi[BLACK | QUEEN])
     return boxedTest(pos, flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0;
   if (pos.ep !== NO_SQUARE) return false;
-  if (twinBishops(lo[WHITE | BISHOP], hi[WHITE | BISHOP]) || twinBishops(lo[BLACK | BISHOP], hi[BLACK | BISHOP])) return false;
   if (takeCensusPairs(pos)) return lockTestPairsFirst(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0 || materStuck(pos, flagged);
   if (!lockLeaks(flagged, 0, 0)) return true;
   return lockTestRest(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0 || materStuck(pos, flagged);
@@ -2361,7 +2377,6 @@ function lockTest2(pos, ask) {
       lo[WHITE | ROOK] | hi[WHITE | ROOK] | lo[BLACK | ROOK] | hi[BLACK | ROOK] |
       lo[WHITE | QUEEN] | hi[WHITE | QUEEN] | lo[BLACK | QUEEN] | hi[BLACK | QUEEN]) return boxedTest(pos, ask);
   if (pos.ep !== NO_SQUARE) return 0;
-  if (twinBishops(lo[WHITE | BISHOP], hi[WHITE | BISHOP]) || twinBishops(lo[BLACK | BISHOP], hi[BLACK | BISHOP])) return 0;
   let got;
   if (takeCensusPairs(pos)) got = lockTestPairsFirst(ask);
   else { const open = lockLeaks2(ask, 0, 0); got = !open ? ask : (ask & ~open) | lockTestRest(open); }

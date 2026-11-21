@@ -459,6 +459,17 @@ board, and `_internal.coreLockTest` leaves them out with the rest of the second 
   through it, so the lock of the position after it (the king moved on the bitboards, a pawn on its
   square taken) proves this one.
 
+- **Twin bishops.** Two or more bishops of one side on one colour come only from a promotion; the
+  first version refuses them. The detector counts a side's bishops through their reach, whatever
+  their number, with one exception: the mating net's second flight rule. A king with a free square
+  vertically and one horizontally next to it has a flight because those two squares are of one
+  colour (the colour opposite its own) and the flagged side was assumed to have at most one bishop
+  there, which closes at most one of them. With two or more flagged bishops on that colour both may
+  be closed; a mater's piece on the other colour then mates (Black's dark bishops on a7 and b8, a
+  king on a8, White's light bishop checking from c6). So the second rule is not counted on the king
+  squares of the colour opposite a colour where the flagged side has twins (the light squares for
+  dark twins); the first rule (a spare square, one its own bishops never reach) still is.
+
 `lockSets` gives their certificates: the levels' sets (the guard and the seed live inside a level),
 `{ stuck: true }`, `{ forced: <the certificate after the step> }`. `test/lock_invariant.js` checks
 them as they claim: the stuck mater move by move, the forced step from the position after it, and a

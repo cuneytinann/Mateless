@@ -465,6 +465,10 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 node second_version_check.js                     # ikinci sürümün kuralları: 36 satır, her kuralın pozisyonları
 ```
 
+Kasım kuralları ve ikiz filler Rust'a taşınana kadar WebAssembly ve Rust derlemeleri onlardan
+önceki gibi cevap veriyor: `wasm_check.js` ve `rust_compare.js` bu kuralların uygulandığı yerde
+farklı çıkıyor, `trigger_check.js` de `NO_WASM=1` ile çalıştırılıyor.
+
 <a id="ikinci-surum"></a>
 
 ## İkinci sürüm
@@ -485,10 +489,16 @@ giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 | **piyon şahı tohumu**: piyon şahındaki bir şahın erişimi kendi karesinden değil, şimdi adım atabileceği karelerden başlıyor; kendi karesine sabit piyon saldırmaya devam ediyor | sırası gelen taraf piyon şahında (tahtada fil yok) | | |
 | **hamlesiz rakip**: sıra bayrağı düşen tarafta ve ne oynarsa oynasın mat edecek tarafın yasal hamlesi kalmıyor (oyun onun sırasında bitiyor); bitboard'dan okunuyor, hamle yapılmıyor | şah ve piyonlar, sıra bayrağı düşende, kilit bir şey bulmadı | | |
 | **zorunlu adım**: piyon şahındaki, tek yasal hamlesi bir şah adımı olan şah: adımdan sonraki pozisyonun kilidi | piyon şahı tohumundaki gibi | | |
+| **ikiz filler**: bir tarafın aynı renkte iki ya da daha fazla fili (yalnızca terfiyle olur) dedektörü artık düşürmüyor; mat ağı, bayrağı düşen tarafın ikizlerinin iki kaçışı birden tutabileceği şah karelerinde ikinci kaçış kuralını (şahın dikeyde ve yatayda birer boş komşusu, ikisi aynı renkte) saymıyor | bir tarafın ikiz fili var | Lichess verisinde yok; chasolver'ın etiketli pozisyonlarında 227 cevap daha (899'unda ikiz var) | |
 
 Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalıştırıyor;
 `_internal.coreLockTest` ilk sürümün dedektörü tek başına (`lock/`'taki, scalachess yamasındaki ve
 kilit sekmesinin çizdiği); `proveCannotBeMated(pos, side, { deepBudget: 0 })` ikinci kademeyi dışarıda bırakıyor.
+
+İkiz filler, mat edecek taraf öbür renkte şah çekebildiğinde önem kazanıyor: chasolver türünden
+bestelenmiş bir pozisyonda siyahın a7 ve b8'deki iki koyu fili a8'deki şahın iki kaçışını birden
+tutuyor, beyazın açık renkli fili c6'dan şah çekiyor; kaçışları saysaydı mat ağı bu matı kaçırırdı.
+Kural onları yalnızca orada saymıyor.
 
 Kasım'ın dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım) 204.060 satırın
 481'ini aramadan kilide taşıyor ve kalan 6 kafesin 4'ünü ispatlıyor; her yeni kilit, ondan

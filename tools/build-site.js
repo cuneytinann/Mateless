@@ -2,6 +2,9 @@
 /* Builds index.html, the whole site in one file, from site/ (see site/README.md) and the engines:
      mateless.js             the engine, as <script id="mateless-engine"> (test/build_check.js
                              checks that it is the current one)
+     site/second/mateless.js the second version's engine (built on the tam-kol branch), as text in
+                             <script id="mateless-engine-2" type="text/plain">: the arbiter runs it
+                             only when the reader picks the second version
      site/chasolver/*.js     chasolver's JavaScript port, run by the chasolver tab and, as text,
                              by the Lichess scan's workers
    Each tab's style sheet is scoped to its tab (#tab-arbiter, #tab-lock, …), so the tabs cannot restyle
@@ -78,6 +81,7 @@ function build() {
     '<style id="tabs">\n' + css.trim() + '\n</style>\n' +
     '<body>\n' + body.trim() + '\n\n' +
     '<script id="mateless-engine">\n' + engine + '\n</script>\n' +
+    script(read('second/mateless.js'), 'mateless-engine-2', 'text/plain') +
     script(read('chasolver/engine.js'), 'cha-engine') +
     script(read('chasolver/glue.js'), 'cha-glue') +
     script(read('scan/fzstd.js'), 'scan-fzstd', 'text/plain') +

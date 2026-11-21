@@ -32,6 +32,14 @@
   </div>
 
   <div class="opts">
+    <label><span data-i="lblVer">version</span> <select id="ver">
+      <option value="1" data-i="ver1">fast (the first version)</option>
+      <option value="2" data-i="ver2">second version (wider)</option>
+    </select></label>
+    <label><input type="checkbox" id="lockonly"> <span data-i="lblLockOnly">lock detector only</span></label>
+    <span class="dim small" id="vernote"></span>
+  </div>
+  <div class="opts">
     <label><span data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="6" min="1" max="600"></label>
     <label><span data-i="lblBud">node budget</span> <input type="number" id="bud" value="100" min="1" step="10"></label>
     <span class="dim small" id="limnote"></span>

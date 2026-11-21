@@ -1,6 +1,8 @@
 (function () {
 'use strict';
-const E = window.Mateless;
+/* E is the engine of the version the reader picked (VER, below): mateless.js, the fast layer, unless
+   the second version is chosen. */
+let E = window.Mateless;
 if (!E) throw new Error('The Mateless engine did not load.');
 
 /* ═══════════════════════════════ FEN checks ═══════════════════════════════
@@ -132,6 +134,12 @@ function judge(fen, ply, bud, forced) {
   const side = forced === 0 || forced === 1 ? forced : (pos.side === E.WHITE ? 1 : 0);
   const flagged = side ? E.WHITE : E.BLACK, other = side ? E.BLACK : E.WHITE;
   const moves = E.legalMoves(pos).length;
+  if (LOCKONLY) {
+    const t1 = performance.now(), lk = E.lockCannotMate(pos, flagged), ms1 = performance.now() - t1;
+    return { side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
+             draw: lk, dead: lk && E.lockCannotMate(pos, other), reason: lk ? 'lock' : 'open', used: 0, deep: false, ms: ms1,
+             why: lk ? '' : 'nolock', castle: E.castlingField(pos), lockOnly: true };
+  }
   const t0 = performance.now();
   const proof = E.proveCannotBeMated(pos, flagged, limits);
   const ms = performance.now() - t0;
@@ -141,7 +149,7 @@ function judge(fen, ply, bud, forced) {
   const dead = proof.proven && E.proveCannotBeMated(pos, other, limits).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
-    draw: proof.proven, dead, reason, used: proof.nodes, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, deep: !!proof.deep, ms,
     why: proof.proven ? '' : proof.failure,
     castle: E.castlingField(pos),
   };
@@ -160,8 +168,23 @@ function inspect(fen, side) {
 var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
 var $ = function (id) { return document.getElementById(id) }, ROOT = document.getElementById('tab-arbiter');
 var ENGINE_FILE = 'mateless.js';
+/* Two versions, one engine each. 1: mateless.js, the fast layer, the rules proposed to Lichess; it is
+   window.Mateless. 2: the second version (the tam-kol branch), which adds open pawn pairs and boxed
+   knights, rooks and queens to the lock detector and a second tier to the Domino search. Its engine is
+   kept as text and run only the first time it is picked, so a reader who never picks it runs exactly
+   the first; its wrapper sees a `module` and leaves window.Mateless alone. */
+var VER = 1, ENGINE_IDS = { 1: 'mateless-engine', 2: 'mateless-engine-2' }, ENGINES = { 1: E };
+function engineOf(v) {
+  if (!ENGINES[v]) { var m = { exports: {} }; new Function('module', 'exports', $(ENGINE_IDS[v]).textContent)(m, m.exports); ENGINES[v] = m.exports }
+  return ENGINES[v] }
 var ENGINE_BYTES = new Blob([$('mateless-engine').textContent]).size;
 var LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET];     /* the game's own Domino search: plies, nodes */
+var DEEP = [0, 0];                                /* the second version's second tier: plies, nodes */
+/* "lock detector only": the positions are judged by the chosen version's lock detector alone, to see
+   which of them it catches; the games (PGN) keep the whole ladder */
+var LOCKONLY = false;
+/* a file the second version wrote says so in its name */
+function vname(n) { return n.replace(/\.csv$/, (VER === 2 ? '-second' : '') + (LOCKONLY && !/^games/.test(n) ? '-lock' : '') + '.csv') }
 var REPO = 'https://github.com/cuneytinann/Mateless';
 var UNFAIR = 'https://chasolver.org/unfair-games';
 
@@ -202,6 +225,21 @@ en: {
  lblPly: "ply ceiling",
  lblBud: "node budget",
  limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move",
+ limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move; where that fails without a mate, on its budget or on a board of kings, pawns and bishops, a second tier of {2} plies and {3} nodes",
+ lblVer: "version",
+ ver1: "fast (the first version)",
+ ver2: "second version (wider)",
+ verNote1: "the rules proposed to Lichess: material, the lock detector of kings, pawns and bishops, the Domino search",
+ verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); and a second tier to the Domino search; not complete either, and a little slower",
+ verTag: " · second version",
+ lblLockOnly: "lock detector only",
+ lockOnlyNote: "positions are judged by the lock detector alone, no material test and no search; the games below still use the whole ladder",
+ lockTag: " · lock detector only",
+ rNoLock: "no lock",
+ rd_openL: "the lock detector found no lock: these positions are left to the rest of the ladder",
+ stNotAsked: "Not asked: lock detector only.",
+ st4LockDead: "{0} cannot mate either, by the lock alone: a dead position.",
+ st4LockLive: "The lock does not show that {0} can never mate, so it does not make the position dead; only the flag-fall rule makes it a draw.",
  lblRange: "positions",
  lblRangeTo: "to",
  lblRangeNote: "in input order, pasted lines first; 0 = to the end",
@@ -314,6 +352,7 @@ en: {
  st2Ep: "No lock while an en passant square ({0}) stands.",
  st2Skip: "Not needed: material settled it.",
  st3Ok: "Followed every line until mate became impossible, {0} in all: {1} cannot mate. Draw by the Domino effect.",
+ st3Deep: "The first search ({0} plies, {1} nodes) ended without a proof and without a mate, so the second tier ran: {2} plies, {3} nodes.",
  st3Mate: "Found a line in which {0} mates. Win on time, proven.",
  st3Hor: "A line reached the ply ceiling ({0}) without a proof. Nothing proven: the win for {1} stands by default.",
  st3Bud: "The node budget ({0}) ran out without a proof. Nothing proven: the win for {1} stands by default.",
@@ -483,6 +522,7 @@ en: {
  pk_moves: "Moves",
  secEngine: "The engine on this page",
  engineNote: "<code>mateless.js</code>, exactly as it runs here ({0} bytes): a reference board, the material test, the lock detector, the Domino search and a flag per side that a game keeps move by move. The same engine is in the repository, with its Rust port and WebAssembly build.",
+ engineNote2: "The second version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, and a second tier of the Domino search. It is built on the repository’s <code>tam-kol</code> branch (its Rust port and WebAssembly build do not have the rules of November yet).",
  foot: "Mateless never declares a draw without a proof: a position it cannot prove falls to the win and is left to a complete solver after the game. Its verdicts were checked against chasolver’s labels, and every flag that came down in thousands of games against chasolver’s full analysis, with no false draw. MIT License, © 2026 Cüneyt İnan. Source, Rust port and data: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess data: Miguel Ambrona’s <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a>.",
 },
 tr: {
@@ -520,6 +560,21 @@ tr: {
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
  limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar",
+ limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bu arama mat bulmadan, bütçesiyle ya da yalnızca şah, piyon ve fil olan bir tahtada başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe",
+ lblVer: "sürüm",
+ ver1: "hızlı (ilk sürüm)",
+ ver2: "ikinci sürüm (daha geniş)",
+ verNote1: "Lichess’e önerilen kurallar: materyal, şah, piyon ve fillerin kilit dedektörü, Domino araması",
+ verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım), Domino aramasına da ikinci bir kademe ekler; o da tam değil ve biraz daha yavaş",
+ verTag: " · ikinci sürüm",
+ lblLockOnly: "yalnız kilit dedektörü",
+ lockOnlyNote: "pozisyonlar yalnızca kilit dedektörüyle yargılanır, materyal testi ve arama yok; aşağıdaki oyunlar yine bütün merdiveni kullanır",
+ lockTag: " · yalnız kilit dedektörü",
+ rNoLock: "kilit yok",
+ rd_openL: "kilit dedektörü kilit bulmadı: bu pozisyonlar merdivenin geri kalanına kalır",
+ stNotAsked: "Sorulmadı: yalnız kilit dedektörü.",
+ st4LockDead: "Yalnızca kilitle {0} da mat edemez: ölü pozisyon.",
+ st4LockLive: "Kilit {0} tarafının hiçbir zaman mat edemeyeceğini göstermiyor; pozisyonu ölü yapmıyor, beraberliği yalnızca bayrak kuralı getiriyor.",
  lblRange: "pozisyonlar",
  lblRangeTo: "–",
  lblRangeNote: "giriş sırasıyla, yapıştırılanlar önce; 0 = sona kadar",
@@ -632,6 +687,7 @@ tr: {
  st2Ep: "Geçerken alma karesi ({0}) dururken kilit olmaz.",
  st2Skip: "Gerek yok: materyal çözdü.",
  st3Ok: "Her hat mat imkânsızlaşana dek izlendi, toplam {0}: {1} mat edemez. Domino etkisiyle berabere.",
+ st3Deep: "İlk arama ({0} ply, {1} düğüm) ispatsız ve matsız bitti; ikinci kademe çalıştı: {2} ply, {3} düğüm.",
  st3Mate: "{0} tarafının mat ettiği bir hat bulundu. Süreden galibiyet, ispatlı.",
  st3Hor: "Bir hat ispat olmadan ply tavanına ({0}) ulaştı. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
  st3Bud: "Düğüm bütçesi ({0}) ispat olmadan tükendi. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
@@ -801,6 +857,7 @@ tr: {
  pk_moves: "Hamleler",
  secEngine: "Bu sayfadaki motor",
  engineNote: "<code>mateless.js</code>, burada çalıştığı haliyle ({0} bayt): bir referans tahta, materyal testi, kilit dedektörü, Domino araması ve bir oyunun hamle hamle tuttuğu taraf başına bir bayrak. Aynı motor, Rust çevirisi ve WebAssembly derlemesiyle birlikte repoda.",
+ engineNote2: "İkinci sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında ikinci bir kademe olan <code>mateless.js</code>. Reponun <code>tam-kol</code> dalında derleniyor (Rust çevirisi ve WebAssembly derlemesi Kasım kurallarını henüz içermiyor).",
  foot: "Mateless ispatı olmadan hiçbir zaman beraberlik demez: ispatlayamadığı pozisyon galibiyete düşer ve oyundan sonra tam bir çözücüye kalır. Hükümleri chasolver’ın etiketlerine, binlerce oyunda düşen her bayrak da chasolver’ın tam analizine karşı denetlendi; hiç yanlış beraberlik çıkmadı. MIT Lisansı, © 2026 Cüneyt İnan. Kaynak, Rust çevirisi ve veri: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess verisi: Miguel Ambrona’nın <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a> sayfası.",
 }};
 var lang = 'en';
@@ -992,7 +1049,7 @@ dropEl.ondrop = function (ev) { ev.preventDefault(); dropEl.classList.remove('ov
 /* ═══════════════════════════════ running ═══════════════════════════════ */
 var results = null, busy = false, cancel = false, page = 0;
 function lock(on) { busy = on; cancel = false;
-  ['ply', 'bud', 'rowA', 'rowB', 'bothdir', 'fen', 'example'].forEach(function (id) { $(id).disabled = on });
+  ['ver', 'lockonly', 'ply', 'bud', 'rowA', 'rowB', 'bothdir', 'fen', 'example'].forEach(function (id) { $(id).disabled = on });
   Array.prototype.forEach.call(ROOT.querySelectorAll('.labf,#flist select,#flist button'), function (x) { x.disabled = on });
   dropEl.classList.toggle('off', on);
   var g = $('go'); g.classList.toggle('stop', on);
@@ -1026,7 +1083,8 @@ $('go').onclick = go;
 function warmTime(w, P, B) {
   var setup = E.fromFen(w.fen); if (setup.error) return null;
   var pos = setup.position, g = w.g === 0 || w.g === 1 ? w.g : (pos.side === E.WHITE ? 1 : 0), flagged = g ? E.WHITE : E.BLACK, lim = { maxPly: P, budget: B };
-  var block = function (k) { for (var i = 0; i < k; i++) E.proveCannotBeMated(pos, flagged, lim) };
+  var block = LOCKONLY ? function (k) { for (var i = 0; i < k; i++) E.lockCannotMate(pos, flagged) }
+                       : function (k) { for (var i = 0; i < k; i++) E.proveCannotBeMated(pos, flagged, lim) };
   /* a block of calls between two readings of the clock; the first ~15 ms only warm the JIT up */
   var t0 = performance.now(), k = 1, n = 0, t;
   while (performance.now() - t0 < 15 && k < 1 << 16) { block(k); k *= 2 }
@@ -1034,7 +1092,7 @@ function warmTime(w, P, B) {
   do { block(k); n += k; t = performance.now() - t0 } while (t < 40);
   return t / n }
 function finish(work, res, secs, P, B, stopped) {
-  results = { rows: work.slice(0, res.length), total: work.length, res: res, secs: secs, P: P, B: B, stopped: stopped };
+  results = { rows: work.slice(0, res.length), total: work.length, res: res, secs: secs, P: P, B: B, stopped: stopped, ver: VER, lockOnly: LOCKONLY };
   page = 0; filt = { show: '', set: '', why: '' }; renderBrowse.touched = false;
   lock(false);
   showResults() }
@@ -1052,6 +1110,8 @@ function showResults() {
     s = (R.stopped ? F('sStopped', num(R.res.length), num(R.total)) + ' ' : '') +
       F('sDone', num(R.res.length), dur(R.secs), us(R.secs * 1000 / Math.max(R.res.length, 1)));
   }
+  if (s && R.ver === 2) s += T('verTag');
+  if (s && R.lockOnly) s += T('lockTag');
   say(s) }
 
 /* against the reference, when there is one: draw means the flagged side's opponent cannot mate */
@@ -1078,7 +1138,7 @@ function renderBatch() {
   var h = '<div class="obar">' + DRAW_REASONS.concat(WIN_REASONS, ['bad']).map(seg).join('') + '</div>';
   var key = function (r) { if (!why[r]) return '';
     return '<div class="ok1"><span class="sw r-' + r + '"></span><span><b>' + num(why[r]) + '</b> <span class="dim small">' + pct(why[r], judged) + '</span></span>' +
-      '<span class="ol">' + T('rs_' + r) + '</span><p>' + T('rd_' + r) + (r == 'open' ? ' (' + T('thHor') + ' ' + num(stop.horizon || 0) + ', ' + T('thBud') + ' ' + num(stop.budget || 0) + ')' : '') + '</p></div>' };
+      '<span class="ol">' + T('rs_' + r) + '</span><p>' + (r == 'open' && results.lockOnly ? T('rd_openL') : T('rd_' + r) + (r == 'open' ? ' (' + T('thHor') + ' ' + num(stop.horizon || 0) + ', ' + T('thBud') + ' ' + num(stop.budget || 0) + ')' : '')) + '</p></div>' };
   if (draws) h += '<p class="group">' + T('gDraws') + '</p><div class="okey">' + DRAW_REASONS.map(key).join('') + '</div>';
   if (why.mate || why.open) h += '<p class="group">' + T('gWins') + '</p><div class="okey">' + WIN_REASONS.map(key).join('') + '</div>';
   if (draws) h += '<p class="note">' + F('deadOf', num(dead), num(draws)) + '</p>';
@@ -1204,6 +1264,13 @@ function detailHTML(k) {
         '<p class="vtext">' + vt + '</p>';
   /* the rungs, in the order they run */
   var done = false, s = '', ep = r.ep >= 0 ? sqName(r.ep) : '';
+  if (r.lockOnly) {   /* the lock detector alone: the other rungs were not asked */
+    var cl = 'lockCannotMate(' + who + ')';
+    s += stepRow('skip', T('s1n'), 'materialCannotMate(' + who + ')', T('stNotAsked'));
+    s += ins.lock ? stepRow('dec', T('s2n'), cl, F('st2Yes', op)) : stepRow('no', T('s2n'), cl, ep ? F('st2Ep', ep) : F('st2No', op));
+    s += stepRow('skip', T('s3n'), 'Domino(' + who + ', ' + P + ', ' + num(B) + ')', T('stNotAsked'));
+    if (r.draw) s += stepRow(r.dead ? 'dead' : 'live', T('s4n'), 'lockCannotMate(' + (r.side ? 'BLACK' : 'WHITE') + ')', F(r.dead ? 'st4LockDead' : 'st4LockLive', fl));
+  } else {
   if (ins.material) { s += stepRow('dec', T('s1n'), 'materialCannotMate(' + who + ')', F('st1Yes', op)); done = true }
   else s += stepRow('no', T('s1n'), 'materialCannotMate(' + who + ')', F('st1No', op));
   var c2 = 'lockCannotMate(' + who + ')';
@@ -1211,14 +1278,18 @@ function detailHTML(k) {
   else if (ins.lock) { s += stepRow('dec', T('s2n'), c2, F('st2Yes', op)); done = true }
   else s += stepRow('no', T('s2n'), c2, ep ? F('st2Ep', ep) : F('st2No', op));
   var c3 = 'Domino(' + who + ', ' + P + ', ' + num(B) + ')';
+  /* the second version's second tier, when it ran: its limits are the ones the last search reached */
+  var dp = r.deep ? DEEP[0] : P, db = r.deep ? DEEP[1] : B, dn = r.deep ? ' ' + F('st3Deep', P, num(B), DEEP[0], num(DEEP[1])) : '';
+  if (r.deep) c3 += ' → Domino(' + who + ', ' + DEEP[0] + ', ' + num(DEEP[1]) + ')';
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
-  else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op));
+  else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op) + dn);
   else if (r.reason == 'stalemate') s += stepRow('dec', T('s3n'), c3, T('st3SM'));
-  else if (r.reason == 'mate') s += stepRow('win', T('s3n'), c3, r.used ? F('st3Mate', op) : T('st3Mated'));
-  else if (r.why == 'budget') s += stepRow('open', T('s3n'), c3, F('st3Bud', num(B), op));
-  else if (r.why == 'horizon') s += stepRow('open', T('s3n'), c3, F('st3Hor', P, op));
+  else if (r.reason == 'mate') s += stepRow('win', T('s3n'), c3, (r.used ? F('st3Mate', op) : T('st3Mated')) + dn);
+  else if (r.why == 'budget') s += stepRow('open', T('s3n'), c3, F('st3Bud', num(db), op) + dn);
+  else if (r.why == 'horizon') s += stepRow('open', T('s3n'), c3, F('st3Hor', dp, op) + dn);
   else s += stepRow('open', T('s3n'), c3, T('st3Root'));
   if (r.draw) s += stepRow(r.dead ? 'dead' : 'live', T('s4n'), 'proveCannotBeMated(' + (r.side ? 'BLACK' : 'WHITE') + ')', F(r.dead ? 'st4Dead' : 'st4Live', fl));
+  }
   h += '<h4>' + T('hSteps') + '</h4><p class="dim small">' + T('stepsNote') + '</p><ol class="steps">' + s + '</ol>';
   /* reference */
   if (w.draw !== undefined) {
@@ -1240,10 +1311,11 @@ function detailHTML(k) {
      '<dt>' + T('kFull') + '</dt><dd>' + (A[5] && /^\d+$/.test(A[5]) ? A[5] : '—') + '</dd></dl>';
   /* the proof */
   h += '<h4>' + T('hRun') + '</h4><dl class="kv">' +
-     '<dt>' + T('kLimits') + '</dt><dd>' + F('limits', P, num(B)) + '</dd>' +
-     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(B)) + '</dd>' +
+     /* with the second tier, two searches: both limits, and the nodes of both against both budgets */
+     '<dt>' + T('kLimits') + '</dt><dd>' + (r.lockOnly ? T('lblLockOnly') : F('limits', P, num(B)) + (r.deep ? ' → ' + F('limits', DEEP[0], num(DEEP[1])) : '')) + '</dd>' +
+     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(r.deep ? B + DEEP[1] : B)) + '</dd>' +
      '<dt>' + T('kTime') + '</dt><dd>' + (r.warm === undefined ? (r.warm = warmTime(w, P, B)) : r.warm, us(r.warm)) + ' µs</dd>' +
-     (r.why ? '<dt>' + T('kStop') + '</dt><dd>' + T({ horizon: 'rHorizon', budget: 'rBudget', mate: 'rMate' }[r.why]) + '</dd>' : '') + '</dl>';
+     (r.why ? '<dt>' + T('kStop') + '</dt><dd>' + T({ horizon: 'rHorizon', budget: 'rBudget', mate: 'rMate', nolock: 'rNoLock' }[r.why]) + '</dd>' : '') + '</dl>';
   h += srcBlock(w, r) + '</div></div>';
   return h }
 function srcBlock(w, r) {
@@ -1296,7 +1368,7 @@ function csvRow(w, r) {
 function exportWhere(name, keep) { if (!results) return;
   var o = [CSV_HEAD], R = results.res, W = results.rows;
   for (var k = 0; k < R.length; k++) if (R[k] && keep(W[k], R[k])) o.push(csvRow(W[k], R[k]));
-  download(name, o.join('\n') + '\n') }
+  download(vname(name), o.join('\n') + '\n') }
 $('expAll').onclick = function () { exportWhere('all-verdicts.csv', function () { return true }) };
 $('expUn').onclick = function () { exportWhere('no-proof.csv', function (w, r) { return outcome(r) == 'open' }) };
 $('expMate').onclick = function () { exportWhere('mate-found.csv', function (w, r) { return outcome(r) == 'mate' }) };
@@ -1306,7 +1378,7 @@ $('expInv').onclick = function () { if (!results) return;
   var o = ['set,gameId,label,reason,fen'], R = results.res, W = results.rows;
   for (var k = 0; k < R.length; k++) if (!R[k]) { var w = W[k], p = w.bad;
     o.push([w.set, w.id, w.lab || '', p ? p.k + (p.a ? ':' + p.a.join(':') : '') : 'castle', w.fen].map(csvf).join(',')) }
-  download('invalid-fen.csv', o.join('\n') + '\n') };
+  download(vname('invalid-fen.csv'), o.join('\n') + '\n') };
 
 /* ═══════════════════════════════ games (PGN): a test of its own ═══════════════════════════════
    Every game is replayed move by move with the engine's Game, whose play() returns the game
@@ -1455,10 +1527,10 @@ function pgnRun() {
     $('pstat').textContent = F('pgnProg', num(i), num(games.length), num(Math.round(i / Math.max(secs, .001))));
     if (i < games.length && !PGN.cancel) setTimeout(chunk, 0);
     else { $('pbar').classList.add('hide');
-      PGN.res = res; PGN.P = P; PGN.B = B; PGN.secs = secs; PGN.stopped = i < games.length;
+      PGN.res = res; PGN.P = P; PGN.B = B; PGN.secs = secs; PGN.stopped = i < games.length; PGN.ver = VER;
       PGN.busy = false; PGN.page = 0; PGN.filt = ''; PGN.sel = -1; pgnLock(false); pgnRender() } })() }
 function pgnLock(on) {
-  ['pgntext', 'go'].forEach(function (id) { $(id).disabled = on });
+  ['pgntext', 'go', 'ver', 'lockonly'].forEach(function (id) { $(id).disabled = on });
   Array.prototype.forEach.call(ROOT.querySelectorAll('#pgnflist button'), function (x) { x.disabled = on });
   $('pdrop').classList.toggle('off', on); $('pgngo').classList.toggle('stop', on);
   if (!on) refreshCount(); pgnRefresh() }
@@ -1472,7 +1544,7 @@ function pgnRender() {
   var R0 = PGN.res, box = $('pgnout');
   if (!R0) { box.classList.add('hide'); if (!PGN.busy) $('pstat').textContent = ''; return }
   box.classList.remove('hide');
-  $('pstat').textContent = PGN.stopped ? F('pgnStopped', num(R0.length), num(pgnAll().length)) : F('pgnDone', num(R0.length), dur(PGN.secs));
+  $('pstat').textContent = (PGN.stopped ? F('pgnStopped', num(R0.length), num(pgnAll().length)) : F('pgnDone', num(R0.length), dur(PGN.secs))) + (PGN.ver === 2 ? T('verTag') : '');
   var cnt = {}; PGN_CATS.forEach(function (k) { cnt[k] = 0 }); R0.forEach(function (o) { cnt[o.cat]++ });
   $('pgnsum').innerHTML = '<table><tr><th>' + T('pgnThCat') + '</th><th>' + T('pgnThN') + '</th></tr>' +
     PGN_CATS.filter(function (k) { return cnt[k] }).map(function (k) {
@@ -1543,17 +1615,37 @@ $('pgnexp').onclick = function () { if (!PGN.res) return;
       r.end ? r.end.ply : '', r.end && r.end.ply ? pgnRef(r, r.end.ply) : '', r.end ? E.RESULT_NAMES[r.end.code] : '', r.end && r.end.ply < r.plies ? r.plies - r.end.ply : '',
       r.right, f && !f.bad ? (f.draw ? (f.dead ? 'dead position' : 'draw on time') : (f.side ? 'black' : 'white') + ' wins on time') : '', f ? (f.side ? 'white' : 'black') : '',
       r.err ? r.err.k + (r.err.a ? ':' + r.err.a.join(':') : '') : '', r.end ? r.end.fen : r.fen || ''].map(csvf).join(',')) });
-  download('games.csv', o.join('\n') + '\n') };
+  download(vname('games.csv'), o.join('\n') + '\n') };
 
 /* ═══════════════════════════════ wiring ═══════════════════════════════ */
-function limNote() { $('limnote').textContent = F('limNote', LIMITS[0], num(LIMITS[1])) }
+function limNote() {
+  $('limnote').textContent = VER === 2 ? F('limNote2', LIMITS[0], num(LIMITS[1]), DEEP[0], num(DEEP[1])) : F('limNote', LIMITS[0], num(LIMITS[1]));
+  $('vernote').textContent = T('verNote' + VER) + (LOCKONLY ? '; ' + T('lockOnlyNote') : '') }
 $('fold-engine').addEventListener('toggle', function () {
-  if (this.open && !$('srcbox').textContent) $('srcbox').textContent = $('mateless-engine').textContent.trim() });
+  if (this.open && !$('srcbox').textContent) $('srcbox').textContent = $(ENGINE_IDS[VER]).textContent.trim() });
+/* Another version: its engine from now on, for the positions and the games alike. What the other one
+   judged is cleared, so no result is shown under a version that did not give it. */
+$('lockonly').onchange = function () {
+  if (busy || PGN.busy) { this.checked = LOCKONLY; return }
+  LOCKONLY = this.checked;
+  if (!$('lb').classList.contains('hide')) lbClose();
+  results = null; showResults(); say('');
+  applyI18n() };
+$('ver').onchange = function () {
+  if (busy || PGN.busy) { this.value = String(VER); return }
+  VER = +this.value; E = engineOf(VER);
+  DEEP = VER === 2 ? [E.DOMINO_DEEP_PLY, E.DOMINO_DEEP_BUDGET] : [0, 0];
+  ENGINE_BYTES = new Blob([$(ENGINE_IDS[VER]).textContent]).size;
+  if (!$('lb').classList.contains('hide')) lbClose();
+  results = null; showResults(); say('');
+  PGN.res = null; pgnRender();
+  $('srcbox').textContent = $('fold-engine').open ? $(ENGINE_IDS[VER]).textContent.trim() : '';
+  applyI18n() };
 function applyI18n() {
   var els = ROOT.querySelectorAll('[data-i]'), i, el, k;
   for (i = 0; i < els.length; i++) { el = els[i]; k = els[i].getAttribute('data-i');
     if (el.hasAttribute('data-ihtml')) el.innerHTML = T(k); else el.textContent = T(k) }
-  ROOT.querySelector('[data-i="engineNote"]').innerHTML = F('engineNote', num(ENGINE_BYTES));
+  ROOT.querySelector('[data-i="engineNote"]').innerHTML = F(VER === 2 ? 'engineNote2' : 'engineNote', num(ENGINE_BYTES));
   limNote(); inputChanged();
   if (results) { var s = $('stat').innerHTML; showResults(); if (busy) say(s) }
   if (!$('lb').classList.contains('hide')) lbShow();

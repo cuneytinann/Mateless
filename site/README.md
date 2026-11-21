@@ -10,6 +10,7 @@ site.css                      the look every tab shares: colours, type, forms, b
 shell.html, shell.css         the bar (tabs, language, download) and the five tab containers
 shell.js                      the frame: which tab shows, the language, the address
 arbiter/                      the arbiter: arbiter.html, arbiter.css, arbiter.js
+second/                       mateless.js of the second version (the tam-kol branch, cc8b6dd), for the arbiter
 lock/                         the lock detector explained: lock.html, lock.css, lock.js, and
                               lockviz.js, a display copy of the detector (test/lockviz_check.js)
 rules/                        the rules (FIDE 5.2.2, 6.9, 5.1.2): rules.html, rules.css
@@ -25,6 +26,11 @@ How the page is put together:
   chasolver's port once, as `<script id="cha-engine">`. The arbiter, the lock tab and the scan
   use the first; the chasolver tab and the scan use the second. Workers are started from the
   text of those same scripts, so a worker always runs the page's engines.
+- **The second version, in the arbiter only.** `second/mateless.js` is the engine of the second
+  version, built on the `tam-kol` branch and copied here unchanged; it is embedded as text,
+  `<script id="mateless-engine-2" type="text/plain">`. The arbiter's "version" choice runs it
+  (positions and games alike) and only then: until it is picked, the page runs `mateless.js`
+  alone. Files it exports end in `-second.csv`.
 - **Tabs do not touch each other.** Each tab's style sheet is scoped to its container
   (`#tab-arbiter`, `#tab-lock`, `#tab-rules`, `#tab-scan`, `#tab-chasolver`) when the page is
   built; ids are unique across tabs (chasolver's start with `cha-`, the scan's with `scan-`, the

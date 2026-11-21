@@ -197,6 +197,9 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   ve ona götüren basamaklarla gösterilir; ölü pozisyonlar işaretlenir; sonuçlar CSV olarak
   indirilir. chasolver'ın, berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları
   listeleri ([chasolver.org/unfair-games](https://chasolver.org/unfair-games)) doğrudan bırakılabilir.
+  İki sürümden biri seçilebilir: hızlı olan (bu kütüphane, Lichess'e önerilen kurallar) ve ikinci
+  sürüm (`tam-kol` dalı, aşağıda); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
+  hangi pozisyonları yakaladığını gösteriyor.
 - **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
   kale, vezir ve ikiz filler neden dışarıda; sonra bitboard'larla piyonlar ve şahlar (alış varsa
   kilit yok; koniler; duvarlar, sabit piyonlar, şah erişimleri ve alım karelerinin sabit noktası;
@@ -437,10 +440,12 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 ## Sırada ne var
 
 Bu sürüm hızlı katman: sağlam, küçük ve bir oyun sunucusunda her hamleden sonra çalışmak için
-yapıldı. Yanına ikinci bir sürüm gelecek. O da tam olmayacak, ama kapsamı daha geniş olacak;
-hedefi tamlık, yeni kurallar eklendikçe de büyümeye devam edecek. Bu sürüm Lichess verisinin
-%99,98'ini zaten karşılıyor; bu yüzden geniş sürüm pratikte en çok meraklıları ve araştırmayı
-ilgilendirecek, aceleye getirilmeyecek.
+yapıldı. Yanında `tam-kol` dalında ikinci bir sürüm duruyor; hakem sayfası, seçilince onu
+çalıştırıyor. O da tam değil, ama kapsamı daha geniş; hedefi tamlık ve yeni kurallar eklendikçe
+büyüyor: önü açık piyon çiftleri, kutulu at, kale ve vezir, Domino aramasına ikinci kademe, ikiz
+filler ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kural (bu sürümün ispatlayamadığı
+36 satırın 34'ünü ispatlıyor). Bu sürüm Lichess verisinin %99,98'ini zaten karşılıyor; bu yüzden
+geniş sürüm pratikte en çok meraklıları ve araştırmayı ilgilendiriyor, aceleye getirilmiyor.
 
 ## Lisans ve teşekkür
 

@@ -193,7 +193,10 @@ Turkish to choose. Five tabs:
   shown as a score with its reason (insufficient material, locked position, Domino effect, mate
   found, no proof) and the rungs that led to it; dead positions are marked; results download as
   CSV. chasolver's lists of the Lichess games lost on time that should have been drawn,
-  [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in.
+  [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in. Two versions
+  to choose from: the fast one (this library, the rules proposed to Lichess) and the second version
+  (the `tam-kol` branch, below); a box runs the chosen version's lock detector alone, to see which
+  positions it catches.
 - **Lock detector**: rung 2 from the simplest up. What the Lichess locks hold, and why knights,
   rooks, queens and twin bishops are left out; then pawns and kings on bitboards (a capture means
   no lock; the cones; the fixed point of walls, fixed pawns, king reaches and take squares; one wall
@@ -436,10 +439,13 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, 
 ## What comes next
 
 This version is the fast layer: sound, small, and meant to run on a game server after every
-move. A second version will come beside it. It will not be complete either, but it will be wider
-in scope, with completeness as its goal, and it will keep growing as new rules are added. This
-version already covers 99.98% of the Lichess data, so in practice the wider one will matter
-mostly to the curious and to research; it will not be rushed.
+move. A second version stands beside it, on the `tam-kol` branch, and the arbiter page runs it when
+it is chosen. It is not complete either, but wider in scope, with completeness as its goal, and it
+keeps growing as new rules are added: open pawn pairs, boxed knights, rooks and queens, a second tier
+of the Domino search, twin bishops, and four rules for the ways a game of kings and pawns runs into
+a stalemate (of the 36 rows this version leaves unproven, it proves 34). This version already covers
+99.98% of the Lichess data, so in practice the wider one matters mostly to the curious and to
+research; it is not rushed.
 
 ## License and credits
 

@@ -122,9 +122,9 @@ new rules:
 The file is written by `tools/lock-positions.js` in the Mateless repository.
 
 These versions are meant to be read and carried into other programs. The fast versions are
-Mateless's own, on its `tam-kol` branch: `src/lock.js` and `rust/src/lock.rs` (also as WebAssembly).
+Mateless's own, on its `second-version` branch: `src/lock.js` and `rust/src/lock.rs` (also as WebAssembly).
 How each rule works, and how it was checked:
-[docs/DESIGN.md, section 12](https://github.com/cuneytinann/Mateless/blob/tam-kol/docs/DESIGN.md#12-the-second-version).
+[docs/DESIGN.md, section 12](https://github.com/cuneytinann/Mateless/blob/second-version/docs/DESIGN.md#12-the-second-version).
 
 ## Licence
 

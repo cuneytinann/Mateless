@@ -27,7 +27,7 @@
    never be opened; one it fails may still be dead.
 
    Squares: a1 = 0, b1 = 1, ..., h8 = 63. A set of squares (a bitboard) is a bigint kept to 64 bits.
-   Mateless's own engine (mateless.js, src/lock.js, on the tam-kol branch) is the fast version. */
+   Mateless's own engine (mateless.js, src/lock.js, on the second-version branch) is its fast implementation. */
 
 const ALL = (1n << 64n) - 1n;  // bigints have no size: every set is kept to 64 bits
 const FILE_A = 0x0101010101010101n;

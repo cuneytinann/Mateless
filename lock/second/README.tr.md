@@ -119,9 +119,9 @@ tarafı da cevaplıyor ve `<dil>: 60471 positions, 0 wrong` yazıyor.
 Dosyayı Mateless reposundaki `tools/lock-positions.js` yazıyor.
 
 Bu sürümler okunmak ve başka programlara taşınmak için. Hızlı sürümler Mateless'in kendisinde,
-`tam-kol` dalında: `src/lock.js` ve `rust/src/lock.rs` (WebAssembly olarak da). Her kuralın nasıl
+`second-version` dalında: `src/lock.js` ve `rust/src/lock.rs` (WebAssembly olarak da). Her kuralın nasıl
 çalıştığı ve nasıl denendiği:
-[docs/DESIGN.md, 12. bölüm](https://github.com/cuneytinann/Mateless/blob/tam-kol/docs/DESIGN.md#12-the-second-version).
+[docs/DESIGN.md, 12. bölüm](https://github.com/cuneytinann/Mateless/blob/second-version/docs/DESIGN.md#12-the-second-version).
 
 ## Lisans
 

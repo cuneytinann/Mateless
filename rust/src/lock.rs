@@ -1,7 +1,7 @@
 //! Rung 2, the lock detector (`src/lock.js`), and the two static tests together: pawns, kings and
 //! bishops form a structure that no series of legal moves can open. It reads the bitboards, the
 //! side to move and the en passant square only; it generates no move and searches nothing.
-//! This is the second version (the tam-kol branch): open pawn pairs, boxed knights, rooks and
+//! This is the second version (the second-version branch): open pawn pairs, boxed knights, rooks and
 //! queens, twin bishops, and the four rules of kings and pawns (the stalemate guard, the check
 //! seed, the stuck mater, the forced step), line for line as in src/lock.js.
 

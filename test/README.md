@@ -14,7 +14,8 @@ What must hold:
 
 chasolver's test positions come from https://github.com/miguel-ambrona/chasolver
 (`tests/positions.txt`, `tests/lichess.txt`): point `CHASOLVER` at that folder (default
-`../../chasolver/tests`, a clone beside this repository). `ENGINE` selects the engine under test
+`../../chasolver/tests`, a clone beside this repository). Use its `v3.0.0` tag: chasolver's main
+branch dropped `lichess.txt` on 11 November 2026 (`git -C ../../chasolver checkout v3.0.0 -- tests`). `ENGINE` selects the engine under test
 (default `../mateless.js`; most tests also run on `../src/index.js`, the ES modules); `DATA` a CSV
 of chasolver's Lichess data where a test reads one. Run them from this folder.
 

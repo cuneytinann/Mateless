@@ -134,7 +134,7 @@ edemeyeceğini hem chasolver'ın hem Mateless'in ispatladığı 2.830 oyun (kura
 oyunlar dışarıda). 195.287 satır, Mateless'in sınıflamasıyla (JS, Rust ve WebAssembly her satırda
 aynı cevabı veriyor):
 
-| sınıf | satır | pay | Lichess bugün berabere veriyor (scalachess 18.0.1) | kilit yamasıyla (oyun içi) | yerine bayrakta (a-lock) |
+| sınıf | satır | pay | Lichess bugün berabere veriyor (scalachess 18.1.0) | oyun içinde kilit kontrolü (in-game) | bayrakta kilit kontrolü (a-lock) |
 |---|---|---|---|---|---|
 | **kilitli pozisyonlar** (kilit dedektörü) | **52.050** | %26,7 | 141 | **52.034** | 52.050 |
 | zorunlu çizgiler (Domino araması) | 143.201 | %73,3 | 138.431 | 138.431 | 138.669 |
@@ -151,19 +151,23 @@ pozisyonlar**: 56.715 kaçırılan satırın 51.909'u. 7–30 Eylül'de, #821 ku
 böyle süreden kaybedildi; 422'si (%92) kilitti.
 
 Lichess için önerilen kilit yaması
+([lichess-org/scalachess#916](https://github.com/lichess-org/scalachess/pull/916); #907'nin
+yerini aldı) yalnızca kilit dedektörünü (181 satır Scala) iki yerde soruyor; Standart, Chess960 ve
+From Position oyunlarında. **Oyun içinde**
 [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'teki `in-game`:
-yalnızca kilit dedektörü (181 satır Scala), scalachess'in `autoDraw`'unda bir ölü pozisyon
-kontrolü olarak (FIDE 5.2.2); yarım hamle sayacı 0 ya da 1 iken, yani bir alıştan ya da piyon
-hamlesinden hemen sonra ve bir hamle sonra, iki taraf için soruluyor: kilit ancak o anlarda
-oluşabilir. Oyun kilitlendiği anda berabere bitiyor; yukarıdaki satırların 52.034'ü süre bitmeden
-önce biterdi: Lichess'in bugün kazanç saydığı 51.893 (eylüldeki 422 de bunların içinde) ve süre
-bitince berabere verdiği 141. Bıraktıkları: yalnızca bir tarafın kilidi olan
-16 satır (ölü değil: süresi biten taraf hâlâ mat edebilirdi) ve kilidin süre bittikten bir hamle
-sonra geldiği 238 satır. Alternatif `a-lock` aynı dedektörü yalnızca süre bitince, pozisyonda ve
-#821'in ileri bakışında soruyor; o 254 satırı da berabere veriyor, ama ölü bir oyun başka bir
-yoldan bitene kadar oynanmaya devam ediyor: ağustos ve eylülde 8.718 berabere oyun, böyle bir
-kilit oluştuktan sonra ortanca 14 ply daha sürdü. Merdivenin tamamı, Mateless'in kendisi ya da o
-repodaki `c-ladder` yaması, 195.251 satırı (%99,98) berabere veriyor.
+scalachess'in `autoDraw`'unda bir ölü pozisyon kontrolü (FIDE 5.2.2); yarım hamle sayacı 0 ya da 1
+iken, yani bir alıştan ya da piyon hamlesinden hemen sonra ve bir hamle sonra, iki taraf için
+soruluyor: kilit ancak o anlarda oluşabilir. Oyun kilitlendiği anda berabere bitiyor; yukarıdaki
+satırların 52.034'ü süre bitmeden önce biterdi: Lichess'in bugün kazanç saydığı 51.893 (eylüldeki
+422 de bunların içinde) ve süre bitince berabere verdiği 141. **Süre bitince ya da bir oyuncu terk
+edince** `a-lock`: aynı dedektör bir kez daha, pozisyonda ve #821'in ileri bakışında soruluyor.
+Oyun içi kontrolün göremediklerini berabere veriyor: yalnızca bir tarafın kilidi olan 16 satır
+(ölü değil: süresi biten taraf hâlâ mat edebilirdi; bu süre bitiminin sorusu, FIDE 6.9) ve kilidin
+süre bittikten bir hamle sonra geldiği 238 satır. Toplam: 190.719 satır (%97,7). Yalnızca süre
+bitince sorulsaydı ölü bir oyun başka bir yoldan bitene kadar oynanmaya devam ederdi: ağustos ve
+eylülde 8.718 berabere oyun, böyle bir kilit oluştuktan sonra ortanca 14 ply daha sürdü. Merdivenin
+tamamı, Mateless'in kendisi ya da o repodaki `c-ladder` yaması, 195.251 satırı (%99,98) berabere
+veriyor.
 
 Satırların 117.455'inde (%60) son pozisyon zaten ölüydü, iki taraf da mat edemiyordu: FIDE 5.2.2'ye
 göre bu oyunlar süre bitmeden önce berabere bitmişti.
@@ -181,9 +185,9 @@ beyaz ve bir siyah piyon, aralarında tek boş kare, yapının geri kalanı kili
 piyonlarının arasına kapanmış bir at. Oyundan sonra bir puan iadesinin kapsayacağı şey bunlar ve
 platformun kendi kurallarının bıraktıkları: oyun bittikten sonra tam bir çözücü (chasolver) onlara
 bakar. Merdivenin tamamıyla bu 195.287 satırda 36 satır; bugünkü Lichess'in üstüne yalnızca kilit
-dedektörüyle 4.822 (`in-game`) ya da 4.568 (`a-lock`). İkinci sürüm 36'nın 30'unu ispatlıyor:
-ikinci kademe kafeslerin 26'sını (9 ply ve 10.000 düğüm içinde kapananları), önü açık çift kuralı
-3 çifti, kutulu taş kuralı atı. Kalan 6'sı kafes.
+dedektörüyle 4.822 (yalnızca `in-game`) ya da 4.568 (`a-lock` ve ikisini birden yapan #916). İkinci
+sürüm 36'nın 30'unu ispatlıyor: ikinci kademe kafeslerin 26'sını (9 ply ve 10.000 düğüm içinde
+kapananları), önü açık çift kuralı 3 çifti, kutulu taş kuralı atı. Kalan 6'sı kafes.
 
 **Sağlamlık.** Henüz yazılı bir ispat yok; güçlü test kanıtı var.
 - chasolver'ın etiketlerine karşı yanlış beraberlik yok (68.950 etiketli pozisyonu, iki taraf;
@@ -233,9 +237,12 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   biten oyunlar ve pozisyon öldükten sonra oynanmaya devam eden beraberlikler, Mateless ve
   chasolver için, CSV dosyaları olarak.
 - **chasolver**: Miguel Ambrona'nın chasolver 3.0.0'ının JavaScript çevirisi (resmi değil; MIT),
-  tam çözücü; kazanılabilir her pozisyon için bir mat hattı gösterir. 398.960 girdide hızlı kontrolü
-  resmi Rust sürümüyle her satırda aynı cevabı verdi. Hakemdeki "chasolver'a sor" düğmesi
-  pozisyonu ona aktarır.
+  ana dalındaki pat süzgeci düzeltmesiyle (11 Kasım 2026) ve aynı süzgece bizim, henüz chasolver'da
+  olmayan bir düzeltmemizle: rakip şahın alabileceği taşlar artık onun duvarı sayılmıyor. Bu,
+  bildirdiğimiz 57 Lichess oyununda ana dalın hâlâ verdiği 44 yanlış "kazanamaz" hükmünü bitiriyor.
+  Tam çözücü; kazanılabilir her pozisyon için bir mat hattı gösterir. Aynı düzeltmeli Rust
+  sürümüyle her satırda aynı cevabı verdi: hızlı kontrol 342.559 girdide, tam analiz, mat hatları
+  dahil, 138.075 girdide. Hakemdeki "chasolver'a sor" düğmesi pozisyonu ona aktarır.
 
 Sayfa `site/`'tan kuruluyor (her sekmeye bir klasör, bkz. [site/README.md](site/README.md)) ve
 motoru gömülü taşıyor; `src/` ya da `site/` değişince:
@@ -311,9 +318,9 @@ if (r.error === undefined) Mateless.proveCannotBeMated(r.position, Mateless.BLAC
 
 **scalachess (Lichess)** için ayrı bir repo var:
 [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess). scalachess 18.0.1'e yama
-setleri: `autoDraw`'da ölü pozisyon kontrolü olarak yalnızca kilit dedektörü (`in-game`,
-önerilen), aynı dedektör süre bitince (`a-lock`, alternatif) ve merdivenin tamamı (`c-ladder`,
-başvuru için).
+setleri: `autoDraw`'da ölü pozisyon kontrolü olarak yalnızca kilit dedektörü (`in-game`), aynı
+dedektör süre bitince (`a-lock`) ve merdivenin tamamı (`c-ladder`, başvuru için). Lichess için
+önerilen #916, `in-game` ile `a-lock`'un ikisi birden.
 
 ## Yalnızca kilit dedektörünü almak
 
@@ -357,7 +364,7 @@ satırının 52.050'si, Lichess'in bugün kaçırdığı 51.909'u dahil.
    düşürüyor.
 
 **Sormanın üç yolu:**
-- **Her hamleden sonra ölü pozisyon kontrolü** (Lichess için önerilen `in-game` yaması,
+- **Her hamleden sonra ölü pozisyon kontrolü** (`in-game`, #916'nın ilk yarısı,
   scalachess'in `autoDraw`'unda): yarım hamle sayacı 0 ya da 1 iken kilidi iki taraf için sor; iki
   taraf da mat edilemiyorsa pozisyon ölüdür (FIDE 5.2.2) ve oyun hemen biter. Kilit ancak bir
   alıştan ya da piyon hamlesinden sonra, hemen ya da bir hamle sonra oluşur: piyon şahı da en
@@ -370,11 +377,11 @@ satırının 52.050'si, Lichess'in bugün kaçırdığı 51.909'u dahil.
   ```
   kilitle ölü  ⇔  yarım hamle sayacı ≤ 1  ve  kilit(pozisyon, Beyaz)  ve  kilit(pozisyon, Siyah)
   ```
-- **Süre bitince, bir hamlelik ileri bakışla** (alternatif `a-lock`; scalachess #821 süresi biten
-  tarafın her hamlesine bakıyor): kilidi pozisyonda ve her çocuk pozisyonda sor. Üç durum da
-  kendiliğinden gelir; çocuk pozisyonda en passant hakkı kalmamıştır. Lichess verisinde çocuk
-  pozisyonlar 238 satır ekledi: 237'si piyon şahından çıkış, 1'i zorunlu kale alışı. Ama ölü bir
-  oyun, süre bitene ya da başka bir yoldan bitene kadar sürer.
+- **Süre bitince, bir hamlelik ileri bakışla** (`a-lock`, #916'nın ikinci yarısı; scalachess #821
+  süresi biten tarafın her hamlesine bakıyor): kilidi pozisyonda ve her çocuk pozisyonda sor. Üç
+  durum da kendiliğinden gelir; çocuk pozisyonda en passant hakkı kalmamıştır. Lichess verisinde
+  çocuk pozisyonlar 238 satır ekledi: 237'si piyon şahından çıkış, 1'i zorunlu kale alışı. Ama ölü
+  bir oyun, süre bitene ya da başka bir yoldan bitene kadar sürer.
   ```
   süre bitince beraberlik  ⇔  kilit(pozisyon)
                               ya da süresi biten tarafın her yasal hamlesinden sonra: onun verdiği

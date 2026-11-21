@@ -37,26 +37,31 @@ WebAssembly give the same class, node count and failure on every row.
 | unproven | 36 | 0.018% | 0 | 0 | 0 | 0 |
 | **all** | **195,287** | | **138,572 (71.0%)** | **190,465 (97.5%)** | 190,719 (97.7%) | **195,251 (99.98%)** |
 
-- *Lichess today*: scalachess 18.0.1's `opponentHasInsufficientMaterial`, which lila asks when a
-  flag falls (`Finisher.outOfTime`), with the one-move lookahead of #821 (merged in August 2026;
-  on Lichess from 6 September, judging by the data). The data up to July predates #821: scalachess
-  would have drawn ~70% of the rows of every month from 2017 to 2026.
+- *Lichess today*: scalachess 18.0.1's `opponentHasInsufficientMaterial` (unchanged in 18.1.0,
+  which Lichess uses now), which lila asks when a flag falls (`Finisher.outOfTime`), with the
+  one-move lookahead of #821 (merged in August 2026; on Lichess from 6 September, judging by the
+  data). The data up to July predates #821: scalachess would have drawn ~70% of the rows of every
+  month from 2017 to 2026.
 - *The lock patch*: [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)'s
-  `in-game`, the patch proposed for Lichess: the lock detector as a dead-position check (FIDE
-  5.2.2) in scalachess's `autoDraw`, asked for both sides when the halfmove clock is 0 or 1. A lock
-  can appear only then: right after a capture or a pawn move, or one move later, once an en passant
-  right has lapsed or a king has stepped out of a pawn's check. A row counts when Lichess draws it
-  today or when its final position is a lock for both sides: the game would have ended, drawn, the
-  moment it locked. That adds 51,893 rows, every one a locked position that ends before the flag
-  falls. It leaves 16 locks of one side only (not dead: the flagged side could still mate) and the
-  238 rows that come through `a-lock`'s lookahead (the lock comes one move after the flag).
-- *At the flag*: `a-lock`, the alternative: the same detector asked only when a flag falls, at the
-  position and in #821's lookahead. Of the 52,147 rows it adds, 51,909 are locks at the position
+  `in-game`, the first half of the patch proposed for Lichess
+  ([#916](https://github.com/lichess-org/scalachess/pull/916)): the lock detector as a dead-position
+  check (FIDE 5.2.2) in scalachess's `autoDraw`, asked for both sides when the halfmove clock is 0
+  or 1. A lock can appear only then: right after a capture or a pawn move, or one move later, once
+  an en passant right has lapsed or a king has stepped out of a pawn's check. A row counts when
+  Lichess draws it today or when its final position is a lock for both sides: the game would have
+  ended, drawn, the moment it locked. That adds 51,893 rows, every one a locked position that ends
+  before the flag falls. It leaves 16 locks of one side only (not dead: the flagged side could still
+  mate) and the 238 rows that come through `a-lock`'s lookahead (the lock comes one move after the
+  flag).
+- *At the flag*: `a-lock`, the second half of #916: the same detector asked when a flag falls, at
+  the position and in #821's lookahead. Of the 52,147 rows it adds, 51,909 are locks at the position
   itself, 238 come through the lookahead (237 kings stepping out of a pawn's check into a lock, one
-  lock after a forced capture of a rook). A dead game is still played on until it ends.
+  lock after a forced capture of a rook). Asked alone, it lets a dead game be played on until it
+  ends.
 - *The whole ladder*: `c-ladder`, or Mateless itself. No row that scalachess draws is missed.
 - What the lock patches leave: 4,532 forced lines of more than one move and the 36 unproven rows;
-  with `in-game` also those 254 (4,822 in all), with `a-lock` 4,568.
+  with `in-game` alone also those 254 (4,822 in all), with `a-lock` (and #916, which does both)
+  4,568.
 - The Lichess today and `a-lock` columns come from scalachess itself, built with and without the
   patch (mateless-scalachess's `check/`). The `in-game` column is Lichess today plus the rows whose
   final position the lock detector proves for both sides (`mateless.js`; `Lock.scala` gives the

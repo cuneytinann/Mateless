@@ -15,7 +15,8 @@ lock/                         the lock detector explained: lock.html, lock.css, 
 rules/                        the rules (FIDE 5.2.2, 6.9, 5.1.2): rules.html, rules.css
 scan/                         the Lichess scan: scan.html, scan.css, scan.js on the page;
                               scan-core.js and worker-glue.js in the workers; fzstd.js (MIT)
-chasolver/                    chasolver 3.0.0's JavaScript port: engine.js and glue.js (MIT,
+chasolver/                    chasolver's JavaScript port (3.0.0, main's stalemate-filter fix and ours):
+                              engine.js and glue.js (MIT,
                               LICENSE.txt), the tab's chasolver.html, chasolver.css, chasolver.js
 ```
 

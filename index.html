@@ -9007,14 +9007,19 @@ function materStuck(pos, flagged) {
 /* ─── The forced step (second version) ───────────────────────────────────────────────────────
 
    The side to move is in a pawn's check and has exactly one legal move: its king's step to one
-   square (no bishop on the board, so the steps are exact: not onto its pawns, not where an enemy pawn
+   square (kings and pawns only, so the steps are exact: not onto its pawns, not where an enemy pawn
    attacks, not next to the enemy king; and no pawn of its own can take a checking pawn). Every line
    goes through that step, and the position is no mate now, so the lock of the position after it
-   proves this one. Returns that position (bitboards only), or null. */
+   proves this one. Returns that position (bitboards only), or null. With a bishop, knight, rook or
+   queen on the board the steps counted here would not be exact (a piece may hold a square, stand on
+   it, or take the checking pawn), so then there is no forced step. */
 function forcedStep(pos) {
   if (!GUARD || pos.ep !== NO_SQUARE || !pawnCheck(pos)) return null;
   const lo = pos.lo, hi = pos.hi;
-  if (lo[WHITE | BISHOP] | hi[WHITE | BISHOP] | lo[BLACK | BISHOP] | hi[BLACK | BISHOP]) return null;
+  if (lo[WHITE | BISHOP] | hi[WHITE | BISHOP] | lo[BLACK | BISHOP] | hi[BLACK | BISHOP] |
+      lo[WHITE | KNIGHT] | hi[WHITE | KNIGHT] | lo[BLACK | KNIGHT] | hi[BLACK | KNIGHT] |
+      lo[WHITE | ROOK] | hi[WHITE | ROOK] | lo[BLACK | ROOK] | hi[BLACK | ROOK] |
+      lo[WHITE | QUEEN] | hi[WHITE | QUEEN] | lo[BLACK | QUEEN] | hi[BLACK | QUEEN]) return null;
   const us = pos.side, them = us ^ WHITE, white = us === WHITE;
   const opL = lo[us | PAWN], opH = hi[us | PAWN], epL = lo[them | PAWN], epH = hi[them | PAWN];
   const kL = lo[us | KING], kH = hi[us | KING], k = firstSquare(kL, kH), ek = firstSquare(lo[them | KING], hi[them | KING]);

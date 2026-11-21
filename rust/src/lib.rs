@@ -15,8 +15,9 @@
 //!                   played move by move; and rung 4, the search's second tier (the second version)
 //!
 //! Both versions are here: the first version's lock detector and search, and the second version's
-//! rules (open pawn pairs, boxed knights, rooks and queens, the second tier), each run only when its
-//! own situation is on the board.
+//! rules (open pawn pairs, boxed knights, rooks and queens, twin bishops, the four rules of kings and
+//! pawns: the stalemate guard, the check seed, the stuck mater, the forced step; the second tier),
+//! each run only when its own situation is on the board.
 //!
 //! and under it [`board`], a reference board (bitboards, magic bitboards, legal moves, FEN). Every
 //! public item is also re-exported here, at the crate root.

@@ -342,8 +342,8 @@ another ply than in the first version.
 ### The four rules of November
 
 The stalemate guard, the check seed, the stuck mater and the forced step
-([DESIGN.md](DESIGN.md), section 12), in the JavaScript engine (the Rust and WebAssembly builds keep
-the earlier rules until they are ported). On the 204,060 rows, the flagged side:
+([DESIGN.md](DESIGN.md), section 12), in the JavaScript, Rust and WebAssembly engines (Rust and
+WebAssembly since 21 November, below). On the 204,060 rows, the flagged side:
 
 | | second version before | with the four rules |
 |---|---|---|
@@ -373,6 +373,17 @@ no flag comes down where chasolver's full analysis finds a mate (6,000 games); `
 **Speed** (JavaScript, the 204,060 rows, best of 5, three rounds): the lock test ~140 → ~160 ns
 (+~13%), the whole ladder ~670 → ~700 ns per row (+~4%), a game's flags ~2% per move.
 
+**Rust and WebAssembly** (21 November, with twin bishops): the same rules, line for line
+(`rust/src/lock.rs`). JS = Rust byte for byte, node counts included (`rust_compare.js`): the 204,060
+rows, chasolver's two labelled files, and 166,181 legal positions of this section's analyses (the new
+locks, the king-moved variants, the twin-bishop sets). JS = WebAssembly (`wasm_check.js`): 273,010
+positions and 2,000 games, 0 differences; `trigger_check.js` with `mateless.wasm`: 0 problems. The
+fast loop = the plain loop (`lockcheck.rs`, both with the guard and the seed): 11.8 million
+side-positions; both sides at once = each alone (`twosided.rs`): 370,241 positions, 0 mismatches.
+Speed (Rust, the 204,060 rows): the lock test for both sides ~40 → ~54 ns (+~16% instructions,
+counted with Valgrind); the whole ladder per row, both sides, ~300 → ~320 ns (+~5% instructions);
+one side's ladder over all the rows the same within the noise (~255 ms with reading the file).
+
 <a id="twin-bishops"></a>
 
 ### Twin bishops
@@ -392,5 +403,5 @@ in 23 plies ending with Black's king on a8, its dark bishops on a7 and b8, White
 (replayed by the engine: checkmate). With the rule as it is, the same positions yield 1,152 locks and
 chasolver finds every one unwinnable. On chasolver's 227: `test/lock_invariant.js` finds no violation
 (9.1 million positions visited, cap 50,000 each); walking their reachable positions to the end (cap 2
-million each) has found no mate.
+million each), done for 101 of them, found no mate (64 walked to the end, 37 past the cap).
 

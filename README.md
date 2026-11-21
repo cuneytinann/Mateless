@@ -56,8 +56,9 @@ move on the positions of a game, most of it a quick look for boxed pieces where 
 queen stands (~2 ns in Rust, ~10 ns in JavaScript); against chasolver its ratios are the same
 within the noise, and its whole ladder proves 201,054 of chasolver's 201,060 rows, at ~0.22 µs a
 row over the 204,060 rows up to September (Rust; [docs/RESULTS.md](docs/RESULTS.md#the-second-version)).
-The four rules added in November (below), in JavaScript so far, make it 201,058, for ~13% more per
-lock test and ~4% more per row on the whole ladder.
+The four rules added in November (below) make it 201,058. They cost ~13% more per lock test in
+JavaScript and ~30% in Rust (both sides of the 204,060 rows: ~40 → ~54 ns), ~4% per row on the whole
+ladder in JavaScript and nothing measurable in Rust.
 
 | | Rust | JavaScript |
 |---|---|---|
@@ -466,9 +467,8 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, 
 node second_version_check.js                     # the second version's rules: the 36 rows, each rule's positions
 ```
 
-Until the November rules and twin bishops are ported to Rust, the WebAssembly and Rust builds answer
-as before them: `wasm_check.js` and `rust_compare.js` differ where those rules apply, and
-`trigger_check.js` is run with `NO_WASM=1`.
+The November rules and twin bishops are in the Rust and WebAssembly builds too: `rust_compare.js`,
+`wasm_check.js` and `trigger_check.js` (with `mateless.wasm`) find no difference.
 
 ## The second version
 
@@ -487,7 +487,7 @@ measured, and only where its own situation is on the board.
 | **the stalemate guard**: a pawn the enemy king may take stays a wall if taking it always stalemates its owner (its king, wherever it may stand, defends the pawn or has no square left; nothing else of the owner's moves; the capture uncovers no bishop's check) | the cycle meets a takeable fixed pawn of a side without bishops | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
 | **the stuck mater**: the flagged side is to move and, whatever it plays, the mater has no legal move (the game ends at the mater's turn); read from the bitboards, no move is made | kings and pawns, the flagged side to move, the lock found nothing | | |
-| **the forced step**: a king in a pawn's check with one legal move, a step: the lock of the position after it | as for the check seed | | |
+| **the forced step**: a king in a pawn's check with one legal move, a step: the lock of the position after it | as for the check seed, with kings and pawns only | | |
 | **twin bishops**: two or more bishops of one side on one colour (only a promotion makes them) no longer fail the detector; the mating net does not count its second flight rule (a free square vertically and one horizontally next to the king, two squares of one colour) for the flagged side on the king squares where its twins may hold both | a side has twin bishops | none in the Lichess data; 227 more answers on chasolver's labelled positions (899 of them have twins) | |
 
 In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
@@ -503,8 +503,8 @@ The four rules of November (stalemate guard, check seed, stuck mater, forced ste
 204,060 rows from the search to the lock and prove 4 of the 6 cages that were left; every new lock
 was checked by walking all the positions reachable from it, chasolver's labels give no false draw,
 and the invariant check knows their certificates ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
-They are in the JavaScript engine (`mateless.js`, the page) for now: the Rust and WebAssembly builds,
-and the other languages, keep the earlier rules until they are ported.
+They are in the JavaScript, Rust and WebAssembly engines, with the same answers and node counts; the
+lock detector of the other languages (`lock/`) is the first version's.
 
 **What comes next**, in order: the 2 cages left (RwnQJq1k, bKHPqNEw), a bounded full closure for
 what stays open, and a written proof of soundness for the detector and the rules above.

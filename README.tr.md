@@ -56,8 +56,9 @@ yaklaşık %2 daha pahalı; çoğu, tahtada at, kale ya da vezir varken kutulu t
 (Rust'ta ~2 ns, JavaScript'te ~10 ns). chasolver'a karşı oranları gürültü içinde aynı; tam
 merdiveni chasolver'ın 201.060 satırının 201.054'ünü ispatlıyor, eylüle kadarki 204.060 satırda
 satır başına ~0,22 µs'de (Rust; [docs/RESULTS.md](docs/RESULTS.md#the-second-version)). Kasım'da
-eklenen dört kural (aşağıda), şimdilik yalnızca JavaScript'te, bunu 201.058'e çıkarıyor; bedeli kilit
-testi başına ~%13, tam merdivende satır başına ~%4.
+eklenen dört kural (aşağıda) bunu 201.058'e çıkarıyor. Bedeli kilit testi başına JavaScript'te ~%13,
+Rust'ta ~%30 (204.060 satırın iki tarafı: ~40 → ~54 ns); tam merdivende satır başına JavaScript'te ~%4,
+Rust'ta ölçülemeyecek kadar az.
 
 | | Rust | JavaScript |
 |---|---|---|
@@ -465,9 +466,8 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 node second_version_check.js                     # ikinci sürümün kuralları: 36 satır, her kuralın pozisyonları
 ```
 
-Kasım kuralları ve ikiz filler Rust'a taşınana kadar WebAssembly ve Rust derlemeleri onlardan
-önceki gibi cevap veriyor: `wasm_check.js` ve `rust_compare.js` bu kuralların uygulandığı yerde
-farklı çıkıyor, `trigger_check.js` de `NO_WASM=1` ile çalıştırılıyor.
+Kasım kuralları ve ikiz filler Rust ve WebAssembly derlemelerinde de var: `rust_compare.js`,
+`wasm_check.js` ve `trigger_check.js` (`mateless.wasm` ile) hiç fark bulmuyor.
 
 <a id="ikinci-surum"></a>
 
@@ -488,7 +488,7 @@ giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 | **pat bekçisi**: rakip şahın alabileceği bir piyon, alınması sahibini her durumda pat ediyorsa duvar kalıyor (sahibinin şahı nerede durursa dursun piyonu koruyor ya da adım atacak karesi kalmıyor; sahibinin başka oynayan taşı yok; alış bir filin şahını açmıyor) | döngü, filsiz bir tarafın alınabilir sabit piyonuna rastladığında | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **piyon şahı tohumu**: piyon şahındaki bir şahın erişimi kendi karesinden değil, şimdi adım atabileceği karelerden başlıyor; kendi karesine sabit piyon saldırmaya devam ediyor | sırası gelen taraf piyon şahında (tahtada fil yok) | | |
 | **hamlesiz rakip**: sıra bayrağı düşen tarafta ve ne oynarsa oynasın mat edecek tarafın yasal hamlesi kalmıyor (oyun onun sırasında bitiyor); bitboard'dan okunuyor, hamle yapılmıyor | şah ve piyonlar, sıra bayrağı düşende, kilit bir şey bulmadı | | |
-| **zorunlu adım**: piyon şahındaki, tek yasal hamlesi bir şah adımı olan şah: adımdan sonraki pozisyonun kilidi | piyon şahı tohumundaki gibi | | |
+| **zorunlu adım**: piyon şahındaki, tek yasal hamlesi bir şah adımı olan şah: adımdan sonraki pozisyonun kilidi | piyon şahı tohumundaki gibi, yalnız şah ve piyonla | | |
 | **ikiz filler**: bir tarafın aynı renkte iki ya da daha fazla fili (yalnızca terfiyle olur) dedektörü artık düşürmüyor; mat ağı, bayrağı düşen tarafın ikizlerinin iki kaçışı birden tutabileceği şah karelerinde ikinci kaçış kuralını (şahın dikeyde ve yatayda birer boş komşusu, ikisi aynı renkte) saymıyor | bir tarafın ikiz fili var | Lichess verisinde yok; chasolver'ın etiketli pozisyonlarında 227 cevap daha (899'unda ikiz var) | |
 
 Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalıştırıyor;
@@ -504,8 +504,8 @@ Kasım'ın dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zor
 481'ini aramadan kilide taşıyor ve kalan 6 kafesin 4'ünü ispatlıyor; her yeni kilit, ondan
 ulaşılabilen bütün pozisyonlar dolaşılarak denetlendi, chasolver'ın etiketleri hiç yanlış beraberlik
 vermiyor ve değişmez kontrolü sertifikalarını tanıyor ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
-Şimdilik JavaScript motorunda (`mateless.js`, sayfa): Rust ve WebAssembly derlemeleri ve öbür
-diller, taşınana kadar önceki kurallarla kalıyor.
+JavaScript, Rust ve WebAssembly motorlarında, düğüm sayılarına kadar aynı cevaplarla; öbür
+dillerdeki kilit dedektörü (`lock/`) ilk sürümünki.
 
 **Sırada ne var**, sırasıyla: kalan 2 kafes (RwnQJq1k, bKHPqNEw), açık kalan için sınırlı tam
 kapanış, ve dedektörün ve yukarıdaki kuralların yazılı sağlamlık ispatı.

@@ -354,8 +354,7 @@ the first slower where its rules do not apply. Every rule here keeps three prope
 makes a false proof (each is checked like the first version's rules, below); it runs only when its
 own situation is on the board, so any other position takes the first version's path through the
 same code; and JS, Rust and WebAssembly give the same answers, node counts included (the four rules
-of November below are in JavaScript only for now; until they are ported, the Rust and WebAssembly
-builds keep the earlier rules).
+of November and twin bishops too, since 21 November).
 `_internal.coreLockTest` runs the first version's detector alone (it labels `lock/positions.tsv`
 and is what the lock tab draws).
 
@@ -457,7 +456,12 @@ board, and `_internal.coreLockTest` leaves them out with the rest of the second 
 - **The forced step.** The side to move is in a pawn's check and has exactly one legal move, a step
   of its king (exact as above, and no pawn of its own can take a checking pawn): every line goes
   through it, so the lock of the position after it (the king moved on the bitboards, a pawn on its
-  square taken) proves this one.
+  square taken) proves this one. Kings and pawns only: with a bishop, knight, rook or queen on the
+  board the steps counted from the pawns would not be exact (a piece may hold a square, stand on it,
+  or take the checking pawn). It is tried first, before the test for knights, rooks and queens; on
+  21 November it was narrowed from "no bishop" to "kings and pawns only", which changes no answer on
+  255,742 positions (the 204,060 rows, chasolver's files, `lock/positions.tsv`) but leaves no room
+  for a board where a boxed piece stands on, or holds, the one square the pawns leave.
 
 - **Twin bishops.** Two or more bishops of one side on one colour come only from a promotion; the
   first version refuses them. The detector counts a side's bishops through their reach, whatever

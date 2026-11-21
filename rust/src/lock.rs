@@ -1,6 +1,9 @@
 //! Rung 2, the lock detector (`src/lock.js`), and the two static tests together: pawns, kings and
-//! bishops form a structure that no series of legal moves can open. It reads the bitboards and the
-//! en passant square only; it generates no move and searches nothing.
+//! bishops form a structure that no series of legal moves can open. It reads the bitboards, the
+//! side to move and the en passant square only; it generates no move and searches nothing.
+//! This is the second version (the tam-kol branch): open pawn pairs, boxed knights, rooks and
+//! queens, twin bishops, and the four rules of kings and pawns (the stalemate guard, the check
+//! seed, the stuck mater, the forced step), line for line as in src/lock.js.
 
 use crate::board::{BISHOP, BLACK, DARK_SQUARES, diagonal, FILE_A, FILE_H, KING, KNIGHT, lsb,
     NO_SQUARE, north, PAWN, Position, QUEEN, RANK_1, RANK_8, ROOK, sideways, south, tables, WHITE,
@@ -17,25 +20,58 @@ pub const FLAGGED_BLACK: u8 = 2;
 pub fn flagged_bit(flagged: u8) -> u8 { if flagged == WHITE { FLAGGED_WHITE } else { FLAGGED_BLACK } }
 
 
-/// Two bishops of one side on squares of one colour? (twinBishops)
-fn twin_bishops(b: u64) -> bool { (b & DARK_SQUARES).count_ones() > 1 || (b & !DARK_SQUARES).count_ones() > 1 }
+/// Twin bishops (noPairSquares): two bishops of one side on one colour come only from a promotion.
+/// The mating net's second flight rule (a free square vertically and one horizontally next to the
+/// king) counts on the flagged side having at most one bishop on their colour, which is the colour
+/// opposite the king's square: with two there they may hold both flights at once. So for each side,
+/// the king squares where that rule is not counted: the light squares if it has two or more bishops
+/// on dark squares, the dark ones if on light squares.
+#[inline(always)]
+fn no_pair_squares(b: u64) -> u64 {
+    (if (b & DARK_SQUARES).count_ones() > 1 { !DARK_SQUARES } else { 0 })
+        | (if (b & !DARK_SQUARES).count_ones() > 1 { DARK_SQUARES } else { 0 })
+}
 
-struct Census { wp: u64, bp: u64, wk: u64, bk: u64, wb: u64, bb: u64 }
+/// What the lock detector reads of a position: the bitboards, the side to move, the en passant
+/// square (a position after the forced step is one of these, not a Position).
+#[derive(Clone, Copy)]
+struct View<'a> { bb: &'a [u64; 16], side: u8, ep: i32 }
+impl<'a> View<'a> {
+    #[inline(always)]
+    fn of(pos: &'a Position) -> View<'a> { View { bb: &pos.bb, side: pos.side, ep: pos.ep } }
+}
 
-/// One level of the lock detector by the plain loop (all ten sets updated on every pass): does the
-/// structure leak with king `fr` frozen (0: none)? Kept as the reference for `lock_leaks` below.
+/// The census: the pawns, kings and bishops, the side to move (the check seed reads it), and each
+/// side's twin-bishop squares (w_np, b_np).
+struct Census { wp: u64, bp: u64, wk: u64, bk: u64, wb: u64, bb: u64, side: u8, w_np: u64, b_np: u64 }
+
+#[inline(always)]
+fn census(x: &View) -> Census {
+    let b = x.bb;
+    let (wb, bb) = (b[(WHITE | BISHOP) as usize], b[(BLACK | BISHOP) as usize]);
+    Census { wp: b[(WHITE | PAWN) as usize], bp: b[(BLACK | PAWN) as usize], wk: b[(WHITE | KING) as usize],
+             bk: b[(BLACK | KING) as usize], wb, bb, side: x.side,
+             w_np: if wb != 0 { no_pair_squares(wb) } else { 0 }, b_np: if bb != 0 { no_pair_squares(bb) } else { 0 } }
+}
+
+/// One level of the lock detector by the plain loop (all ten sets updated on every pass, and the
+/// stalemate guards): does the structure leak with king `fr` frozen (0: none)? Kept as the
+/// reference for `lock_leaks` below.
 fn lock_leaks_reference(c: &Census, flagged: u8, fr: u64) -> bool {
     let (wp, bp, wk, bk) = (c.wp, c.bp, c.wk, c.bk);
     let frozen_white = fr & wk != 0;
     let frozen_black = !frozen_white && fr != 0;
     let near_frozen_black = if frozen_black { zone(bk) } else { 0 };
     let near_frozen_white = if frozen_white { zone(wk) } else { 0 };
+    let (w_seed, b_seed) = check_seed(c, fr);
     let (mut w_cone, mut b_cone, mut w_fixed, mut b_fixed) = (wp, bp, wp, bp);
-    let (mut w_king, mut b_king, mut w_bish, mut b_bish) = (wk, bk, c.wb, c.bb);
-    let (mut b_take, mut w_take) = (bk, wk);
+    let (mut w_king, mut b_king, mut w_bish, mut b_bish) = (w_seed, b_seed, c.wb, c.bb);
+    let (mut b_take, mut w_take) = (b_seed, w_seed);
+    let (mut w_guard, mut b_guard) = (!0u64, !0u64);
+    let (w_bishops, b_bishops) = (c.wb != 0, c.bb != 0);
     loop {
-        let w_wall = (wp & !b_take) | fr;
-        let b_wall = (bp & !w_take) | fr;
+        let w_wall = (wp & !(b_take & !w_guard)) | fr;
+        let b_wall = (bp & !(w_take & !b_guard)) | fr;
         let nw_fixed = w_fixed & w_wall & south(b_wall | w_fixed);
         let nb_fixed = b_fixed & b_wall & north(w_wall | b_fixed);
         let mut nw_cone = w_cone;
@@ -64,12 +100,19 @@ fn lock_leaks_reference(c: &Census, flagged: u8, fr: u64) -> bool {
         loop { let a = nb_take | south(nb_take & !b_wall); if a == nb_take { break; } nb_take = a; }
         let mut nw_take = w_take | nw_king;
         loop { let a = nw_take | north(nw_take & !w_wall); if a == nw_take { break; } nw_take = a; }
+        let block = nw_fixed | nb_fixed;
+        // (a guard needs a candidate, and every pawn of its owner fixed: tested here, before the call)
+        let (wc, bc) = (wp & nb_take & nw_fixed, bp & nw_take & nb_fixed);
+        let ngw = if w_bishops || wc == 0 || wp & !nw_fixed != 0 { 0 } else {
+            stalemate_guard(wc, wp, nw_fixed, nw_king, nw_fixed | b_hit, nb_king, b_bishops, block) };
+        let ngb = if b_bishops || bc == 0 || bp & !nb_fixed != 0 { 0 } else {
+            stalemate_guard(bc, bp, nb_fixed, nb_king, nb_fixed | w_hit, nw_king, w_bishops, block) };
         let changed = (nw_cone ^ w_cone) | (nb_cone ^ b_cone) | (nw_fixed ^ w_fixed) | (nb_fixed ^ b_fixed)
             | (nw_king ^ w_king) | (nb_king ^ b_king) | (nw_bish ^ w_bish) | (nb_bish ^ b_bish)
-            | (nb_take ^ b_take) | (nw_take ^ w_take);
+            | (nb_take ^ b_take) | (nw_take ^ w_take) | (ngw ^ w_guard) | (ngb ^ b_guard);
         w_cone = nw_cone; b_cone = nb_cone; w_fixed = nw_fixed; b_fixed = nb_fixed;
         w_king = nw_king; b_king = nb_king; w_bish = nw_bish; b_bish = nb_bish;
-        b_take = nb_take; w_take = nw_take;
+        b_take = nb_take; w_take = nw_take; w_guard = ngw; b_guard = ngb;
         if changed == 0 { break; }
     }
     if (w_cone & RANK_8) | (b_cone & RANK_1) != 0 { return true; }                 // a pawn can promote
@@ -77,21 +120,14 @@ fn lock_leaks_reference(c: &Census, flagged: u8, fr: u64) -> bool {
     if frozen_white && w_king != wk { return true; }                                // the frozen king can move
     if frozen_black && b_king != bk { return true; }
     if diagonal(w_bish) & b_cone != 0 || diagonal(b_bish) & w_cone != 0 { return true; }   // a bishop meets a pawn's path
-    // The mating net.
-    let (attack, reach, free, spare);
-    if flagged == WHITE {
-        attack = diagonal(b_bish) | sideways(south(b_cone));
-        reach = w_king;
-        free = !(w_cone | zone(b_king) | attack);
-        spare = free & !w_bish;
-    } else {
-        attack = diagonal(w_bish) | sideways(north(w_cone));
-        reach = b_king;
-        free = !(b_cone | zone(w_king) | attack);
-        spare = free & !b_bish;
+    if w_guard | b_guard != 0 {                                                     // the reaches stop at guarded pawns
+        let m = !(w_fixed | sideways(south(b_fixed)) | near_frozen_black | (bp & b_guard));
+        let mut a = w_seed; loop { let x = a | (zone(a) & m); if x == a { break; } a = x; }
+        let m = !(b_fixed | sideways(north(w_fixed)) | near_frozen_white | (wp & w_guard));
+        let mut d = b_seed; loop { let x = d | (zone(d) & m); if x == d { break; } d = x; }
+        w_king = a; b_king = d;
     }
-    let flight = sideways(spare) | north(spare) | south(spare) | ((north(free) | south(free)) & sideways(free));
-    attack & reach & !flight != 0
+    net_leaks(&LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ: 0, w_np: c.w_np, b_np: c.b_np }, flagged)
 }
 
 /// Occluded fills (Kogge-Stone): every square reachable from `g` by steps north (south) through
@@ -147,9 +183,89 @@ fn lock_leaks2(c: &Census, fr: u64, ask: u8) -> u8 {
 }
 
 /// What the mating net reads at the end of a level; `occ`: squares occupied for good besides (the
-/// boxed pieces' squares, 0 in every other level).
+/// boxed pieces' squares, 0 in every other level); w_np, b_np: the census's twin-bishop squares.
 #[derive(Clone, Copy)]
-struct LockSets { w_cone: u64, b_cone: u64, w_king: u64, b_king: u64, w_bish: u64, b_bish: u64, occ: u64 }
+struct LockSets { w_cone: u64, b_cone: u64, w_king: u64, b_king: u64, w_bish: u64, b_bish: u64, occ: u64, w_np: u64, b_np: u64 }
+
+// ─── The stalemate guard and the check seed (the second version; src/lock.js) ───────────────
+//
+// A pawn the enemy king may take leaves the wall (the takeable pawns). It need not, if taking it
+// always ends the game: when the owner's king, wherever it may stand, either defends the pawn or has
+// no square left to step to once the enemy king stands on the pawn's square, and the owner has
+// nothing else that moves (no bishop; every other pawn fixed). The capture is then a stalemate (the
+// owner is to move, and a king's capture gives no check unless it uncovers an enemy bishop, which
+// the rays below rule out), so no line of play goes through it: the pawn is as good as a wall. Only
+// a fixed pawn is guarded. The guard only shrinks as the reaches grow and the fixed pawns shrink, so
+// the cycle stays monotone.
+
+/// Does a diagonal ray from `k`, stopped by the squares `block`, meet a square of `o`? (rayMeets)
+#[inline(always)]
+fn ray_meets(k: usize, block: u64, o: u64) -> bool {
+    let (f0, r0) = ((k & 7) as i32, (k >> 3) as i32);
+    for d in 0..4 {
+        let (df, dr) = (if d & 1 != 0 { 1 } else { -1 }, if d & 2 != 0 { 1 } else { -1 });
+        let (mut f, mut r) = (f0 + df, r0 + dr);
+        while (0..8).contains(&f) && (0..8).contains(&r) {
+            let b = 1u64 << (8 * r + f);
+            if o & b != 0 { return true; }
+            if block & b != 0 { break; }
+            f += df; r += dr;
+        }
+    }
+    false
+}
+
+/// Of the owner's fixed pawns `cand` (which the enemy king may take), those whose capture always
+/// stalemates the owner (stalemateGuard). reach: where the owner's king may stand; shut: squares its
+/// king can never step to with the enemy king elsewhere (own fixed pawns, squares the enemy's fixed
+/// pawns attack); enemy_king: the enemy king's reach; block: squares a bishop's line never crosses.
+#[inline(never)]
+fn stalemate_guard(cand: u64, own_p: u64, own_fixed: u64, reach: u64, shut: u64, enemy_king: u64,
+                   enemy_bishops: bool, block: u64) -> u64 {
+    if own_p & !own_fixed != 0 { return 0; }               // another pawn of the owner's may move
+    let t = tables();
+    let mut guard = 0;
+    let mut c = cand;
+    while c != 0 {
+        let p = lsb(c); c &= c - 1;
+        let pb = 1u64 << p;
+        let n = t.king[p];
+        let o = n & enemy_king;                            // where the enemy king takes from
+        let mut k = reach & !(n | pb);                     // the owner's king, not defending the pawn
+        let x = shut | n | pb;                             // ... and not stepping next to the enemy king
+        let mut held = true;
+        while k != 0 {
+            let q = lsb(k); k &= k - 1;
+            if t.king[q] & !x != 0 { held = false; break; }
+            if enemy_bishops && ray_meets(q, block | pb, o) { held = false; break; }
+        }
+        if held { guard |= pb; }
+    }
+    guard
+}
+
+/// The check seed: the side to move is in a pawn's check, so its king must step out now, to one of
+/// the squares it can step to now (exact: its own pawns, the enemy pawns' attacks, the enemy king's
+/// neighbours); its reach starts there, not on its square. Not when it has no such step (that may be
+/// a mate now), when one of its pawns can take a checking pawn (the king would stay), at a frozen
+/// level, or with a bishop on the board (no knight, rook or queen comes here). The kings' starting
+/// sets: (White's, Black's).
+#[inline(always)]
+fn check_seed(c: &Census, fr: u64) -> (u64, u64) {
+    let (wp, bp, wk, bk) = (c.wp, c.bp, c.wk, c.bk);
+    if fr != 0 || c.wb | c.bb != 0 { return (wk, bk); }
+    let white = c.side == WHITE;
+    let (k, ek) = if white { (wk, bk) } else { (bk, wk) };
+    let chk = if white { sideways(north(k)) & bp } else { sideways(south(k)) & wp };   // the checking pawns
+    if chk == 0 { return (wk, bk); }
+    let t = tables();
+    let atk = if white { sideways(south(bp)) } else { sideways(north(wp)) };
+    let own = if white { wp } else { bp };
+    let d = t.king[lsb(k)] & !own & !atk & !t.king[lsb(ek)];
+    let take = if white { sideways(south(chk)) & wp } else { sideways(north(chk)) & bp };
+    if d == 0 || take != 0 { return (wk, bk); }
+    if white { (d, bk) } else { (wk, d) }
+}
 
 /// A level of the lock detector up to the mating net: None when the structure leaks whichever side
 /// is flagged (a pawn can promote or capture, the frozen king can move, a bishop meets a pawn's
@@ -169,30 +285,54 @@ fn lock_level(c: &Census, fr: u64) -> Option<LockSets> {
         let bc = fill_south(bp, !w_wall);
         if (wc & RANK_8) | (bc & RANK_1) != 0 || north(sideways(wc)) & bc != 0 { return None; }
     }
-    // The cycle.
-    let (mut w_fixed, mut b_fixed, mut w_king, mut b_king, mut w_take, mut b_take) = (wp, bp, wk, bk, wk, bk);
+    // The check seed.
+    let (w_seed, b_seed) = check_seed(c, fr);
+    // The cycle: walls -> fixed pawns -> king reaches -> capture squares, with each side's stalemate
+    // guard (all of its pawns at first: nothing is taken yet).
+    let (mut w_fixed, mut b_fixed, mut w_king, mut b_king, mut w_take, mut b_take) = (wp, bp, w_seed, b_seed, w_seed, b_seed);
     let (mut w_wall, mut b_wall) = (!0u64, !0u64);
+    let (mut w_guard, mut b_guard) = (!0u64, !0u64);
+    let (w_bishops, b_bishops) = (c.wb != 0, c.bb != 0);
     loop {
         let (pw, pb) = (w_wall, b_wall);
-        w_wall = (wp & !b_take) | fr;
-        b_wall = (bp & !w_take) | fr;
+        // white pawns Black can never take (or whose capture stalemates White) | frozen king; likewise
+        w_wall = (wp & !(b_take & !w_guard)) | fr;
+        b_wall = (bp & !(w_take & !b_guard)) | fr;
         let nw_fixed = w_fixed & w_wall & south(b_wall | w_fixed);
         let nb_fixed = b_fixed & b_wall & north(w_wall | b_fixed);
         // Same walls and same fixed pawns as the pass before: the kings and the capture squares are
         // already closed under the same masks, so nothing can change any more.
         if w_wall == pw && b_wall == pb && nw_fixed == w_fixed && nb_fixed == b_fixed { break; }
-        let mw = !(nw_fixed | sideways(south(nb_fixed)) | near_frozen_black);
-        let mb = !(nb_fixed | sideways(north(nw_fixed)) | near_frozen_white);
+        let (b_hit, w_hit) = (sideways(south(nb_fixed)), sideways(north(nw_fixed)));
+        let mw = !(nw_fixed | b_hit | near_frozen_black);
+        let mb = !(nb_fixed | w_hit | near_frozen_white);
         let (nw_king, nb_king) = king_fill2(w_king, mw, b_king, mb);
         if (frozen_white && nw_king != wk) || (frozen_black && nb_king != bk) { return None; }   // the frozen king can move
         let t = b_take | nb_king;
         let nb_take = t | south(fill_south(t & !b_wall, !b_wall));
         let t = w_take | nw_king;
         let nw_take = t | north(fill_north(t & !w_wall, !w_wall));
-        let changed = (nw_fixed ^ w_fixed) | (nb_fixed ^ b_fixed) | (nw_king ^ w_king) | (nb_king ^ b_king)
-            | (nb_take ^ b_take) | (nw_take ^ w_take);
+        // The guards for the next pass, from this pass's reaches and fixed pawns.
+        let block = nw_fixed | nb_fixed;
+        // (a guard needs a candidate, and every pawn of its owner fixed: tested here, before the call)
+        let (wc, bc) = (wp & nb_take & nw_fixed, bp & nw_take & nb_fixed);
+        let ngw = if w_bishops || wc == 0 || wp & !nw_fixed != 0 { 0 } else {
+            stalemate_guard(wc, wp, nw_fixed, nw_king, nw_fixed | b_hit, nb_king, b_bishops, block) };
+        let ngb = if b_bishops || bc == 0 || bp & !nb_fixed != 0 { 0 } else {
+            stalemate_guard(bc, bp, nb_fixed, nb_king, nb_fixed | w_hit, nw_king, w_bishops, block) };
+        let changed = (ngw ^ w_guard) | (ngb ^ b_guard) | (nw_fixed ^ w_fixed) | (nb_fixed ^ b_fixed)
+            | (nw_king ^ w_king) | (nb_king ^ b_king) | (nb_take ^ b_take) | (nw_take ^ w_take);
         w_fixed = nw_fixed; b_fixed = nb_fixed; w_king = nw_king; b_king = nb_king; w_take = nw_take; b_take = nb_take;
+        w_guard = ngw; b_guard = ngb;
         if changed == 0 { break; }
+    }
+    // A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches again, now
+    // stopping at the enemy's guarded pawns (the walls and fixed pawns stay as they are).
+    if w_guard | b_guard != 0 {
+        let mw = !(w_fixed | sideways(south(b_fixed)) | near_frozen_black | (bp & b_guard));
+        let mb = !(b_fixed | sideways(north(w_fixed)) | near_frozen_white | (wp & w_guard));
+        let (a, d) = king_fill2(w_seed, mw, b_seed, mb);
+        w_king = a; b_king = d;
     }
     // The cones, once, against the final walls.
     let w_cone = fill_north(wp, !b_wall);
@@ -211,13 +351,13 @@ fn lock_level(c: &Census, fr: u64) -> Option<LockSets> {
         }
         if diagonal(w_bish) & b_cone != 0 || diagonal(b_bish) & w_cone != 0 { return None; }   // a bishop meets a pawn's path
     }
-    Some(LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ: 0 })
+    Some(LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ: 0, w_np: c.w_np, b_np: c.b_np })
 }
 
 /// The mating net: can the flagged king be caught by the pawns and bishops of the other side?
 #[inline(always)]
 fn net_leaks(s: &LockSets, flagged: u8) -> bool {
-    let LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ } = *s;
+    let LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ, w_np, b_np } = *s;
     let (attack, reach, free, spare);
     if flagged == WHITE {
         attack = diagonal(b_bish) | sideways(south(b_cone));
@@ -230,7 +370,9 @@ fn net_leaks(s: &LockSets, flagged: u8) -> bool {
         free = !(b_cone | occ | zone(w_king) | attack);
         spare = free & !b_bish;
     }
-    let flight = sideways(spare) | north(spare) | south(spare) | ((north(free) | south(free)) & sideways(free));
+    // the second rule, not on the squares where the flagged side's twin bishops may hold both flights
+    let np = if flagged == WHITE { w_np } else { b_np };
+    let flight = sideways(spare) | north(spare) | south(spare) | ((north(free) | south(free)) & sideways(free) & !np);
     attack & reach & !flight != 0
 }
 
@@ -415,7 +557,7 @@ fn gap_families_n<const N: usize, F: Fn(&Census, &GapIn, u64) -> Option<GapOut>>
             if q % 3 == 0 && ((w & !o.w_fixed) | (b & !o.b_fixed)) != 0 { return (0, refuted); }
             q /= 3;
         }
-        let s = LockSets { w_cone: o.w_cone, b_cone: o.b_cone, w_king: o.w_king, b_king: o.b_king, w_bish: o.w_bish, b_bish: o.b_bish, occ: 0 };
+        let s = LockSets { w_cone: o.w_cone, b_cone: o.b_cone, w_king: o.w_king, b_king: o.b_king, w_bish: o.w_bish, b_bish: o.b_bish, occ: 0, w_np: c.w_np, b_np: c.b_np };
         if ask & FLAGGED_WHITE != 0 && net_leaks(&s, WHITE) { ask &= !FLAGGED_WHITE; if f == 0 { refuted |= FLAGGED_WHITE; } }
         if ask & FLAGGED_BLACK != 0 && net_leaks(&s, BLACK) { ask &= !FLAGGED_BLACK; if f == 0 { refuted |= FLAGGED_BLACK; } }
         if ask == 0 { return (0, refuted); }
@@ -521,7 +663,7 @@ fn boxed_level(c: &Census, x: &Boxes, fr: u64) -> Option<(LockSets, u64, u64, u6
     if (frozen_white && w_king != wk) || (frozen_black && b_king != bk) { return None; }  // the frozen king can move
     if diagonal(w_bish) & b_cone != 0 || diagonal(b_bish) & w_cone != 0 { return None; }  // a bishop meets a pawn's path
     if x.ws & !(w_fixed | (wx & boxed)) != 0 || x.bs & !(b_fixed | (bx & boxed)) != 0 { return None; }   // a piece may step
-    Some((LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ: wx | bx }, boxed, w_fixed, b_fixed))
+    Some((LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ: wx | bx, w_np: c.w_np, b_np: c.b_np }, boxed, w_fixed, b_fixed))
 }
 
 /// A first look before the boxed pieces' test, on words the caller has just read: a rook or queen
@@ -538,18 +680,16 @@ fn rook_or_queen_free(b: &[u64; 16]) -> bool {
 /// The lock detector with knights, rooks or queens on the board (boxedTest): of the sides in `ask`,
 /// those it proves (0 at once unless every such piece is boxed in by its own men).
 #[inline(never)]
-fn boxed_test(pos: &Position, ask: u8) -> u8 {
-    let b = &pos.bb;
+fn boxed_test(x: &View, ask: u8) -> u8 {
+    let b = x.bb;
     let (wn, wr, wq) = (b[(WHITE | KNIGHT) as usize], b[(WHITE | ROOK) as usize], b[(WHITE | QUEEN) as usize]);
     let (bn, br, bq) = (b[(BLACK | KNIGHT) as usize], b[(BLACK | ROOK) as usize], b[(BLACK | QUEEN) as usize]);
     let (wx, bx) = (wn | wr | wq, bn | br | bq);
     let (w_own, b_own) = (b[(WHITE | PAWN) as usize] | wx, b[(BLACK | PAWN) as usize] | bx);
     let ws = match boxed_in(wn, wr, wq, w_own) { Some(s) => s, None => return 0 };
     let bs = match boxed_in(bn, br, bq, b_own) { Some(s) => s, None => return 0 };
-    if pos.ep != NO_SQUARE { return 0; }
-    if twin_bishops(b[(WHITE | BISHOP) as usize]) || twin_bishops(b[(BLACK | BISHOP) as usize]) { return 0; }
-    let c = Census { wp: b[(WHITE | PAWN) as usize], bp: b[(BLACK | PAWN) as usize], wk: b[(WHITE | KING) as usize],
-                     bk: b[(BLACK | KING) as usize], wb: b[(WHITE | BISHOP) as usize], bb: b[(BLACK | BISHOP) as usize] };
+    if x.ep != NO_SQUARE { return 0; }
+    let c = census(x);
     let x = Boxes { wx, bx, ws, bs };
     let held = c.wp | c.bp | sideways(north(c.wp) | south(c.bp));
     let t = tables();
@@ -568,25 +708,41 @@ fn boxed_test(pos: &Position, ask: u8) -> u8 {
 /// The lock detector: kings, pawns and bishops that no series of legal moves can open. (lockTest)
 /// Kept out of line: inlined into the recursive Domino search it would bloat every level of it.
 #[inline(never)]
-pub fn lock_test(pos: &Position, flagged: u8) -> bool { lock_test_with(pos, flagged, lock_leaks, gap_level) }
+pub fn lock_test(pos: &Position, flagged: u8) -> bool {
+    let x = View::of(pos);
+    // The forced step (rare: kings and pawns, a pawn's check, one king move): the lock of the position after it.
+    if let Some((bb, side)) = forced_step(&x) { return lock_test_after(&bb, side, flagged, &lock_leaks, &gap_level); }
+    lock_test_with(&x, flagged, &lock_leaks, &gap_level)
+}
+
+/// lock_test on the position after a forced step (another may follow it).
+#[cold]
+#[inline(never)]
+fn lock_test_after<F: Fn(&Census, u8, u64) -> bool, G: Fn(&Census, &GapIn, u64) -> Option<GapOut>>(bb: &[u64; 16], side: u8, flagged: u8, leaks: &F, gap: &G) -> bool {
+    let x = View { bb, side, ep: NO_SQUARE };
+    if let Some((nb, ns)) = forced_step(&x) { return lock_test_after(&nb, ns, flagged, leaks, gap); }
+    lock_test_with(&x, flagged, leaks, gap)
+}
 
 /// The lock detector with the reference fixed point (the plain loop), for checking that
 /// `lock_test` gives the same verdict everywhere (examples/lockcheck.rs).
-pub fn lock_test_reference(pos: &Position, flagged: u8) -> bool { lock_test_with(pos, flagged, lock_leaks_reference, gap_level_reference) }
+pub fn lock_test_reference(pos: &Position, flagged: u8) -> bool {
+    let x = View::of(pos);
+    if let Some((bb, side)) = forced_step(&x) { return lock_test_after(&bb, side, flagged, &lock_leaks_reference, &gap_level_reference); }
+    lock_test_with(&x, flagged, &lock_leaks_reference, &gap_level_reference)
+}
 
 #[inline(always)]
-fn lock_test_with<F: Fn(&Census, u8, u64) -> bool, G: Fn(&Census, &GapIn, u64) -> Option<GapOut>>(pos: &Position, flagged: u8, leaks: F, gap: G) -> bool {
-    let b = &pos.bb;
+fn lock_test_with<F: Fn(&Census, u8, u64) -> bool, G: Fn(&Census, &GapIn, u64) -> Option<GapOut>>(x: &View, flagged: u8, leaks: &F, gap: &G) -> bool {
+    let b = x.bb;
     // A knight, rook or queen on the board (the usual case in a game): only boxed ones may stay.
     if b[(WHITE | KNIGHT) as usize] | b[(BLACK | KNIGHT) as usize] | b[(WHITE | ROOK) as usize] | b[(BLACK | ROOK) as usize]
-        | b[(WHITE | QUEEN) as usize] | b[(BLACK | QUEEN) as usize] != 0 { return !rook_or_queen_free(b) && boxed_test(pos, flagged_bit(flagged)) != 0; }
-    if pos.ep != NO_SQUARE { return false; }
-    if twin_bishops(b[(WHITE | BISHOP) as usize]) || twin_bishops(b[(BLACK | BISHOP) as usize]) { return false; }
-    let c = Census { wp: b[(WHITE | PAWN) as usize], bp: b[(BLACK | PAWN) as usize], wk: b[(WHITE | KING) as usize],
-                     bk: b[(BLACK | KING) as usize], wb: b[(WHITE | BISHOP) as usize], bb: b[(BLACK | BISHOP) as usize] };
+        | b[(WHITE | QUEEN) as usize] | b[(BLACK | QUEEN) as usize] != 0 { return !rook_or_queen_free(b) && boxed_test(x, flagged_bit(flagged)) != 0; }
+    if x.ep != NO_SQUARE { return false; }
+    let c = census(x);
     // With an open pair the levels below almost never prove a lock: the open-pair rule first.
     let gaps = open_pairs(&c);
-    if gaps != 0 { return lock_test_pairs_first(&c, flagged, &leaks, &gap, gaps); }
+    if gaps != 0 { return lock_test_pairs_first(&c, flagged, leaks, gap, gaps) || mater_stuck(x, flagged); }
     if !leaks(&c, flagged, 0) { return true; }
     let held = c.wp | c.bp | sideways(north(c.wp) | south(c.bp));
     let t = tables();
@@ -594,7 +750,119 @@ fn lock_test_with<F: Fn(&Census, u8, u64) -> bool, G: Fn(&Census, &GapIn, u64) -
         if t.king[lsb(king)] & !held != 0 { continue; }
         if !leaks(&c, flagged, king) { return true; }
     }
-    false
+    mater_stuck(x, flagged)
+}
+
+// ─── The stuck mater and the forced step (the second version; src/lock.js) ────────────────────
+//
+// The stuck mater: with the flagged side to move, the game may end at the mater's very next turn:
+// whatever the flagged side plays, the mater has no legal move (a stalemate, or a mate of the
+// mater). Then the flagged side is never mated. Proven from the bitboards alone, for kings and pawns:
+//   - the flagged side has no pawn capture now (so its pawns that cannot push stay where they are);
+//   - every pawn of the mater's is blocked by a man that stays and attacks no flagged man;
+//   - each square next to the mater's king holds a man of its own, or is attacked by a flagged pawn
+//     that has no move now, or is next to the flagged king wherever that king goes;
+//   - no push of the flagged side's lands where a mater's pawn attacks or next to the mater's king,
+//     and no double push gives the mater an en passant capture;
+//   - the flagged side is not mated now: in a pawn's check, its king has a square to step to.
+//
+// The forced step: the side to move is in a pawn's check and has exactly one legal move, its king's
+// step to one square (kings and pawns only, so the steps are exact; and no pawn of its own can take
+// a checking pawn). Every line goes through that step, and the position is no mate now, so the lock
+// of the position after it proves this one.
+
+const RANK_3: u64 = 0xff << 16;
+const RANK_6: u64 = 0xff << 40;
+
+/// Knights, rooks, queens or bishops on the board?
+#[inline(always)]
+fn pieces(b: &[u64; 16]) -> bool {
+    b[(WHITE | BISHOP) as usize] | b[(BLACK | BISHOP) as usize] | b[(WHITE | KNIGHT) as usize] | b[(BLACK | KNIGHT) as usize]
+        | b[(WHITE | ROOK) as usize] | b[(BLACK | ROOK) as usize] | b[(WHITE | QUEEN) as usize] | b[(BLACK | QUEEN) as usize] != 0
+}
+
+/// The stuck mater (materStuck).
+#[inline(always)]
+fn mater_stuck(x: &View, flagged: u8) -> bool {
+    x.side == flagged && x.ep == NO_SQUARE && mater_stuck_rest(x, flagged)   // an en passant capture is a move too
+}
+#[inline(never)]
+fn mater_stuck_rest(x: &View, flagged: u8) -> bool {
+    let b = x.bb;
+    if pieces(b) { return false; }                                      // kings and pawns only
+    let white = flagged == WHITE;
+    let mater = flagged ^ WHITE;
+    let (fp, mp) = (b[(flagged | PAWN) as usize], b[(mater | PAWN) as usize]);
+    let (fk, mk) = (b[(flagged | KING) as usize], b[(mater | KING) as usize]);
+    let occ = fp | mp | fk | mk;
+    // A mater's pawn with an empty square in front can never be stuck (rule 2 below); then only a
+    // flagged side that is stalemated now is left to find, which a flagged push rules out at once.
+    let free = if white { south(mp) } else { north(mp) } & !occ;
+    if free != 0 && (if white { north(fp) } else { south(fp) }) & !occ != 0 { return false; }
+    // pawn attacks (White's go north, Black's south) and forward squares
+    let f_atk = if white { sideways(north(fp)) } else { sideways(south(fp)) };
+    let m_atk = if white { sideways(south(mp)) } else { sideways(north(mp)) };
+    let f_fwd = if white { north(fp) } else { south(fp) };
+    let m_fwd = if white { south(mp) } else { north(mp) };
+    // 1. the flagged side has no pawn capture now
+    if f_atk & (mp | mk) != 0 { return false; }
+    // the flagged pushes: single, and double from the start rank (through rank 3 / 6)
+    let sg = f_fwd & !occ;
+    let db = if white { north(sg & RANK_3) } else { south(sg & RANK_6) } & !occ;
+    let push = sg | db;
+    // the flagged king's steps now (exact): not onto its pawns, the mater's pawn attacks, next to the mater's king
+    let t = tables();
+    let n = t.king[lsb(mk)];
+    let fq = lsb(fk);
+    let kd = t.king[fq] & !fp & !m_atk & !n;
+    let in_check = fk & m_atk != 0;
+    if in_check && kd == 0 { return false; }                            // mated now
+    let stays = push != 0 && !in_check;                                 // a pawn moves instead: the king stays
+    if kd == 0 && !stays { return true; }                               // no legal move, no check: stalemate now
+    // where the flagged king may stand after its move, and the squares next to all of them
+    let mut cov = !0u64;
+    if stays { cov &= t.king[fq]; }
+    let mut m = kd;
+    while m != 0 { cov &= t.king[lsb(m)]; m &= m - 1; }
+    // 2. the mater's pawns: blocked by men that stay (pawns, its own king; the flagged king only if it never moves)
+    let blk = fp | mp | mk | (if kd == 0 { fk } else { 0 });
+    if m_fwd & !blk != 0 { return false; }
+    if m_atk & fp != 0 { return false; }                                // and they attack no flagged pawn
+    // the flagged pawns that cannot move this turn (forward square occupied) keep their attacks
+    let st = fp & if white { south(f_fwd & occ) } else { north(f_fwd & occ) };
+    let s_atk = if white { sideways(north(st)) } else { sideways(south(st)) };
+    // 3. every square next to the mater's king: its own pawn, attacked by such a pawn, or next to the flagged king wherever it goes
+    if n & !(mp | s_atk | cov) != 0 { return false; }
+    // 4. no push lands where a mater's pawn attacks or next to its king, and no double push allows en passant
+    if push & (m_atk | n) != 0 { return false; }
+    if db & sideways(mp) != 0 { return false; }
+    true
+}
+
+/// The forced step (forcedStep): the bitboards and the side to move after it, or None.
+#[inline(always)]
+fn forced_step(x: &View) -> Option<([u64; 16], u8)> {
+    let b = x.bb;
+    if x.ep != NO_SQUARE { return None; }
+    let (us, them) = (x.side, x.side ^ WHITE);
+    let white = us == WHITE;
+    let (op, ep) = (b[(us | PAWN) as usize], b[(them | PAWN) as usize]);
+    let k = b[(us | KING) as usize];
+    let chk = if white { sideways(north(k)) } else { sideways(south(k)) } & ep;    // the checking pawns
+    if chk == 0 || pieces(b) { return None; }
+    let t = tables();
+    let atk = if white { sideways(south(ep)) } else { sideways(north(ep)) };
+    let d = t.king[lsb(k)] & !op & !atk & !t.king[lsb(b[(them | KING) as usize])];
+    if d.count_ones() != 1 { return None; }
+    // an own pawn that takes a checking pawn would be a second move
+    if (if white { sideways(south(chk)) } else { sideways(north(chk)) }) & op != 0 { return None; }
+    // the position after the step: the king moved, an enemy pawn on its square taken, the other side to move
+    let mut n = *b;
+    n[(us | KING) as usize] = d;
+    n[us as usize] = (b[us as usize] & !k) | d;
+    n[(them | PAWN) as usize] &= !d;
+    n[them as usize] &= !d;
+    Some((n, them))
 }
 
 /// The gaps of the open pairs: squares with a white pawn below, a black pawn above, and no pawn.
@@ -628,25 +896,44 @@ fn lock_test_pairs_first<F: Fn(&Census, u8, u64) -> bool, G: Fn(&Census, &GapIn,
 /// computed once for both sides; a side is proven at the first level that does not leak to it.
 #[inline(never)]
 pub fn lock_test2(pos: &Position, ask: u8) -> u8 {
-    let b = &pos.bb;
+    let x = View::of(pos);
+    if let Some((bb, side)) = forced_step(&x) { return lock_test2_after(&bb, side, ask); }
+    lock_test2_view(&x, ask)
+}
+
+/// lock_test2 on the position after a forced step.
+#[cold]
+#[inline(never)]
+fn lock_test2_after(bb: &[u64; 16], side: u8, ask: u8) -> u8 {
+    let x = View { bb, side, ep: NO_SQUARE };
+    if let Some((nb, ns)) = forced_step(&x) { return lock_test2_after(&nb, ns, ask); }
+    lock_test2_view(&x, ask)
+}
+
+#[inline(always)]
+fn lock_test2_view(x: &View, ask: u8) -> u8 {
+    let b = x.bb;
     if b[(WHITE | KNIGHT) as usize] | b[(BLACK | KNIGHT) as usize] | b[(WHITE | ROOK) as usize] | b[(BLACK | ROOK) as usize]
-        | b[(WHITE | QUEEN) as usize] | b[(BLACK | QUEEN) as usize] != 0 { return if rook_or_queen_free(b) { 0 } else { boxed_test(pos, ask) }; }
-    if pos.ep != NO_SQUARE { return 0; }
-    if twin_bishops(b[(WHITE | BISHOP) as usize]) || twin_bishops(b[(BLACK | BISHOP) as usize]) { return 0; }
-    let c = Census { wp: b[(WHITE | PAWN) as usize], bp: b[(BLACK | PAWN) as usize], wk: b[(WHITE | KING) as usize],
-                     bk: b[(BLACK | KING) as usize], wb: b[(WHITE | BISHOP) as usize], bb: b[(BLACK | BISHOP) as usize] };
+        | b[(WHITE | QUEEN) as usize] | b[(BLACK | QUEEN) as usize] != 0 { return if rook_or_queen_free(b) { 0 } else { boxed_test(x, ask) }; }
+    if x.ep != NO_SQUARE { return 0; }
+    let c = census(x);
     let gaps = open_pairs(&c);
-    if gaps != 0 { return lock_test2_pairs_first(&c, ask, gaps); }
-    let mut open = lock_leaks2(&c, 0, ask);       // the asked sides not proven yet
-    if open == 0 { return ask; }
-    let held = c.wp | c.bp | sideways(north(c.wp) | south(c.bp));
-    let t = tables();
-    for king in [c.wk, c.bk] {
-        if t.king[lsb(king)] & !held != 0 { continue; }
-        open = lock_leaks2(&c, king, open);
-        if open == 0 { return ask; }
-    }
-    ask & !open
+    let got = if gaps != 0 { lock_test2_pairs_first(&c, ask, gaps) } else {
+        let mut open = lock_leaks2(&c, 0, ask);       // the asked sides not proven yet
+        if open != 0 {
+            let held = c.wp | c.bp | sideways(north(c.wp) | south(c.bp));
+            let t = tables();
+            for king in [c.wk, c.bk] {
+                if open == 0 { break; }
+                if t.king[lsb(king)] & !held != 0 { continue; }
+                open = lock_leaks2(&c, king, open);
+            }
+        }
+        ask & !open
+    };
+    // the stuck mater, for the side to move, when the lock left it open
+    let me = flagged_bit(x.side);
+    if ask & me != 0 && got & me == 0 && mater_stuck(x, x.side) { got | me } else { got }
 }
 
 /// lock_test2 with open pairs: as lock_test_pairs_first, for the sides still open.

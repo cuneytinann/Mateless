@@ -15,10 +15,11 @@ fn domino_examples() {
     let p = mateless::from_fen("8/8/8/8/6qK/8/5k2/8 w - - 2 63").unwrap();
     let r = mateless::prove_cannot_be_mated(&mut search, &p, mateless::WHITE, 6, 100);
     assert!(r.proven && !r.static_proof && r.nodes == 1);
-    // a pawn's check, three king moves, each into a lock: 3 nodes
+    // a pawn's check, three king moves, each into a lock: the first version's search needs 3 nodes;
+    // the second version's check seed (the king's reach starts from its steps) proves it statically
     let p = mateless::from_fen("8/8/1k6/p2p2p1/PK1P2Pp/7P/8/8 w - - 0 49").unwrap();
     let r = mateless::prove_cannot_be_mated(&mut search, &p, mateless::WHITE, 6, 100);
-    assert!(r.proven && r.nodes == 3);
+    assert!(r.proven && r.static_proof && r.nodes == 0);
     // an open position: the first line runs to the ceiling
     let p = mateless::from_fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2").unwrap();
     let r = mateless::prove_cannot_be_mated(&mut search, &p, mateless::WHITE, 6, 100);

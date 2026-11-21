@@ -64,7 +64,7 @@ function check(fen) {
     if (!want) continue;
     stats.proved++;
     stats.levelProofs[t.levels.indexOf(t.level)]++;
-    const c = Mt._internal.lockSets(pos, F), lv = t.level;
+    const c = Mt._internal.lockSets(pos, F, true), lv = t.level;   // the first version's certificate
     const pairs = [['wCone', lv.cones.wCone], ['bCone', lv.cones.bCone], ['wFixed', lv.final.wFixed], ['bFixed', lv.final.bFixed],
                    ['wKing', lv.final.wKing], ['bKing', lv.final.bKing], ['wBish', lv.bishops.wBish], ['bBish', lv.bishops.bBish]];
     for (const [k, v] of pairs) { stats.setChecks++; if (big(c[k]) !== v) bad.push(['set ' + k, fen, flag, V.hex(big(c[k])), V.hex(v)]); }

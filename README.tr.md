@@ -55,7 +55,9 @@ Aşağıdaki tablolar ilk sürümde ölçüldü. İkinci sürüm bir oyunun pozi
 yaklaşık %2 daha pahalı; çoğu, tahtada at, kale ya da vezir varken kutulu taşlara hızlı bir bakış
 (Rust'ta ~2 ns, JavaScript'te ~10 ns). chasolver'a karşı oranları gürültü içinde aynı; tam
 merdiveni chasolver'ın 201.060 satırının 201.054'ünü ispatlıyor, eylüle kadarki 204.060 satırda
-satır başına ~0,22 µs'de (Rust; [docs/RESULTS.md](docs/RESULTS.md#the-second-version)).
+satır başına ~0,22 µs'de (Rust; [docs/RESULTS.md](docs/RESULTS.md#the-second-version)). Kasım'da
+eklenen dört kural (aşağıda), şimdilik yalnızca JavaScript'te, bunu 201.058'e çıkarıyor; bedeli kilit
+testi başına ~%13, tam merdivende satır başına ~%4.
 
 | | Rust | JavaScript |
 |---|---|---|
@@ -78,7 +80,7 @@ ortancası; `rust/examples/vs_chasolver.rs`):
 | iki taraf birden, bütün satırlar | 201.060 | 6,52 µs (iki çağrı) | 0,41 µs | **~16×** |
 | gerçek oyun pozisyonları (chasolver'ın `lichess.txt`'i, iki taraf) | 131.072 | 2,41 µs | 0,563 µs | ~4,3× |
 
-chasolver 201.060 satırın hepsini, Mateless 201.024'ünü (ikinci sürüm 201.054'ünü) ispatlıyor.
+chasolver 201.060 satırın hepsini, Mateless 201.024'ünü (ikinci sürüm 201.058'ini) ispatlıyor.
 Kapsam yalnızca chasolver'ın listesinde sayılıyor: ağustos–eylül taramasının 3.000 satırı, hem
 chasolver'ın hem Mateless'in ispatladığı satırlar olarak seçildi. Tarayıcı aynı motoru
 çalıştırıyor: hakem sayfası kilitli bir pozisyonu bir mikrosaniyenin altında ispatlıyor;
@@ -142,7 +144,7 @@ aynı cevabı veriyor):
 | **hepsi** | **195.287** | | **138.572** (%71,0) | **190.465** (%97,5) | 190.719 (%97,7) |
 
 Tablo ilk sürümün sınıflaması (veri dosyaları onu tutuyor). İkinci sürüm ispatlanamayan 36
-satırın 30'unu ispatlıyor; 6'sı kalıyor ([`data/second_version.tsv`](data/second_version.tsv)).
+satırın 34'ünü ispatlıyor; 2'si kalıyor ([`data/second_version.tsv`](data/second_version.tsv)).
 
 Lichess bugün zorunlu çizgilerin çoğunu berabere veriyor: scalachess #821 (Ağustos 2026'da
 birleşti; veriye göre Lichess'te 6 Eylül'den beri kullanılıyor), lila'nın süre bitince sorduğu
@@ -186,8 +188,9 @@ piyonlarının arasına kapanmış bir at. Oyundan sonra bir puan iadesinin kaps
 platformun kendi kurallarının bıraktıkları: oyun bittikten sonra tam bir çözücü (chasolver) onlara
 bakar. Merdivenin tamamıyla bu 195.287 satırda 36 satır; bugünkü Lichess'in üstüne yalnızca kilit
 dedektörüyle 4.822 (yalnızca `in-game`) ya da 4.568 (`a-lock` ve ikisini birden yapan #916). İkinci
-sürüm 36'nın 30'unu ispatlıyor: ikinci kademe kafeslerin 26'sını (9 ply ve 10.000 düğüm içinde
-kapananları), önü açık çift kuralı 3 çifti, kutulu taş kuralı atı. Kalan 6'sı kafes.
+sürüm 36'nın 34'ünü ispatlıyor: arama kafeslerin 27'sini (21'ini 9 ply ve 10.000 düğümlük ikinci
+kademesiyle, 6'sını artık birinci kademede; yeni statik kurallar ağaçlarını kısaltıyor), pat bekçisi
+3'ünü daha, önü açık çift kuralı 3 çifti, kutulu taş kuralı atı. Kalan 2'si kafes.
 
 **Sağlamlık.** Henüz yazılı bir ispat yok; güçlü test kanıtı var.
 - chasolver'ın etiketlerine karşı yanlış beraberlik yok (68.950 etiketli pozisyonu, iki taraf;
@@ -478,14 +481,24 @@ giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 | **önü açık piyon çiftleri**: bir sütunda aralarında tek kare olan bir beyaz ve bir siyah piyon, geri kalan kilitli; ulaşılabilen pozisyonlar çiftin piyonlarının ne yaptığına göre üç aileye ayrılıyor (hiçbiri oynamadı, beyaz boşluğa girdi, siyah girdi), her biri kendi duvarları olan sıradan bir seviye, en çok 3 çift | piyonlarda böyle bir çift var (iki kaydırma söylüyor) | 3 (ve ağustos–eylülün 5 beraberliğinde ölümü gerçekleştiği ply'da görüyor) | ölçülebilir değil |
 | **kutulu at, kale ve vezir**: adım karelerinin hepsinde kendi sabit piyonu ya da kutulu taşı olan bir taş hiç oynamıyor ve yalnızca kendi taşlarının karelerine saldırıyor; tahtada kalabiliyor (golf motorunun kuralı, geçmişten) | tahtada at, kale ya da vezir var; her kale ve vezirin yanındaki karelere bakıştan sonra (oyun pozisyonlarının %96'sı orada biter) | 1 (hPiwD75i) ve chasolver'ın test pozisyonlarındaki 84 bestelenmiş kilit | böyle bir taş varken kilit testi başına ~2 ns (Rust) / ~10 ns (JS) |
 | **Domino aramasına ikinci kademe**: 9 ply, 10.000 düğüm | arama mat bulmadan başarısız oldu: bütçesiyle ya da yalnızca şah, piyon ve fil olan, bir şahın kapana kısıldığı bir tahtada ufkuyla | 26 | 1.000 oyundaki 14.755 böyle başarısızlığın 6'sında |
+| **pat bekçisi**: rakip şahın alabileceği bir piyon, alınması sahibini her durumda pat ediyorsa duvar kalıyor (sahibinin şahı nerede durursa dursun piyonu koruyor ya da adım atacak karesi kalmıyor; sahibinin başka oynayan taşı yok; alış bir filin şahını açmıyor) | döngü, filsiz bir tarafın alınabilir sabit piyonuna rastladığında | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
+| **piyon şahı tohumu**: piyon şahındaki bir şahın erişimi kendi karesinden değil, şimdi adım atabileceği karelerden başlıyor; kendi karesine sabit piyon saldırmaya devam ediyor | sırası gelen taraf piyon şahında (tahtada fil yok) | | |
+| **hamlesiz rakip**: sıra bayrağı düşen tarafta ve ne oynarsa oynasın mat edecek tarafın yasal hamlesi kalmıyor (oyun onun sırasında bitiyor); bitboard'dan okunuyor, hamle yapılmıyor | şah ve piyonlar, sıra bayrağı düşende, kilit bir şey bulmadı | | |
+| **zorunlu adım**: piyon şahındaki, tek yasal hamlesi bir şah adımı olan şah: adımdan sonraki pozisyonun kilidi | piyon şahı tohumundaki gibi | | |
 
 Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalıştırıyor;
 `_internal.coreLockTest` ilk sürümün dedektörü tek başına (`lock/`'taki, scalachess yamasındaki ve
 kilit sekmesinin çizdiği); `proveCannotBeMated(pos, side, { deepBudget: 0 })` ikinci kademeyi dışarıda bırakıyor.
 
-**Sırada ne var**, sırasıyla: bir kafes tanıyıcı (kalan 6 satır, onları açacak alış pat verdiği
-için duran kafesler), açık kalan için sınırlı tam kapanış, ve dedektörün ve yukarıdaki kuralların
-yazılı sağlamlık ispatı.
+Kasım'ın dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım) 204.060 satırın
+481'ini aramadan kilide taşıyor ve kalan 6 kafesin 4'ünü ispatlıyor; her yeni kilit, ondan
+ulaşılabilen bütün pozisyonlar dolaşılarak denetlendi, chasolver'ın etiketleri hiç yanlış beraberlik
+vermiyor ve değişmez kontrolü sertifikalarını tanıyor ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
+Şimdilik JavaScript motorunda (`mateless.js`, sayfa): Rust ve WebAssembly derlemeleri ve öbür
+diller, taşınana kadar önceki kurallarla kalıyor.
+
+**Sırada ne var**, sırasıyla: kalan 2 kafes (RwnQJq1k, bKHPqNEw), açık kalan için sınırlı tam
+kapanış, ve dedektörün ve yukarıdaki kuralların yazılı sağlamlık ispatı.
 
 ## Lisans ve teşekkür
 

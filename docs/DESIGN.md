@@ -353,7 +353,9 @@ search. The second version adds what is known to see more, toward completeness, 
 the first slower where its rules do not apply. Every rule here keeps three properties: it never
 makes a false proof (each is checked like the first version's rules, below); it runs only when its
 own situation is on the board, so any other position takes the first version's path through the
-same code; and JS, Rust and WebAssembly give the same answers, node counts included.
+same code; and JS, Rust and WebAssembly give the same answers, node counts included (the four rules
+of November below are in JavaScript only for now; until they are ported, the Rust and WebAssembly
+builds keep the earlier rules).
 `_internal.coreLockTest` runs the first version's detector alone (it labels `lock/positions.tsv`
 and is what the lock tab draws).
 
@@ -422,6 +424,45 @@ In a game the second tier is one more walk of `Domino.run2`, for the sides it is
 gate is one look at the failures and, after a horizon failure, at the piece sets, and the rest is
 out of line (Rust: `second_tier`, so that the first search stays the one inlined into
 `Flags::update`).
+
+### The four rules of November
+
+Four rules for the ways a game of kings and pawns runs into a stalemate or a lock. They read the
+bitboards only (no move is generated or made); each is asked only where its situation is on the
+board, and `_internal.coreLockTest` leaves them out with the rest of the second version.
+
+- **The stalemate guard** (in the cycle of a level). A pawn the enemy king may take leaves the wall,
+  as before, unless taking it always ends the game: it is a fixed pawn; its owner has no bishop
+  and every other pawn of the owner's is fixed; wherever the owner's king may stand (its reach) it
+  either defends the pawn or, with the enemy king on the pawn's square, has no square to step to
+  (its own fixed pawns, squares the enemy's fixed pawns attack, squares next to the enemy king);
+  and the capture uncovers no check (no diagonal from such a king square, stopped by fixed pawns and
+  the pawn's square, meets a square the enemy king may take from, when the enemy has a bishop). The
+  owner is then stalemated by the capture, so no line of play continues through it, and the pawn
+  stays in the wall. The guard is computed from each pass's reaches and fixed pawns and only shrinks
+  as they grow and shrink, so the cycle stays monotone. For the mating net the kings' reaches are
+  then taken again without the enemy's guarded pawns (a king standing there has ended the game).
+- **The check seed.** The side to move is in a pawn's check: its king must step now, to a square
+  it can step to (exact without bishops: not its own pawns, not a square an enemy pawn attacks, not
+  next to the enemy king), and the square it leaves stays attacked as long as the checking pawn is
+  fixed. Its reach starts from those squares. Not when it has none (that may be mate now), when one of
+  its pawns can take a checking pawn, or at a frozen level.
+- **The stuck mater** (after the levels, when they found no lock). The flagged side is to move;
+  whatever it plays, the mater has no legal move, so the game ends at the mater's turn. Proven from
+  the bitboards: the flagged side has no capture; each of the mater's pawns is blocked by a man that
+  stays and attacks no flagged pawn; each square next to the mater's king holds a pawn of its own, is
+  attacked by a flagged pawn that cannot move this turn, or is next to every square the flagged king
+  may stand on after its move; no flagged push lands where a mater's pawn attacks or next to its king,
+  or allows an en passant capture; and the flagged side is not mated now. Kings and pawns only.
+- **The forced step.** The side to move is in a pawn's check and has exactly one legal move, a step
+  of its king (exact as above, and no pawn of its own can take a checking pawn): every line goes
+  through it, so the lock of the position after it (the king moved on the bitboards, a pawn on its
+  square taken) proves this one.
+
+`lockSets` gives their certificates: the levels' sets (the guard and the seed live inside a level),
+`{ stuck: true }`, `{ forced: <the certificate after the step> }`. `test/lock_invariant.js` checks
+them as they claim: the stuck mater move by move, the forced step from the position after it, and a
+position without a legal move (where a guarded pawn falls) for I7 only.
 
 ### What it costs
 

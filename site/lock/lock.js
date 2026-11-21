@@ -116,12 +116,15 @@
     const t = V.trace(s, flagged);
     const color = flagged === 'w' ? Mt.WHITE : Mt.BLACK;
     // The explorer draws the first version's detector (lock/, the scalachess patch); mateless.js's
-    // second version may prove more (an open pawn pair, boxed pieces), and says so below.
+    // second version may prove more (an open pawn pair, boxed pieces, and the rules of November), and says so below.
     let agree = Mt._internal.coreLockTest(pos, color) === t.proved;
     let second = null;
-    if (!t.proved && Mt.lockCannotMate(pos, color)) second = Mt._internal.lockSets(pos, color).families ? 'pair' : 'boxed';
+    if (!t.proved && Mt.lockCannotMate(pos, color)) {
+      const c2 = Mt._internal.lockSets(pos, color);
+      second = c2.families ? 'pair' : c2.boxed ? 'boxed' : c2.stuck ? 'stuck' : c2.forced ? 'forced' : 'guard';
+    }
     if (agree && t.proved) {
-      const c = Mt._internal.lockSets(pos, color), lv = t.level;
+      const c = Mt._internal.lockSets(pos, color, true), lv = t.level;   // the first version's certificate
       agree = big(c.wCone) === lv.cones.wCone && big(c.bCone) === lv.cones.bCone &&
         big(c.wFixed) === lv.final.wFixed && big(c.bFixed) === lv.final.bFixed &&
         big(c.wKing) === lv.final.wKing && big(c.bKing) === lv.final.bKing &&
@@ -271,9 +274,12 @@
     }
     vh += '<span class="agree">' + (a.agree ? L('mateless.js’s first version gives the same verdict', 'mateless.js’in ilk sürümü aynı hükmü veriyor') + (t.proved ? L(' and the same sets.', ', kümeler de aynı.') : '.') :
       L('mateless.js’s first version disagrees with this drawing: please report the FEN.', 'mateless.js’in ilk sürümü bu çizimle aynı fikirde değil: lütfen FEN’i bildir.')) + '</span>';
-    if (a.second) vh += '<span class="agree">' + (a.second === 'pair'
-      ? L('The second version proves it: an open pawn pair (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: önü açık bir piyon çifti (bkz. <a href="#second">İkinci sürüm</a>).')
-      : L('The second version proves it: boxed pieces (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: kutulu taşlar (bkz. <a href="#second">İkinci sürüm</a>).')) + '</span>';
+    if (a.second) vh += '<span class="agree">' + ({
+      pair: L('The second version proves it: an open pawn pair (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: önü açık bir piyon çifti (bkz. <a href="#second">İkinci sürüm</a>).'),
+      boxed: L('The second version proves it: boxed pieces (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: kutulu taşlar (bkz. <a href="#second">İkinci sürüm</a>).'),
+      stuck: L('The second version proves it: whatever the flagged side plays, the mater has no move (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: bayrağı düşen taraf ne oynarsa oynasın, mat edecek tarafın hamlesi kalmıyor (bkz. <a href="#second">İkinci sürüm</a>).'),
+      forced: L('The second version proves it: the king in the pawn’s check has one move, and after it the lock holds (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: piyon şahındaki şahın tek hamlesi var ve ondan sonra kilit tutuyor (bkz. <a href="#second">İkinci sürüm</a>).'),
+      guard: L('The second version proves it: the stalemate guard or the check seed (see <a href="#second">The second version</a>).', 'İkinci sürüm bunu ispatlıyor: pat bekçisi ya da piyon şahı tohumu (bkz. <a href="#second">İkinci sürüm</a>).') }[a.second]) + '</span>';
     $('vd').innerHTML = vh;
   }
 

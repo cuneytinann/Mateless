@@ -53,7 +53,7 @@ import { BISHOP, BLACK, castlingField, CastlingFiles, chess960Arrangement, color
          PIECE_LETTERS, Position, positionKey, PROMOTION_ORDER, QUEEN, rankOf, ROOK,
          SHARED_CONTEXT, squareName, STANDARD_SKELETON, toFen, typeOf, undoMove, WHITE, writeKey } from './board.js';
 import { materialCannotMate, materialTest } from './material.js';
-import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2 } from './lock.js';
+import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2, materStuck } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, Domino, PositionSet } from './domino.js';
 import { Flags, isDeadPosition, proveBoth, proveCannotBeMated } from './ladder.js';
 import { flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
@@ -74,5 +74,5 @@ export {
 };
 // internals exposed for tests
 export const _internal = Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
-                                         lockTest, lockTest2, lockSets, coreLockTest, SHARED_CONTEXT,
+                                         lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
                                          FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS });

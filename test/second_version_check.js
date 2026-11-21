@@ -1,13 +1,13 @@
 'use strict';
 /* The second version's rules, held to what they were measured to do.
    - data/second_version.tsv: the 36 Lichess timeouts that the first version leaves unproven. The
-     ladder must prove each one as the file says (lock-open-pair, lock-boxed, domino-deep), with the
-     same node count, and leave the 6 cages unproven; the first version's detector
-     (_internal.coreLockTest) must prove none of the locks, and a ladder without the second tier
-     (deepBudget 0) none of the domino-deep rows.
+     ladder must prove each one as the file says (lock, lock-open-pair, lock-boxed, lock-stuck,
+     lock-forced, domino, domino-deep), with the same node count, and leave the 2 cages left
+     unproven; the first version's detector (_internal.coreLockTest) must prove none of the locks,
+     and a ladder without the second tier (deepBudget 0) none of the domino-deep rows.
    - A few positions of each rule, with the answer for both sides, and the certificate's shape
      (lockSets: families for an open pair; boxed, the pieces no enemy king or bishop reaches,
-     for knights, rooks and queens).
+     for knights, rooks and queens; stuck for the stuck mater; forced for the forced step).
    - Where the second tier is allowed: never after a mate, after a budget failure, after a horizon
      failure only with no knight, rook or queen and a king shut in.
      node second_version_check.js        (ENGINE: the engine, default ../mateless.js) */
@@ -24,7 +24,7 @@ for (const line of rows) {
   const p = E.fromFen(fen).position, fl = p.side;
   kinds[want] = (kinds[want] || 0) + 1;
   const proof = E.proveCannotBeMated(p, fl), lock = E.lockCannotMate(p, fl), sets = I.lockSets(p, fl);
-  const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : 'lock')
+  const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : sets.stuck ? 'lock-stuck' : sets.forced ? 'lock-forced' : 'lock')
     : proof.proven ? (proof.deep ? 'domino-deep' : 'domino') : 'unproven';
   if (got !== want) problem(`${id}: ${got}, the file says ${want}`);
   if (!lock && proof.nodes !== +nodes) problem(`${id}: ${proof.nodes} nodes, the file says ${nodes}`);
@@ -47,6 +47,22 @@ const CASES = [
   ['4k3/8/8/1p3p1p/1P1p1P1P/3PpP1P/1K2P2P/6NR b - - 0 1', true, true, 'walls'],
   // the same rook without the knight: an empty square beside it
   ['4k3/8/8/1p3p1p/1P1p1P1P/3PpP1P/1K2P2P/7R b - - 0 1', false, false, null],
+  // the stalemate guard (f6c1lu7R): Black's king takes g2 only with White's king on h4, and White is stalemated
+  ['8/8/7p/5p1P/5p1K/5Pp1/6P1/1k6 w - - 70 83', true, true, 'levels'],
+  // without the h6 pawn the white king walks out: no guard holds
+  ['8/8/8/5p1P/5p1K/5Pp1/6P1/1k6 w - - 70 83', false, false, null],
+  // the check seed: White's king must step out of g5's check, to e3, f3 or g3, and never comes back
+  ['8/8/5k2/p2p2p1/P2P1KP1/8/8/8 w - - 0 51', true, true, 'levels'],
+  // no check and an open d-pawn to take: nothing to seed
+  ['8/8/5k2/p2p4/P2P1K2/8/8/8 w - - 0 51', false, false, null],
+  // the stuck mater (kJOYLcJ5): whatever Black plays, White has no move
+  ['8/7p/5p1P/5kpK/6P1/8/8/8 b - - 0 48', false, true, 'stuck'],
+  // White's a-pawn moves: no stuck mater
+  ['8/7p/5p1P/5kpK/6P1/8/P7/8 b - - 0 48', false, false, null],
+  // the forced step: Kh1 is White's only move, then the king is frozen there
+  ['8/8/8/8/8/6p1/4k1Pp/6K1 w - - 0 64', true, true, 'forced'],
+  // with Black's king away, White has Kf1 too: no forced step
+  ['8/8/8/8/8/6p1/k5Pp/6K1 w - - 0 64', false, false, null],
 ];
 for (const [fen, w, b, kind] of CASES) {
   const s = E.fromFen(fen); if (s.error) { problem('bad FEN ' + fen); continue; }
@@ -59,6 +75,9 @@ for (const [fen, w, b, kind] of CASES) {
     if (kind === 'families' && !c.families) problem(`${fen}: no families in the certificate`);
     if ((kind === 'boxed' || kind === 'walls') && !c.boxed) problem(`${fen}: no boxed pieces in the certificate`);
     if (kind === 'walls' && !(c.boxed[0] | c.boxed[1])) problem(`${fen}: no boxed piece is a wall`);
+    if (kind === 'stuck' && !c.stuck) problem(`${fen}: the certificate is not the stuck mater's`);
+    if (kind === 'forced' && !c.forced) problem(`${fen}: the certificate is not the forced step's`);
+    if (kind === 'levels' && (c.stuck || c.forced || c.families || c.boxed)) problem(`${fen}: the certificate is not the levels'`);
     if (I.coreLockTest(p, side)) problem(`${fen}: the first version proves it too`);
   }
 }

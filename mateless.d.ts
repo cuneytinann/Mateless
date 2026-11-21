@@ -353,6 +353,11 @@ declare namespace Mateless {
     readonly boxed?: [number, number];
   }
 
+  /** The stuck mater's certificate: the game ends at the mater's next turn. */
+  interface LockStuck { readonly stuck: true; }
+  /** The forced step's certificate: the one of the position after the only legal move. */
+  interface LockForced { readonly forced: LockSets | LockFamilies | LockStuck | LockForced; }
+
   /** A certificate of the open-pair rule: one family per combination of what the pairs' pawns have done. */
   interface LockFamilies {
     /** Each family's sets; pairs: per open pair 'A' (neither pawn moved), 'B' (the white one stepped into the gap) or 'C' (the black one). */
@@ -375,8 +380,12 @@ declare namespace Mateless {
     readonly materialTest: (pos: Position, flagged: Color) => boolean;
     readonly lockTest: (pos: Position, flagged: Color) => boolean;
     readonly lockTest2: (pos: Position, ask: number) => FlaggedSides;
-    /** The lock certificate's sets, each a [lo, hi] pair of words; null when there is no lock. */
-    readonly lockSets: (pos: Position, flagged: Color) => LockSets | LockFamilies | null;
+    /** The lock certificate's sets, each a [lo, hi] pair of words; null when there is no lock. With
+        first, the first version's (coreLockTest's) certificate. The stuck mater's is { stuck: true },
+        the forced step's { forced: <the certificate after the step> }. */
+    readonly lockSets: (pos: Position, flagged: Color, first?: boolean) => LockSets | LockFamilies | LockStuck | LockForced | null;
+    /** The stuck mater (the second version): the flagged side is to move and, whatever it plays, the mater has no legal move. */
+    readonly materStuck: (pos: Position, flagged: Color) => boolean;
     /** The first version's lock detector alone (lock/, the scalachess patch): no open pairs, no boxed pieces. */
     readonly coreLockTest: (pos: Position, flagged: Color) => boolean;
     readonly SHARED_CONTEXT: MoveContext;

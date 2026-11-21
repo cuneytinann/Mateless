@@ -280,7 +280,7 @@ what the second version makes of each.
 
 | | first version | second version |
 |---|---|---|
-| chasolver's Lichess rows up to July (201,060), proven | 201,024 | **201,054** |
+| chasolver's Lichess rows up to July (201,060), proven | 201,024 | **201,054** (201,058 with the four rules of November, below) |
 | of the 36 unproven: by the open-pair rule | | 3 (GyWj6Ymz, azjorRHB, lBSDAx07) |
 | by the boxed rule | | 1 (hPiwD75i) |
 | by the second tier (238–1,360 nodes each) | | 26 |
@@ -292,7 +292,7 @@ what the second version makes of each.
 Coverage is counted on chasolver's list: the 3,000 rows of the August–September scan were chosen
 as rows that both chasolver and Mateless prove, so both versions prove all of them. Every other row
 keeps its class: of the 204,060, only those 30 change (26 unproven → Domino,
-4 unproven → lock).
+4 unproven → lock). The four rules of November change more (below).
 
 **Speed against chasolver**, both versions in the same runs as chasolver's fast check (Rust, one
 binary, `rust/examples/vs_chasolver.rs`, median of the rounds; the machine was loud, chasolver
@@ -336,3 +336,40 @@ another ply than in the first version.
 | quiet knight, rook and queen moves | 2,436,600 such moves from boxed and chasolver positions | no lock after any |
 | Rust fast loop = plain loop (`lockcheck.rs`) | 25.6 million side-positions | the same |
 | the 36 rows and each rule's positions (`second_version_check.js`) | | 0 problems |
+
+<a id="the-four-rules-of-november"></a>
+
+### The four rules of November
+
+The stalemate guard, the check seed, the stuck mater and the forced step
+([DESIGN.md](DESIGN.md), section 12), in the JavaScript engine (the Rust and WebAssembly builds keep
+the earlier rules until they are ported). On the 204,060 rows, the flagged side:
+
+| | second version before | with the four rules |
+|---|---|---|
+| lock (the detector alone) | 52,176 | **52,657** (+481; none lost) |
+| of chasolver's 201,060 rows, lock | 51,001 | 51,478 |
+| of chasolver's 201,060 rows, the whole ladder | 201,054 | **201,058** |
+| of the 36 the first version leaves, unproven | 6 | **2** (RwnQJq1k, bKHPqNEw) |
+| chasolver's labels (both sides): static proofs | 3,430 | 3,488 |
+| false draws | 0 | 0 |
+
+The rows they move to the lock were proven by the Domino search before (or were a stalemate at the
+root): in the search's terms the trees get shorter too, and 6 of the 36 rows that needed the second
+tier now close in the first (`data/second_version.tsv`).
+
+**Soundness.** Every one of the 481 new locks was checked by walking all the positions reachable from
+it (move clocks ignored, every promotion): 224,967 positions, no mate of the flagged side. The same
+for the new locks of positions made by moving the kings of the 204,060 rows' structures to random
+squares, side to move at random (several seeds, ~20 variants per structure): every legal one walked
+to the end, no mate. The stuck mater was checked against the moves themselves on 1,837,085 legal
+positions (the rows, both sides to move; chasolver's labelled positions; king-moved variants): of
+2,116 it proves, all are right. `test/lock_invariant.js` finds no violation on the 481 certificates
+(all walked to the end) nor on the earlier ones it was run on (positions.txt, every 2nd: 353, 7.6
+million positions; a sample of 2,053 locks of the 204,060 rows: 8.0 million). `game_flags_check.js`:
+no flag comes down where chasolver's full analysis finds a mate (6,000 games); `trigger_check.js`:
+0 problems.
+
+**Speed** (JavaScript, the 204,060 rows, best of 5, three rounds): the lock test ~140 → ~160 ns
+(+~13%), the whole ladder ~670 → ~700 ns per row (+~4%), a game's flags ~2% per move.
+

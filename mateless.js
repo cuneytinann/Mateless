@@ -1231,14 +1231,19 @@ function materialCannotMate(pos, flagged) { return materialTest(pos, flagged); }
 
    The detector comes in two versions in this file. The first is the lock detector proper, the one
    proposed to Lichess (Lock.scala) and kept alone in 20 languages in lock/: a knight, rook or queen
-   on the board fails it at once (coreLockTest below runs it alone). The second version adds two
-   rules, each entered only when its own situation is on the board, so that every other position
-   runs the first version's code: open pawn pairs (when the pawns hold one) and boxed knights,
-   rooks and queens (when one stands). It is not complete either; it sees more.
+   on the board fails it at once (coreLockTest below runs it alone). The second version adds rules,
+   each entered only when its own situation is on the board, so that every other position runs the
+   first version's code: open pawn pairs (when the pawns hold one) and boxed knights, rooks and
+   queens (when one stands); and four rules for the ways a game of kings and pawns runs into a
+   stalemate or a lock: the stalemate guard (a pawn whose capture always stalemates its owner stays
+   a wall), the check seed (a king in a pawn's check starts its reach from the squares it can step
+   to), the stuck mater (whatever the flagged side plays, the mater has no move) and the forced step
+   (a king in a pawn's check with one legal move: the position after it). It is not complete
+   either; it sees more.
    They are the first two rungs of a ladder: the material test, the lock detector, then the
-   Domino search (domino.js), which asks the same two tests at its nodes. A king that must step
-   out of a pawn's check into a lock, or must take the last queen or rook, is left to the search
-   (one ply). Most positions fail
+   Domino search (domino.js), which asks the same two tests at its nodes. In the first version a
+   king that must step out of a pawn's check into a lock, or must take the last queen or rook, is
+   left to the search (one ply). Most positions fail
    them on a fact or two, so both read the bitboards directly and return at the first fact that
    decides. Only a position that passes the lock detector's quick checks gets the full census
    below, which its fixed point reads.
@@ -1253,7 +1258,9 @@ const census = new Int32Array(12);
 const C_WHITE_PAWNS = 0, C_BLACK_PAWNS = 2, C_WHITE_KING = 4, C_BLACK_KING = 6,
       C_WHITE_BISHOPS = 8, C_BLACK_BISHOPS = 10;
 
+let censusPos = null;      // the position of the last census (the check seed reads its side to move)
 function takeCensus(pos) {
+  censusPos = pos;
   const lo = pos.lo, hi = pos.hi, c = census;
   for (let side = 0; side < 2; side++) {
     const color = side ? BLACK : WHITE, at = 2 * side;   // White's entries first, Black's two words later
@@ -1264,6 +1271,7 @@ function takeCensus(pos) {
 }
 /** takeCensus, and do the pawns hold an open pair (non-zero: yes)? */
 function takeCensusPairs(pos) {
+  censusPos = pos;
   takeCensus(pos);
   const lo = pos.lo, hi = pos.hi;
   const wpL = lo[WHITE | PAWN], wpH = hi[WHITE | PAWN], bpL = lo[BLACK | PAWN], bpH = hi[BLACK | PAWN];
@@ -1379,6 +1387,60 @@ function lockLeaks2(ask, frL, frH) {
 }
 
 /** A level up to the mating net: true when the structure leaks whichever side is flagged. */
+/* ─── The stalemate guard (second version) ─────────────────────────────────────────────────
+
+   A pawn the enemy king may take leaves the wall (the takeable pawns above). It need not, if taking
+   it always ends the game: when the owner's king, wherever it may stand, either defends the pawn or
+   has no square left to step to once the enemy king stands on the pawn's square, and the owner has
+   nothing else that moves (no bishop; every other pawn fixed). The capture is then a stalemate (the
+   owner is to move, and a king's capture gives no check unless it uncovers an enemy bishop, which
+   the rays below rule out), so no line of play goes through it: the pawn is as good as a wall.
+   Only a fixed pawn is guarded (a pawn that may still move could be taken elsewhere). The guard
+   only shrinks as the reaches grow and the fixed pawns shrink, so the cycle stays monotone. */
+let GUARD = true;
+let guardL = 0, guardH = 0;
+const bitAt = (L, H, s) => (s < 32 ? (L >>> s) : (H >>> (s - 32))) & 1;
+/** Does a diagonal ray from k, stopped by the squares (bL, bH), meet a square of (oL, oH)? */
+function rayMeets(k, bL, bH, oL, oH) {
+  const f0 = k & 7, r0 = k >> 3;
+  for (let d = 0; d < 4; d++) {
+    const df = d & 1 ? 1 : -1, dr = d & 2 ? 1 : -1;
+    for (let f = f0 + df, r = r0 + dr; f >= 0 && f < 8 && r >= 0 && r < 8; f += df, r += dr) {
+      const s = 8 * r + f;
+      if (bitAt(oL, oH, s)) return true;
+      if (bitAt(bL, bH, s)) break;
+    }
+  }
+  return false;
+}
+/** Of the owner's fixed pawns (candL/H, which the enemy king may take), those whose capture always
+    stalemates the owner. reach: where the owner's king may stand; shut: squares its king can never
+    step to with the enemy king elsewhere (own fixed pawns, squares the enemy's fixed pawns attack);
+    enemyKing: the enemy king's reach; block: squares a bishop's line never crosses (fixed pawns). */
+function stalemateGuard(candL, candH, ownPL, ownPH, ownFixedL, ownFixedH, reachL, reachH,
+                        shutL, shutH, enemyKingL, enemyKingH, enemyBishops, blockL, blockH) {
+  guardL = 0; guardH = 0;
+  if ((ownPL & ~ownFixedL) | (ownPH & ~ownFixedH)) return;     // another pawn of the owner's may move
+  let cL = candL, cH = candH;
+  while (cL | cH) {
+    let p;
+    if (cL) { p = 31 - Math.clz32(cL & -cL); cL &= cL - 1; } else { p = 63 - Math.clz32(cH & -cH); cH &= cH - 1; }
+    const pL = p < 32 ? 1 << p : 0, pH = p < 32 ? 0 : 1 << (p - 32);
+    const nL = KING_STEPS[2 * p], nH = KING_STEPS[2 * p + 1];
+    const oL = nL & enemyKingL, oH = nH & enemyKingH;           // where the enemy king takes from
+    let kL = reachL & ~(nL | pL), kH = reachH & ~(nH | pH);     // the owner's king, not defending the pawn
+    const xL = shutL | nL | pL, xH = shutH | nH | pH;            // ... and not stepping next to the enemy king
+    let held = true;
+    while (kL | kH) {
+      let k;
+      if (kL) { k = 31 - Math.clz32(kL & -kL); kL &= kL - 1; } else { k = 63 - Math.clz32(kH & -kH); kH &= kH - 1; }
+      if ((KING_STEPS[2 * k] & ~xL) | (KING_STEPS[2 * k + 1] & ~xH)) { held = false; break; }
+      if (enemyBishops && rayMeets(k, blockL | pL, blockH | pH, oL, oH)) { held = false; break; }
+    }
+    if (held) { guardL |= pL; guardH |= pH; }
+  }
+}
+
 function lockLevelLeaks(frL, frH) {
   const c = census;
   const wpL = c[C_WHITE_PAWNS], wpH = c[C_WHITE_PAWNS + 1], bpL = c[C_BLACK_PAWNS], bpH = c[C_BLACK_PAWNS + 1];
@@ -1400,16 +1462,44 @@ function lockLevelLeaks(frL, frH) {
     if ((northLo(sL) & bcL) | (northHi(sL, sH) & bcH)) return true;
   }
 
+  // The check seed (second version): the side to move is in a pawn's check, so its king must step out now, to
+  // one of the squares it can step to now (exact: its own pawns, the enemy pawns' attacks, the enemy
+  // king's neighbours); its reach starts there, not on its square, which a fixed pawn keeps attacked.
+  // Not when it has no such step (that may be a mate now), when one of its pawns can take a checking
+  // pawn (the king would stay), at a frozen level, or with a bishop on the board.
+  let wSeedL = wkL, wSeedH = wkH, bSeedL = bkL, bSeedH = bkH;
+  if (GUARD && !(frL | frH) && censusPos !== null && pawnCheck(censusPos) &&
+      !(c[C_WHITE_BISHOPS] | c[C_WHITE_BISHOPS + 1] | c[C_BLACK_BISHOPS] | c[C_BLACK_BISHOPS + 1])) {
+    const white = censusPos.side === WHITE;
+    const kL = white ? wkL : bkL, kH = white ? wkH : bkH, k = firstSquare(kL, kH);
+    const ek = white ? firstSquare(bkL, bkH) : firstSquare(wkL, wkH);
+    const atkL = white ? sideways(southLo(bpL, bpH)) : sideways(northLo(wpL));
+    const atkH = white ? sideways(southHi(bpH)) : sideways(northHi(wpL, wpH));
+    const ownL = white ? wpL : bpL, ownH = white ? wpH : bpH;
+    const dL = KING_STEPS[2 * k] & ~ownL & ~atkL & ~KING_STEPS[2 * ek], dH = KING_STEPS[2 * k + 1] & ~ownH & ~atkH & ~KING_STEPS[2 * ek + 1];
+    // the checking pawns, and whether an own pawn attacks one of them
+    const chkL = white ? sideways(northLo(kL)) & bpL : sideways(southLo(kL, kH)) & wpL;
+    const chkH = white ? sideways(northHi(kL, kH)) & bpH : sideways(southHi(kH)) & wpH;
+    const takeL = white ? sideways(southLo(chkL, chkH)) & wpL : sideways(northLo(chkL)) & bpL;
+    const takeH = white ? sideways(southHi(chkH)) & wpH : sideways(northHi(chkL, chkH)) & bpH;
+    if ((dL | dH) && !(takeL | takeH)) {
+      if (white) { wSeedL = dL; wSeedH = dH; } else { bSeedL = dL; bSeedH = dH; }
+    }
+  }
+
   // The cycle: walls -> fixed pawns -> king reaches -> capture squares.
   let wFixedL = wpL, wFixedH = wpH, bFixedL = bpL, bFixedH = bpH;
-  let wKingL = wkL, wKingH = wkH, bKingL = bkL, bKingH = bkH;
-  let bTakeL = bkL, bTakeH = bkH, wTakeL = wkL, wTakeH = wkH;
+  let wKingL = wSeedL, wKingH = wSeedH, bKingL = bSeedL, bKingH = bSeedH;
+  let bTakeL = bSeedL, bTakeH = bSeedH, wTakeL = wSeedL, wTakeH = wSeedH;
   let wWallL = -1, wWallH = -1, bWallL = -1, bWallH = -1;
+  // The stalemate guard of each side's pawns (all of them at first: nothing is taken yet).
+  let wGuardL = -1, wGuardH = -1, bGuardL = -1, bGuardH = -1;
+  const wBishops = (c[C_WHITE_BISHOPS] | c[C_WHITE_BISHOPS + 1]) !== 0, bBishops = (c[C_BLACK_BISHOPS] | c[C_BLACK_BISHOPS + 1]) !== 0;
   for (;;) {
     const pwL = wWallL, pwH = wWallH, pbL = bWallL, pbH = bWallH;
-    // wWall = white pawns Black can never take | frozen king; bWall likewise
-    wWallL = (wpL & ~bTakeL) | frL; wWallH = (wpH & ~bTakeH) | frH;
-    bWallL = (bpL & ~wTakeL) | frL; bWallH = (bpH & ~wTakeH) | frH;
+    // wWall = white pawns Black can never take (or whose capture stalemates White) | frozen king; bWall likewise
+    wWallL = (wpL & ~(bTakeL & ~wGuardL)) | frL; wWallH = (wpH & ~(bTakeH & ~wGuardH)) | frH;
+    bWallL = (bpL & ~(wTakeL & ~bGuardL)) | frL; bWallH = (bpH & ~(wTakeH & ~bGuardH)) | frH;
     // wFixed &= wWall & south(bWall | wFixed); bFixed &= bWall & north(wWall | bFixed)
     let tL = bWallL | wFixedL, tH = bWallH | wFixedH;
     const nwFixedL = wFixedL & wWallL & southLo(tL, tH), nwFixedH = wFixedH & wWallH & southHi(tH);
@@ -1440,14 +1530,47 @@ function lockLevelLeaks(frL, frH) {
     tL = wTakeL | nwKingL; tH = wTakeH | nwKingH;
     fillNorth(tL & ~wWallL, tH & ~wWallH, ~wWallL, ~wWallH);
     const nwTakeL = tL | northLo(fillLo), nwTakeH = tH | northHi(fillLo, fillHi);
-    const changed =
+    // The guards for the next pass, from this pass's reaches and fixed pawns.
+    let ngwL = 0, ngwH = 0, ngbL = 0, ngbH = 0;
+    if (GUARD) {
+      const blL = nwFixedL | nbFixedL, blH = nwFixedH | nbFixedH;
+      if (!wBishops) {
+        stalemateGuard(wpL & nbTakeL & nwFixedL, wpH & nbTakeH & nwFixedH, wpL, wpH, nwFixedL, nwFixedH,
+                       nwKingL, nwKingH, nwFixedL | bHitL, nwFixedH | bHitH, nbKingL, nbKingH, bBishops, blL, blH);
+        ngwL = guardL; ngwH = guardH;
+      }
+      if (!bBishops) {
+        stalemateGuard(bpL & nwTakeL & nbFixedL, bpH & nwTakeH & nbFixedH, bpL, bpH, nbFixedL, nbFixedH,
+                       nbKingL, nbKingH, nbFixedL | wHitL, nbFixedH | wHitH, nwKingL, nwKingH, wBishops, blL, blH);
+        ngbL = guardL; ngbH = guardH;
+      }
+    }
+    const changed = (ngwL ^ wGuardL) | (ngwH ^ wGuardH) | (ngbL ^ bGuardL) | (ngbH ^ bGuardH) |
       (nwFixedL ^ wFixedL) | (nwFixedH ^ wFixedH) | (nbFixedL ^ bFixedL) | (nbFixedH ^ bFixedH) |
       (nwKingL ^ wKingL) | (nwKingH ^ wKingH) | (nbKingL ^ bKingL) | (nbKingH ^ bKingH) |
       (nbTakeL ^ bTakeL) | (nbTakeH ^ bTakeH) | (nwTakeL ^ wTakeL) | (nwTakeH ^ wTakeH);
     wFixedL = nwFixedL; wFixedH = nwFixedH; bFixedL = nbFixedL; bFixedH = nbFixedH;
     wKingL = nwKingL; wKingH = nwKingH; bKingL = nbKingL; bKingH = nbKingH;
     bTakeL = nbTakeL; bTakeH = nbTakeH; wTakeL = nwTakeL; wTakeH = nwTakeH;
+    wGuardL = ngwL; wGuardH = ngwH; bGuardL = ngbL; bGuardH = ngbH;
     if (!changed) break;
+  }
+
+  // A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches again, now
+  // stopping at the enemy's guarded pawns (smaller reaches; the walls and fixed pawns stay as they are).
+  if (GUARD && (wGuardL | wGuardH | bGuardL | bGuardH)) {
+    const bHitL = sideways(southLo(bFixedL, bFixedH)), bHitH = sideways(southHi(bFixedH));
+    const wHitL = sideways(northLo(wFixedL)), wHitH = sideways(northHi(wFixedL, wFixedH));
+    const mwL = ~(wFixedL | bHitL | nearFrozenBlackL | (bpL & bGuardL)), mwH = ~(wFixedH | bHitH | nearFrozenBlackH | (bpH & bGuardH));
+    const mbL = ~(bFixedL | wHitL | nearFrozenWhiteL | (wpL & wGuardL)), mbH = ~(bFixedH | wHitH | nearFrozenWhiteH | (wpH & wGuardH));
+    let aL = wSeedL, aH = wSeedH, dL = bSeedL, dH = bSeedH;
+    for (;;) {
+      const xL = aL | (zoneLo(aL, aH) & mwL), xH = aH | (zoneHi(aL, aH) & mwH);
+      const yL = dL | (zoneLo(dL, dH) & mbL), yH = dH | (zoneHi(dL, dH) & mbH);
+      if (xL === aL && xH === aH && yL === dL && yH === dH) break;
+      aL = xL; aH = xH; dL = yL; dH = yH;
+    }
+    wKingL = aL; wKingH = aH; bKingL = dL; bKingH = dH;
   }
 
   // The cones, once, against the final walls.
@@ -1954,6 +2077,8 @@ function boxedTest(pos, ask) {
 
 /** The lock detector: can `flagged` never be mated, by the structure of pawns, kings and bishops? */
 function lockTest(pos, flagged) {
+  const after = forcedStep(pos);
+  if (after !== null) return lockTest(after, flagged);
   const lo = pos.lo, hi = pos.hi;
   // A knight, rook or queen on the board (the usual case in a game: tested first): only boxed ones may stay.
   if (lo[WHITE | KNIGHT] | hi[WHITE | KNIGHT] | lo[BLACK | KNIGHT] | hi[BLACK | KNIGHT] |
@@ -1962,9 +2087,9 @@ function lockTest(pos, flagged) {
     return boxedTest(pos, flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0;
   if (pos.ep !== NO_SQUARE) return false;
   if (twinBishops(lo[WHITE | BISHOP], hi[WHITE | BISHOP]) || twinBishops(lo[BLACK | BISHOP], hi[BLACK | BISHOP])) return false;
-  if (takeCensusPairs(pos)) return lockTestPairsFirst(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0;
+  if (takeCensusPairs(pos)) return lockTestPairsFirst(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0 || materStuck(pos, flagged);
   if (!lockLeaks(flagged, 0, 0)) return true;
-  return lockTestRest(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0;
+  return lockTestRest(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0 || materStuck(pos, flagged);
 }
 
 /** With an open pair the levels above almost never prove a lock: at each level (free, then the
@@ -2033,8 +2158,17 @@ function levelSets(frL, frH) {
     enemy king or bishop reaches. A lock proven by the open-pair rule gives { families, frozen }:
     one set of sets per family, each with its pairs ('A', 'B' or 'C' for each pair).
     It computes the levels again, so it costs a few lock tests; the arbiter never calls it. */
-function lockSets(pos, flagged) {
+function lockSets(pos, flagged, first = false) {
+  if (first) {               // the first version's certificate: its detector, without the second version's rules
+    if (!coreLockTest(pos, flagged)) return null;
+    takeCensus(pos);
+    GUARD = false;
+    try { return levelsSets(flagged, frozenLevels()); } finally { GUARD = true; }
+  }
   if (!lockTest(pos, flagged)) return null;
+  // The forced step: the certificate of the position after it.
+  const after = forcedStep(pos);
+  if (after !== null) return { forced: lockSets(after, flagged) };
   const lo = pos.lo, hi = pos.hi;
   if (lo[WHITE | KNIGHT] | hi[WHITE | KNIGHT] | lo[BLACK | KNIGHT] | hi[BLACK | KNIGHT] |
       lo[WHITE | ROOK] | hi[WHITE | ROOK] | lo[BLACK | ROOK] | hi[BLACK | ROOK] |
@@ -2046,6 +2180,24 @@ function lockSets(pos, flagged) {
     throw new Error('lockSets: the lock test and its boxed levels disagree');
   }
   takeCensus(pos);
+  const levels = frozenLevels(), sets = levelsSets(flagged, levels);
+  if (sets) return sets;
+  // Proven by the open-pair rule: every family of the level that proves it.
+  const k = gapPairs(), bit = flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK;
+  for (const [frL, frH] of levels) {
+    gapRecord = [];
+    const ok = k <= MAX_GAP_PAIRS && gapLevel(bit, k, frL, frH) === bit;
+    const families = gapRecord; gapRecord = null;
+    if (ok) return { families, frozen: [frL, frH] };
+  }
+  // Proven by the stuck mater: no sets, the game ends at the mater's next turn.
+  if (materStuck(pos, flagged)) return { stuck: true };
+  throw new Error('lockSets: the lock test and its levels disagree');
+}
+
+/** The levels a certificate may come from (from the census): both kings free, then each king frozen
+    whose neighbours some pawn holds or attacks. */
+function frozenLevels() {
   const c = census;
   const wpL = c[C_WHITE_PAWNS], wpH = c[C_WHITE_PAWNS + 1], bpL = c[C_BLACK_PAWNS], bpH = c[C_BLACK_PAWNS + 1];
   const pawnL = northLo(wpL) | southLo(bpL, bpH), pawnH = northHi(wpL, wpH) | southHi(bpH);
@@ -2055,19 +2207,15 @@ function lockSets(pos, flagged) {
     const kL = c[kingAt], kH = c[kingAt + 1], sq = firstSquare(kL, kH);
     if (!((KING_STEPS[2 * sq] & ~heldL) | (KING_STEPS[2 * sq + 1] & ~heldH))) levels.push([kL, kH]);
   }
+  return levels;
+}
+/** The sets of the first level that proves the lock, or null. */
+function levelsSets(flagged, levels) {
   for (const [frL, frH] of levels) {
     if (lockLeaks(flagged, frL, frH)) continue;
     return levelSets(frL, frH);
   }
-  // Proven by the open-pair rule: every family of the level that proves it.
-  const k = gapPairs(), bit = flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK;
-  for (const [frL, frH] of levels) {
-    gapRecord = [];
-    const ok = k <= MAX_GAP_PAIRS && gapLevel(bit, k, frL, frH) === bit;
-    const families = gapRecord; gapRecord = null;
-    if (ok) return { families, frozen: [frL, frH] };
-  }
-  throw new Error('lockSets: the lock test and its levels disagree');
+  return null;
 }
 
 /** The first version's lock detector alone (the rules of the scalachess patch's Lock.scala and of
@@ -2081,8 +2229,120 @@ function coreLockTest(pos, flagged) {
   if (pos.ep !== NO_SQUARE) return false;
   if (twinBishops(lo[WHITE | BISHOP], hi[WHITE | BISHOP]) || twinBishops(lo[BLACK | BISHOP], hi[BLACK | BISHOP])) return false;
   takeCensus(pos);
-  if (!lockLeaks(flagged, 0, 0)) return true;
-  return lockTestRest(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0;
+  GUARD = false;
+  try {
+    if (!lockLeaks(flagged, 0, 0)) return true;
+    return lockTestRest(flagged === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK) !== 0;
+  } finally { GUARD = true; }
+}
+
+/* ─── The stuck mater (second version) ─────────────────────────────────────────────────────
+
+   With the flagged side to move, the game may end at the mater's very next turn: whatever the
+   flagged side plays, the mater has no legal move (a stalemate, or a mate of the mater). Then the
+   flagged side is never mated. Proven from the bitboards alone, for kings and pawns (no bishop):
+     - the flagged side has no pawn capture now (so its pawns that cannot push stay where they are);
+     - every pawn of the mater's is blocked by a man that stays (a flagged pawn, which cannot leave
+       without a capture, or a man of its own) and attacks no flagged man;
+     - each square next to the mater's king holds a man of its own, or is attacked by a flagged pawn
+       that has no move now, or holds a flagged pawn defended by such a pawn;
+     - no push of the flagged side's lands where a mater's pawn attacks or next to the mater's king,
+       and no double push gives the mater an en passant capture;
+     - the flagged side is not mated now: in a pawn's check, its king has a square to step to.
+   One flagged move, then a mater without a move: nothing is searched. */
+function materStuck(pos, flagged) {
+  if (pos.side !== flagged || !GUARD || pos.ep !== NO_SQUARE) return false;   // an en passant capture is a move too
+  const lo = pos.lo, hi = pos.hi, mater = flagged ^ WHITE;
+  // kings and pawns only
+  if (lo[WHITE | BISHOP] | hi[WHITE | BISHOP] | lo[BLACK | BISHOP] | hi[BLACK | BISHOP] |
+      lo[WHITE | KNIGHT] | hi[WHITE | KNIGHT] | lo[BLACK | KNIGHT] | hi[BLACK | KNIGHT] |
+      lo[WHITE | ROOK] | hi[WHITE | ROOK] | lo[BLACK | ROOK] | hi[BLACK | ROOK] |
+      lo[WHITE | QUEEN] | hi[WHITE | QUEEN] | lo[BLACK | QUEEN] | hi[BLACK | QUEEN]) return false;
+  const white = flagged === WHITE;
+  const fpL = lo[flagged | PAWN], fpH = hi[flagged | PAWN], mpL = lo[mater | PAWN], mpH = hi[mater | PAWN];
+  const fkL = lo[flagged | KING], fkH = hi[flagged | KING], mkL = lo[mater | KING], mkH = hi[mater | KING];
+  const occL = fpL | mpL | fkL | mkL, occH = fpH | mpH | fkH | mkH;
+  // A mater's pawn with an empty square in front can never be stuck (rule 2 below); then only a flagged
+  // side that is stalemated now is left to find, which a flagged push rules out at once.
+  const freeL = white ? southLo(mpL, mpH) & ~occL : northLo(mpL) & ~occL, freeH = white ? southHi(mpH) & ~occH : northHi(mpL, mpH) & ~occH;
+  if (freeL | freeH) {
+    const fwL = white ? northLo(fpL) : southLo(fpL, fpH), fwH = white ? northHi(fpL, fpH) : southHi(fpH);
+    if ((fwL & ~occL) | (fwH & ~occH)) return false;
+  }
+  // pawn attacks (White's go north, Black's south) and forward squares
+  const fAtkL = white ? sideways(northLo(fpL)) : sideways(southLo(fpL, fpH)), fAtkH = white ? sideways(northHi(fpL, fpH)) : sideways(southHi(fpH));
+  const mAtkL = white ? sideways(southLo(mpL, mpH)) : sideways(northLo(mpL)), mAtkH = white ? sideways(southHi(mpH)) : sideways(northHi(mpL, mpH));
+  const fFwdL = white ? northLo(fpL) : southLo(fpL, fpH), fFwdH = white ? northHi(fpL, fpH) : southHi(fpH);
+  const mFwdL = white ? southLo(mpL, mpH) : northLo(mpL), mFwdH = white ? southHi(mpH) : northHi(mpL, mpH);
+  // 1. the flagged side has no pawn capture now
+  if ((fAtkL & (mpL | mkL)) | (fAtkH & (mpH | mkH))) return false;
+  // the flagged pushes: single, and double from the start rank (through rank 3 / 6)
+  const sgL = fFwdL & ~occL, sgH = fFwdH & ~occH;
+  const dbL = white ? northLo(sgL & 0x00ff0000) & ~occL : southLo(0, sgH & 0x0000ff00) & ~occL;
+  const dbH = white ? northHi(sgL & 0x00ff0000, 0) & ~occH : southHi(sgH & 0x0000ff00) & ~occH;
+  const pushL = sgL | dbL, pushH = sgH | dbH, pushes = (pushL | pushH) !== 0;
+  // the flagged king's steps now (no bishop: exact): not onto its pawns, the mater's pawn attacks, next to the mater's king
+  const mk = firstSquare(mkL, mkH), nL = KING_STEPS[2 * mk], nH = KING_STEPS[2 * mk + 1];
+  const fk = firstSquare(fkL, fkH);
+  const kdL = KING_STEPS[2 * fk] & ~fpL & ~mAtkL & ~nL, kdH = KING_STEPS[2 * fk + 1] & ~fpH & ~mAtkH & ~nH;
+  const inCheck = ((fkL & mAtkL) | (fkH & mAtkH)) !== 0;
+  if (inCheck && !(kdL | kdH)) return false;                       // mated now (a pawn's check is met by the king alone here)
+  const stays = pushes && !inCheck;                                // a pawn moves instead: the king stays
+  if (!(kdL | kdH) && !stays) return true;                         // no legal move, no check: stalemate now
+  // where the flagged king may stand after its move, and the squares next to all of them
+  let covL = -1, covH = -1;
+  if (stays) { covL &= KING_STEPS[2 * fk]; covH &= KING_STEPS[2 * fk + 1]; }
+  for (let xL = kdL, xH = kdH; xL | xH;) {
+    let d; if (xL) { d = 31 - Math.clz32(xL & -xL); xL &= xL - 1; } else { d = 63 - Math.clz32(xH & -xH); xH &= xH - 1; }
+    covL &= KING_STEPS[2 * d]; covH &= KING_STEPS[2 * d + 1];
+  }
+  // 2. the mater's pawns: blocked by men that stay (pawns, its own king; the flagged king only if it never moves)
+  const kingFixed = !(kdL | kdH);
+  const blkL = fpL | mpL | mkL | (kingFixed ? fkL : 0), blkH = fpH | mpH | mkH | (kingFixed ? fkH : 0);
+  if ((mFwdL & ~blkL) | (mFwdH & ~blkH)) return false;
+  if ((mAtkL & fpL) | (mAtkH & fpH)) return false;                 // and they attack no flagged pawn
+  // the flagged pawns that cannot move this turn (forward square occupied) keep their attacks
+  const stL = fpL & (white ? southLo(fFwdL & occL, fFwdH & occH) : northLo(fFwdL & occL)),
+        stH = fpH & (white ? southHi(fFwdH & occH) : northHi(fFwdL & occL, fFwdH & occH));
+  const sAtkL = white ? sideways(northLo(stL)) : sideways(southLo(stL, stH)), sAtkH = white ? sideways(northHi(stL, stH)) : sideways(southHi(stH));
+  // 3. every square next to the mater's king: its own pawn, attacked by such a pawn, or next to the flagged king wherever it goes
+  const okL = mpL | sAtkL | covL, okH = mpH | sAtkH | covH;
+  if ((nL & ~okL) | (nH & ~okH)) return false;
+  // 4. no push lands where a mater's pawn attacks or next to its king, and no double push allows en passant
+  if ((pushL & (mAtkL | nL)) | (pushH & (mAtkH | nH))) return false;
+  if ((dbL & sideways(mpL)) | (dbH & sideways(mpH))) return false;
+  return true;
+}
+
+/* ─── The forced step (second version) ───────────────────────────────────────────────────────
+
+   The side to move is in a pawn's check and has exactly one legal move: its king's step to one
+   square (no bishop on the board, so the steps are exact: not onto its pawns, not where an enemy pawn
+   attacks, not next to the enemy king; and no pawn of its own can take a checking pawn). Every line
+   goes through that step, and the position is no mate now, so the lock of the position after it
+   proves this one. Returns that position (bitboards only), or null. */
+function forcedStep(pos) {
+  if (!GUARD || pos.ep !== NO_SQUARE || !pawnCheck(pos)) return null;
+  const lo = pos.lo, hi = pos.hi;
+  if (lo[WHITE | BISHOP] | hi[WHITE | BISHOP] | lo[BLACK | BISHOP] | hi[BLACK | BISHOP]) return null;
+  const us = pos.side, them = us ^ WHITE, white = us === WHITE;
+  const opL = lo[us | PAWN], opH = hi[us | PAWN], epL = lo[them | PAWN], epH = hi[them | PAWN];
+  const kL = lo[us | KING], kH = hi[us | KING], k = firstSquare(kL, kH), ek = firstSquare(lo[them | KING], hi[them | KING]);
+  const atkL = white ? sideways(southLo(epL, epH)) : sideways(northLo(epL)), atkH = white ? sideways(southHi(epH)) : sideways(northHi(epL, epH));
+  const dL = KING_STEPS[2 * k] & ~opL & ~atkL & ~KING_STEPS[2 * ek], dH = KING_STEPS[2 * k + 1] & ~opH & ~atkH & ~KING_STEPS[2 * ek + 1];
+  if (!(dL | dH) || popcount(dL) + popcount(dH) !== 1) return null;
+  // an own pawn that takes a checking pawn would be a second move
+  const chkL = white ? sideways(northLo(kL)) & epL : sideways(southLo(kL, kH)) & epL;
+  const chkH = white ? sideways(northHi(kL, kH)) & epH : sideways(southHi(kH)) & epH;
+  const tkL = white ? sideways(southLo(chkL, chkH)) & opL : sideways(northLo(chkL)) & opL;
+  const tkH = white ? sideways(southHi(chkH)) & opH : sideways(northHi(chkL, chkH)) & opH;
+  if (tkL | tkH) return null;
+  // the position after the step: the king moved, an enemy pawn on its square taken, the other side to move
+  const nlo = Int32Array.from(lo), nhi = Int32Array.from(hi);
+  nlo[us | KING] = dL; nhi[us | KING] = dH;
+  nlo[us] = (lo[us] & ~kL) | dL; nhi[us] = (hi[us] & ~kH) | dH;
+  nlo[them | PAWN] &= ~dL; nhi[them | PAWN] &= ~dH; nlo[them] &= ~dL; nhi[them] &= ~dH;
+  return { lo: nlo, hi: nhi, ep: NO_SQUARE, side: them };
 }
 
 /** The flagged side cannot be mated: the lock detector certifies it. */
@@ -2094,16 +2354,21 @@ function cannotMate(pos, flagged) { return materialTest(pos, flagged) || lockTes
     proves unable to be mated, the same answers as lockTest with each side flagged. A level is
     computed once for both; a side is proven at the first level that does not leak to it. */
 function lockTest2(pos, ask) {
+  const after = forcedStep(pos);
+  if (after !== null) return lockTest2(after, ask);
   const lo = pos.lo, hi = pos.hi;
   if (lo[WHITE | KNIGHT] | hi[WHITE | KNIGHT] | lo[BLACK | KNIGHT] | hi[BLACK | KNIGHT] |
       lo[WHITE | ROOK] | hi[WHITE | ROOK] | lo[BLACK | ROOK] | hi[BLACK | ROOK] |
       lo[WHITE | QUEEN] | hi[WHITE | QUEEN] | lo[BLACK | QUEEN] | hi[BLACK | QUEEN]) return boxedTest(pos, ask);
   if (pos.ep !== NO_SQUARE) return 0;
   if (twinBishops(lo[WHITE | BISHOP], hi[WHITE | BISHOP]) || twinBishops(lo[BLACK | BISHOP], hi[BLACK | BISHOP])) return 0;
-  if (takeCensusPairs(pos)) return lockTestPairsFirst(ask);
-  const open = lockLeaks2(ask, 0, 0);          // the asked sides not proven yet
-  if (!open) return ask;
-  return (ask & ~open) | lockTestRest(open);
+  let got;
+  if (takeCensusPairs(pos)) got = lockTestPairsFirst(ask);
+  else { const open = lockLeaks2(ask, 0, 0); got = !open ? ask : (ask & ~open) | lockTestRest(open); }
+  // the stuck mater, for the side to move, when the lock left it open
+  const me = pos.side === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK;
+  if ((ask & me) && !(got & me) && materStuck(pos, pos.side)) got |= me;
+  return got;
 }
 
 /** The static tests for both sides at once: of the sides in `ask` (FLAGGED_* bits), those the
@@ -2931,7 +3196,7 @@ return Object.freeze({
   DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
   // internals exposed for tests
   _internal: Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
-                             lockTest, lockTest2, lockSets, coreLockTest, SHARED_CONTEXT,
+                             lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
                              FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS }),
 });
 });

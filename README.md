@@ -56,6 +56,8 @@ move on the positions of a game, most of it a quick look for boxed pieces where 
 queen stands (~2 ns in Rust, ~10 ns in JavaScript); against chasolver its ratios are the same
 within the noise, and its whole ladder proves 201,054 of chasolver's 201,060 rows, at ~0.22 µs a
 row over the 204,060 rows up to September (Rust; [docs/RESULTS.md](docs/RESULTS.md#the-second-version)).
+The four rules added in November (below), in JavaScript so far, make it 201,058, for ~13% more per
+lock test and ~4% more per row on the whole ladder.
 
 | | Rust | JavaScript |
 |---|---|---|
@@ -78,7 +80,7 @@ Against chasolver's fast check, both in Rust, in one binary with chasolver's own
 | both sides at once, all rows | 201,060 | 6.52 µs (two calls) | 0.41 µs | **~16×** |
 | real game positions (chasolver's `lichess.txt`, both sides) | 131,072 | 2.41 µs | 0.563 µs | ~4.3× |
 
-chasolver proves all 201,060 rows, Mateless 201,024 (the second version 201,054). Coverage is
+chasolver proves all 201,060 rows, Mateless 201,024 (the second version 201,058). Coverage is
 counted on chasolver's list alone: the 3,000 rows of the August–September scan were chosen as rows
 that both chasolver and Mateless prove. The browser runs the same engine: the
 arbiter page proves a locked position in under a microsecond, and WebAssembly is 2.5–4× faster
@@ -139,7 +141,7 @@ classified by Mateless (JS, Rust and WebAssembly give the same answer on every r
 | **all** | **195,287** | | **138,572** (71.0%) | **190,465** (97.5%) | 190,719 (97.7%) |
 
 The table is the first version's classification (the data files keep it). The second version
-proves 30 of the 36 unproven rows; 6 remain ([`data/second_version.tsv`](data/second_version.tsv)).
+proves 34 of the 36 unproven rows; 2 remain ([`data/second_version.tsv`](data/second_version.tsv)).
 
 Lichess today draws most forced lines: scalachess #821 (merged in August 2026; on Lichess from
 6 September, judging by the data) added a one-move lookahead to the test that lila asks when a
@@ -181,9 +183,10 @@ the rest locked), and 1 a knight boxed in by its own pawns. They, and whatever a
 rules leave, are what a refund after the game would cover: a complete solver (chasolver) judges
 them once the game is over. With the whole ladder that is 36 rows of 195,287; with the lock
 detector alone on top of today's Lichess, 4,822 (`in-game` alone) or 4,568 (`a-lock`, and #916,
-which does both). The second version proves 30 of the 36: the second tier 26 of the cages (those
-that close within 9 plies and 10,000 nodes), the open-pair rule the 3 pairs, the boxed rule the
-knight. The 6 left are cages.
+which does both). The second version proves 34 of the 36: the search 27 of the cages (21 with its
+second tier of 9 plies and 10,000 nodes, 6 now within the first, the new static rules cutting its
+trees), the stalemate guard 3 more, the open-pair rule the 3 pairs, the boxed rule the knight. The
+2 left are cages.
 
 **Soundness.** There is no written proof yet; there is strong test evidence.
 - No false draw against chasolver's labels (its 68,950 labelled positions, both sides;
@@ -477,14 +480,24 @@ measured, and only where its own situation is on the board.
 | **open pawn pairs**: a white and a black pawn on a file with one square between them, the rest locked; the reachable positions split into three families by what the pair's pawns have done (neither moved, the white one stepped into the gap, the black one did), each an ordinary level with walls of its own, up to 3 pairs | the pawns hold such a pair (two shifts tell) | 3 (and the death of 5 drawn games of August and September at the ply it happens) | none measurable |
 | **boxed knights, rooks and queens**: a piece whose every step square holds its own fixed pawn or boxed piece never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history) | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
 | **a second tier of the Domino search**: 9 plies, 10,000 nodes | the search failed without a mate, on its budget, or on its horizon on a board of kings, pawns and bishops where a king is shut in | 26 | at 6 of 14,755 such failures in 1,000 games |
+| **the stalemate guard**: a pawn the enemy king may take stays a wall if taking it always stalemates its owner (its king, wherever it may stand, defends the pawn or has no square left; nothing else of the owner's moves; the capture uncovers no bishop's check) | the cycle meets a takeable fixed pawn of a side without bishops | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
+| **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
+| **the stuck mater**: the flagged side is to move and, whatever it plays, the mater has no legal move (the game ends at the mater's turn); read from the bitboards, no move is made | kings and pawns, the flagged side to move, the lock found nothing | | |
+| **the forced step**: a king in a pawn's check with one legal move, a step: the lock of the position after it | as for the check seed | | |
 
 In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
 is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
 lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out.
 
-**What comes next**, in order: a cage recognizer (the 6 rows left are cages that hold only because
-the capture that would open them gives stalemate), a bounded full closure for what stays open, and
-a written proof of soundness for the detector and the rules above.
+The four rules of November (stalemate guard, check seed, stuck mater, forced step) move 481 of the
+204,060 rows from the search to the lock and prove 4 of the 6 cages that were left; every new lock
+was checked by walking all the positions reachable from it, chasolver's labels give no false draw,
+and the invariant check knows their certificates ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
+They are in the JavaScript engine (`mateless.js`, the page) for now: the Rust and WebAssembly builds,
+and the other languages, keep the earlier rules until they are ported.
+
+**What comes next**, in order: the 2 cages left (RwnQJq1k, bKHPqNEw), a bounded full closure for
+what stays open, and a written proof of soundness for the detector and the rules above.
 
 ## License and credits
 

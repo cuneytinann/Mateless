@@ -17,6 +17,14 @@
    positions per root; a root whose positions are all enumerated is proven a lock outright.
    The certificate's sets come from the engine itself (_internal.lockSets), so no engine carries
    test code. Any build may be checked (ENGINE=...).
+   The second version's certificates also come in other kinds, checked as they claim:
+     forced  the side to move, in a pawn's check, has exactly one legal move; the certificate of the
+             position after it holds there (and is checked from there)
+     stuck   the flagged side is to move and not mated, and after each of its moves the mater has no
+             legal move: checked exactly, move by move
+   A position without a legal move ends the game: there only I7 is asked (a pawn guarded against
+   capture, see stalemateGuard, falls only in such a position). At the root, the side to move in a
+   pawn's check may stand outside its reach (it must step out, see the check seed).
    Usage: node lock_invariant.js <file> [every] [cap]
      <file>: lines "<fen>\t<w|b>", the second field the side that cannot mate; or chasolver's
      format ("WB <fen>"), then both sides are tried. Env ENGINE (default ../mateless.js), OFFSET. */
@@ -42,19 +50,20 @@ function counts(pos) { const c = []; for (const col of [WHITE, BLACK]) for (cons
 // A certificate of the open-pair rule holds several families (lockSets: { families }): every
 // reachable position must satisfy the invariant of at least one of them.
 function violation(pos, S, root) {
-  if (!S.families) return violation1(pos, S, root);
+  if (!S.families) return violation1(pos, S, root, pos.isRoot);
   let first = null;
-  for (const F of S.families) { const v = violation1(pos, F, root); if (!v) return null; first = first || `${v} (in every family; first: ${F.pairs})`; }
+  for (const F of S.families) { const v = violation1(pos, F, root, pos.isRoot); if (!v) return null; first = first || `${v} (in every family; first: ${F.pairs})`; }
   return first;
 }
-function violation1(pos, S, root) {
+function violation1(pos, S, root, atRoot) {
   const lo = pos.lo, hi = pos.hi;
+  const outsideOk = atRoot && E.inCheck(pos) ? pos.side : -1;      // the side to move in check at the root
   if (!sub(lo[WHITE | PAWN], hi[WHITE | PAWN], S.wCone[0], S.wCone[1])) return 'I1 white pawn outside its cone';
   if (!sub(lo[BLACK | PAWN], hi[BLACK | PAWN], S.bCone[0], S.bCone[1])) return 'I1 black pawn outside its cone';
   if (!sub(S.wFixed[0], S.wFixed[1], lo[WHITE | PAWN], hi[WHITE | PAWN])) return 'I2 a fixed white pawn moved or fell';
   if (!sub(S.bFixed[0], S.bFixed[1], lo[BLACK | PAWN], hi[BLACK | PAWN])) return 'I2 a fixed black pawn moved or fell';
-  if (!sub(lo[WHITE | KING], hi[WHITE | KING], S.wKing[0], S.wKing[1])) return 'I3 white king outside its reach';
-  if (!sub(lo[BLACK | KING], hi[BLACK | KING], S.bKing[0], S.bKing[1])) return 'I3 black king outside its reach';
+  if (outsideOk !== WHITE && !sub(lo[WHITE | KING], hi[WHITE | KING], S.wKing[0], S.wKing[1])) return 'I3 white king outside its reach';
+  if (outsideOk !== BLACK && !sub(lo[BLACK | KING], hi[BLACK | KING], S.bKing[0], S.bKing[1])) return 'I3 black king outside its reach';
   if ((S.frozen[0] | S.frozen[1]) && !sub(S.frozen[0], S.frozen[1], lo[WHITE | KING] | lo[BLACK | KING], hi[WHITE | KING] | hi[BLACK | KING])) return 'I3 the frozen king moved';
   if (!sub(lo[WHITE | BISHOP], hi[WHITE | BISHOP], S.wBish[0], S.wBish[1])) return 'I4 white bishop outside its reach';
   if (!sub(lo[BLACK | BISHOP], hi[BLACK | BISHOP], S.bBish[0], S.bBish[1])) return 'I4 black bishop outside its reach';
@@ -84,7 +93,9 @@ function explore(rootPos, S, flagged) {
     fb.push(base); fc.push(n); fi.push(0); fp.push(0);
     return null;
   };
-  let v = violation(pos, S, root) || push(); if (v) return { v, states: 1, closed: true };
+  // a position without a legal move ends the game: only I7 (asked by push)
+  const check = () => I.hasLegalMove(pos) ? violation(pos, S, root) : null;
+  pos.isRoot = true; let v = check() || push(); pos.isRoot = false; if (v) return { v, states: 1, closed: true };
   while (fb.length) {
     const d = fb.length - 1;
     if (fi[d] >= fc[d]) { fb.pop(); fc.pop(); fi.pop(); fp.pop(); if (fb.length) I.undoMove(pos); continue; }
@@ -95,10 +106,36 @@ function explore(rootPos, S, flagged) {
     if (seen.has(k)) { I.undoMove(pos); continue; }
     seen.add(k);
     if (seen.size > CAP) return { v: null, states: seen.size, closed: false };
-    v = violation(pos, S, root) || push();
+    v = check() || push();
     if (v) return { v, states: seen.size, closed: true, fen: E.toFen(pos) };
   }
   return { v: null, states: seen.size, closed: true };
+}
+
+/* The kinds of certificate. forced: one legal move, then the certificate after it. stuck: the game
+   ends at the mater's next turn, checked move by move. Otherwise the sets, explored. */
+const ONE = new Int32Array(256), TWO = new Int32Array(256);
+function certify(rootPos, S, flagged) {
+  if (S.forced) {
+    const pos = rootPos.clone(), n = I.generateLegalMoves(pos, ONE, 0);
+    if (n !== 1 || (ONE[0] >> 12) & I.FLAG_PROMO) return { v: 'forced: not exactly one legal move', states: 1, closed: true };
+    I.doMove(pos, ONE[0], QUEEN);
+    const r = certify(pos, S.forced, flagged); r.states++; return r;
+  }
+  if (S.stuck) {
+    const pos = rootPos.clone();
+    if (pos.side !== flagged) return { v: 'stuck: the mater is to move', states: 1, closed: true };
+    const n = I.generateLegalMoves(pos, ONE, 0);
+    if (n === 0) return { v: E.inCheck(pos) ? 'I7 the flagged king is checkmated' : null, states: 1, closed: true };
+    let states = 1;
+    for (let i = 0; i < n; i++) for (let p = 0; p < ((ONE[i] >> 12) & I.FLAG_PROMO ? 4 : 1); p++) {
+      I.doMove(pos, ONE[i], PROMO[p]); states++;
+      const m = I.generateLegalMoves(pos, TWO, 0); I.undoMove(pos);
+      if (m > 0) return { v: 'stuck: the mater has a move', states, closed: true, fen: E.toFen(pos) };
+    }
+    return { v: null, states, closed: true };
+  }
+  return explore(rootPos, S, flagged);
 }
 
 let done = 0, closed = 0, states = 0, bad = []; const t0 = Date.now();
@@ -106,7 +143,7 @@ for (let i = +(process.env.OFFSET || 0); i < rows.length; i += EVERY) {
   const [fen, w] = rows[i]; const s = E.fromFen(fen); if (s.error) continue;
   const flagged = w === 'w' ? BLACK : WHITE;
   const S = I.lockSets(s.position, flagged); if (!S) continue;      // only lock certificates
-  const r = explore(s.position, S, flagged);
+  const r = certify(s.position, S, flagged);
   done++; states += r.states; if (r.closed) closed++;
   if (r.v) bad.push([r.v, fen, w, r.fen]);
 }

@@ -18,22 +18,20 @@ platformun kuralına (süresi biten kaybeder) ve oyundan sonra tam bir çözüc�
 [Lichess için: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 (belgeler İngilizce)
 
-## En küçük parçaya değil, bütüne bakan bir tespit
+## Bütün yapının bit düzeyinde tespiti
 
 Mateless'in merkezinde bir **kilit dedektörü** var: hiçbir yasal hamle dizisinin açamayacağı
 piyon, şah ve fil yapılarını tek bir hamle üretmeden, yaklaşık 90 nanosaniyede tanıyor.
 
-Alanın referansı [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022)
-en küçük parçalardan yukarı çıkıyor: kısa bir aramadan sonra pozisyonu taş taş inceliyor, her taş
-için ayrı bir erişim kümesi, ardından mat ağı için kombinatoryal bir kontrol. Mateless bütüne bir
-kerede bakıyor: bir tarafın bütün piyonları tek bir koni, bir şah tek bir erişim kümesi; birkaç
-bitboard işlemi bütün yapıyı bir sabit noktaya taşıyor. Aşağıdaki Lichess verisinin kilitli
-pozisyonlarında bu, chasolver'ın hızlı kontrolünden **~70 kat hızlı** (Rust'a karşı Rust);
-arkasındaki kısa aramayla Mateless o verinin **%99,98'ini** ~17–18 kat hızlı kapsıyor.
+Yapının bütününe bir kerede, bit düzeyinde bakıyor: bir tarafın bütün piyonları tek bir koni, bir
+şah tek bir erişim kümesi; 64 bitlik kümeler üzerinde birkaç işlem bütün yapıyı bir sabit noktaya
+taşıyor. Bildiğimiz kadarıyla bu, onu türünün en hızlı yöntemi yapıyor: dedektörün arkasındaki
+kısa aramayla Mateless, aşağıdaki Lichess verisinin **%99,98'ini** bilinen en yakın yöntemden
+**~17–18 kat hızlı** kapsıyor (Rust'a karşı Rust).
 
-chasolver tam bir çözücü: Mateless'in denemediği bestelenmiş problemleri de çözüyor. Mateless tam
-bir çözücünün önüne konan hızlı katman; bir oyun sunucusunun içinde her hamlede çalışacak kadar
-küçük.
+Alanın referansı [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022)
+tam bir çözücü: Mateless'in denemediği bestelenmiş problemleri de çözüyor. Mateless böyle bir
+çözücünün önüne konan hızlı katman; bir oyun sunucusunun içinde her hamlede çalışacak kadar küçük.
 
 ## Hız
 
@@ -192,13 +190,16 @@ dedektörüyle 4.822 (yalnızca `in-game`) ya da 4.568 (`a-lock` ve ikisini bird
 sayfası odur, [cuneytinann.github.io/Mateless](https://cuneytinann.github.io/Mateless/); İndir
 bağlantısı aynı dosyayı kaydeder, o da internetsiz çalışır (yalnızca yazı tipleri internetten
 gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
-- **Hakem**: bir FEN, CSV ya da TXT pozisyon dosyaları ya da PGN oyunları. Her hüküm bir
+- **Hakem**: üstte elle kurulan bir tahta (taşlar sürüklenerek konup kaldırılıyor; sıra, rok, geçerken alma,
+  yarım hamle sayacı): üstünde ve altında, hemen, her tarafın hâlâ mat edip edemeyeceği; yanında motor ayarları.
+  Altında bir FEN, CSV ya da TXT pozisyon dosyaları ya da PGN oyunları. Her hüküm bir
   skor ve gerekçesiyle (yetersiz materyal, kilitli pozisyon, Domino etkisi, mat bulundu, ispat yok)
   ve ona götüren basamaklarla gösterilir; ölü pozisyonlar işaretlenir; sonuçlar CSV olarak
   indirilir. chasolver'ın, berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları
   listeleri ([chasolver.org/unfair-games](https://chasolver.org/unfair-games)) doğrudan bırakılabilir.
   İki sürümden biri seçilebilir: hızlı olan (bu kütüphane, Lichess'e önerilen kurallar) ve ikinci
-  sürüm (`second-version` dalı, aşağıda); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
+  sürüm (`second-version` dalı, aşağıda), seçilebilir bir hamle sınırı (75 ya da 50 hamle) ve tekrar kuralıyla
+  (beşli ya da üçlü); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
   hangi pozisyonları yakaladığını gösteriyor.
 - **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
   kale, vezir ve ikiz filler neden dışarıda; sonra bitboard'larla piyonlar ve şahlar (alış varsa
@@ -443,8 +444,9 @@ Bu sürüm hızlı katman: sağlam, küçük ve bir oyun sunucusunda her hamlede
 yapıldı. Yanında `second-version` dalında ikinci bir sürüm duruyor; hakem sayfası, seçilince onu
 çalıştırıyor. O da tam değil, ama kapsamı daha geniş; hedefi tamlık ve yeni kurallar eklendikçe
 büyüyor: önü açık piyon çiftleri, kutulu at, kale ve vezir, Domino aramasına ikinci kademe, ikiz
-filler ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kural (bu sürümün ispatlayamadığı
-36 satırın 34'ünü ispatlıyor). Bu sürüm Lichess verisinin %99,98'ini zaten karşılıyor; bu yüzden
+filler, şah ve piyonlu bir oyunun pata gidiş yolları için dört kural (bu sürümün ispatlayamadığı
+36 satırın 34'ünü ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da üçlü tekrar (şimdilik
+JavaScript'te: sağlam, eksiksizliği aramanın sınırları içinde). Bu sürüm Lichess verisinin %99,98'ini zaten karşılıyor; bu yüzden
 geniş sürüm pratikte en çok meraklıları ve araştırmayı ilgilendiriyor, aceleye getirilmiyor.
 
 ## Lisans ve teşekkür

@@ -127,10 +127,10 @@ function readFen(fen) {
   if (setup.error) { badReason = setup.error === 'castling' ? { k: 'castle' } : { k: 'engine', a: [setup.error] }; return null; }
   return setup;
 }
-function judge(fen, ply, bud, forced) {
+function judge(fen, ply, bud, forced, hist) {
   const setup = readFen(fen);
   if (!setup) return null;
-  const pos = setup.position, limits = { maxPly: ply, budget: bud };
+  const pos = setup.position, rules = rulesOf(hist), limits = Object.assign({ maxPly: ply, budget: bud }, rules);
   const side = forced === 0 || forced === 1 ? forced : (pos.side === E.WHITE ? 1 : 0);
   const flagged = side ? E.WHITE : E.BLACK, other = side ? E.BLACK : E.WHITE;
   const moves = E.legalMoves(pos).length;
@@ -146,10 +146,13 @@ function judge(fen, ply, bud, forced) {
   let reason;
   if (proof.proven) reason = proof.nodes > 0 ? 'domino' : E.materialCannotMate(pos, flagged) ? 'material' : proof.staticProof ? 'lock' : 'stalemate';
   else reason = proof.failure === 'mate' ? 'mate' : 'open';
-  const dead = proof.proven && E.proveCannotBeMated(pos, other, limits).proven;
+  /* the other side, for a dead position, with the game's own limits (and rules): what a game would have
+     found. With the reader's limits it cost a search to the ply ceiling in every position where the other
+     side can still mate, for nothing: the verdict is the flagged side's. */
+  const dead = proof.proven && E.proveCannotBeMated(pos, other, rules).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
-    draw: proof.proven, dead, reason, used: proof.nodes, deep: !!proof.deep, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, deep: !!proof.deep, ruled: !!proof.ruled, ms,
     why: proof.proven ? '' : proof.failure,
     castle: E.castlingField(pos),
   };
@@ -164,6 +167,25 @@ function inspect(fen, side) {
   return { status: E.gameStatus(pos, { deadPositionSearch: false }),
            material: E.materialCannotMate(pos, flagged), lock: E.lockCannotMate(pos, flagged) };
 }
+/* For the detail view: can each side mate? The same ladder, version and limits as the verdict,
+   asked for both sides. Returns [Black, White] (indexed like `side`: 1 White, 0 Black), each
+   { cannot, reason }; reason as in judge(), or 'nolock' with the lock detector alone. */
+function bothSides(fen, P, B) {
+  const setup = E.fromFen(fen);
+  if (setup.error) return null;
+  const pos = setup.position, limits = Object.assign({ maxPly: P, budget: B }, rulesOf(null)), out = [];
+  for (let g = 0; g < 2; g++) {
+    const flagged = g ? E.BLACK : E.WHITE;          /* can g mate? = can its opponent never be mated? */
+    if (LOCKONLY) { const lk = E.lockCannotMate(pos, flagged); out.push({ cannot: lk, reason: lk ? 'lock' : 'nolock' }); continue; }
+    const proof = E.proveCannotBeMated(pos, flagged, limits);
+    out.push({ cannot: proof.proven,
+               reason: proof.proven ? (proof.ruled ? 'rule' : proof.nodes > 0 ? 'domino' : E.materialCannotMate(pos, flagged) ? 'material' : proof.staticProof ? 'lock' : 'stalemate')
+                                    : proof.failure === 'mate' ? 'mate' : 'open' });
+  }
+  return out;
+}
+/* The figures of info3: chasolver's list of 2026-11-19 with the default limits (6 plies, 100 nodes). */
+var LIST_ROWS = 204484, LIST_OPEN = [36, 2];
 
 var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
 var $ = function (id) { return document.getElementById(id) }, ROOT = document.getElementById('tab-arbiter');
@@ -173,6 +195,9 @@ var ENGINE_FILE = 'mateless.js';
    knights, rooks and queens to the lock detector and a second tier to the Domino search. Its engine is
    kept as text and run only the first time it is picked, so a reader who never picks it runs exactly
    the first; its wrapper sees a `module` and leaves window.Mateless alone. */
+/* the rules of the second version: the move rule, 150 (the 75-move rule) or 100 (the 50-move rule),
+   and the repetition rule, 5 (fivefold) or 3 (threefold); read from the radios when the page starts */
+var RULE = 150, REPN = 5;
 var VER = 1, ENGINE_IDS = { 1: 'mateless-engine', 2: 'mateless-engine-2' }, ENGINES = { 1: E };
 function engineOf(v) {
   if (!ENGINES[v]) { var m = { exports: {} }; new Function('module', 'exports', $(ENGINE_IDS[v]).textContent)(m, m.exports); ENGINES[v] = m.exports }
@@ -184,7 +209,7 @@ var DEEP = [0, 0];                                /* the second version's second
    which of them it catches; the games (PGN) keep the whole ladder */
 var LOCKONLY = false;
 /* a file the second version wrote says so in its name */
-function vname(n) { return n.replace(/\.csv$/, (VER === 2 ? '-second' : '') + (LOCKONLY && !/^games/.test(n) ? '-lock' : '') + '.csv') }
+function vname(n) { return n.replace(/\.csv$/, (VER === 2 ? '-second' + (RULE === 100 ? '-50' : '') : '') + (LOCKONLY && !/^games/.test(n) ? '-lock' : '') + '.csv') }
 var REPO = 'https://github.com/cuneytinann/Mateless';
 var UNFAIR = 'https://chasolver.org/unfair-games';
 
@@ -199,8 +224,8 @@ en: {
  lede: "If it cannot, by any series of legal moves, the game is drawn (FIDE 6.9). Mateless proves that in three ways: <b>insufficient material</b>, a <b>locked position</b> of pawns, kings and bishops that no move can open, or a short <b>forced line</b>, the Domino effect. Paste positions or drop chasolver’s CSV files and see each verdict with the test that settled it.",
  sp1n: "~90 ns",
  sp1t: "to prove a locked position in Rust (0.3–0.8 µs in this page’s JavaScript)",
- sp2n: "~70×",
- sp2t: "faster than chasolver’s fast check on locked positions; ~17× on all of the data",
+ sp2n: "~17–18×",
+ sp2t: "faster than the nearest known method, on all of the data: detection at the level of bits, as far as we know the fastest",
  sp3n: "99.98%",
  sp3t: "of the 195,287 Lichess games lost on time that should have been drawn, proven",
  hPos: "Positions",
@@ -224,8 +249,8 @@ en: {
  assumeBoth: "With “judge both flags” on, each labelled position is judged twice, once for each side’s flag, whoever is to move.",
  lblPly: "ply ceiling",
  lblBud: "node budget",
- limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move",
- limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move; where that fails without a mate, on its budget or on a board of kings, pawns and bishops, a second tier of {2} plies and {3} nodes",
+ limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move; so does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for",
+ limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move; where that fails without a mate, on its budget or on a board of kings, pawns and bishops, a second tier of {2} plies and {3} nodes. So does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for",
  lblVer: "version",
  ver1: "fast (the first version)",
  ver2: "second version (wider)",
@@ -371,6 +396,63 @@ en: {
  tLive: "not dead",
  hPosition: "Position",
  kFlag: "flag fell for",
+ edH: "Set up a position",
+ edSub: "Drag pieces onto the board: Mateless answers at once, for each side, whether it can still mate, with the engine set beside the board.",
+ edTurn: "Turn",
+ edCastle: "Castling",
+ edEp: "En passant",
+ edClock: "Halfmove clock",
+ edClockLeft: "{0} plies to the {1}-move rule",
+ edClockOver: "the {0}-move rule has already ended the game",
+ edClockFast: "the fast version takes no move rule into account",
+ edPre: "Presets",
+ edStart: "Start",
+ edClear: "Clear",
+ edEx: "Example",
+ edFlip: "Flip",
+ edCopy: "Copy",
+ edPaste: "Paste",
+ edCopied: "Copied",
+ edGo: "How it was decided",
+ edAdd: "Add to the positions below",
+ edAdded: "Added",
+ edErase: "empty a square",
+ edSet: "board",
+ edInvalid: "Not a position Mateless can judge: {0}",
+ edHint: "Drag a piece from the rows above and below the board onto a square; drag it on the board to move it, off the board to take it away. Or click a piece, then click squares to place it (✕ empties them); a right click empties a square. <b>How it was decided</b> judges the flag of the side to move, as the positions below do.",
+ pn_k: "king", pn_q: "queen", pn_r: "rook", pn_b: "bishop", pn_n: "knight", pn_p: "pawn",
+ openBoard: "Open on the board",
+ engH: "The engine",
+ lblRule: "move rule",
+ rule75: "75 moves (recommended, closer to FIDE)",
+ rule50: "50 moves (the upper limit preferred online)",
+ ruleNote: "second version only: the game ends by itself, drawn, at these rules, so a mate that could come only later never comes. The search takes the move rule into account where the halfmove clock is close enough to it, and the repetition rule where the game has a history: in the games (PGN) below, not in a single position.",
+ lblRep: "repetition",
+ rep5: "fivefold (recommended, FIDE)",
+ rep3: "threefold (preferred online)",
+ edCap: "On the board each side is searched with at most {0} nodes, so that the board answers at once; How it was decided uses the whole budget.",
+ res14: "threefold repetition",
+ rsRule: "{0}-move rule",
+ st3Rule: "Under the {0}-move rule: the search ran again with the rule ending lines, and no line mates before the rule ends the game.",
+ st3RuleNo: "It ran again under the {0}-move rule too, without a proof.",
+ st3RuleMate: "It ran again under the {0}-move rule: the mate comes before the rule ends the game.",
+ kRule: "move rule",
+ ruleVal: "{0} moves ({1} plies)",
+ ruleNone: "none (the fast version)",
+ res13: "the 50-move rule",
+ sdCan: "can mate",
+ sdCannot: "cannot mate",
+ sd_mate: "a mating line found",
+ sd_open: "not proven otherwise",
+ sd_nolock: "not locked",
+ sdIf: "if {0}’s flag falls: {1}",
+ sdDead: "Neither side can mate: the position is dead, and the game ends in a draw at once.",
+ sdOne: "Only {0} can mate: the game goes on, and {0} cannot lose on time.",
+ sdBoth: "Both sides can mate: the game goes on, and the side whose flag falls loses.",
+ infoH: "What the two answers mean",
+ info1: "If neither side can mate, the game can end in a draw at once. Nothing is lost by ending it (FIDE 5.2.2, dead position).",
+ info2: "If one side can mate and the other cannot, the game goes on. But the side that can still mate does not lose even if its time runs out: the game must end in a draw (FIDE 6.9).",
+ info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.9% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1}, the second version all but {2}, with the game’s own limits (6 plies, 100 nodes).",
  flagToMove: "{0}, the side to move",
  flagForced: "{0}, by “judge both flags”; {1} is to move",
  kMoves: "legal moves",
@@ -495,7 +577,7 @@ en: {
  pgnThRight: "correct result",
  pc_ok: "ended where the rules end it",
  pc_lateDP: "played on after a dead position",
- pc_lateRule: "played on after the 75-move rule or fivefold repetition",
+ pc_lateRule: "played on after a move rule or a repetition ended it",
  pc_wrongtm: "won on time or by resignation, should be a draw",
  pc_wrongres: "the result does not match the final position",
  pc_drawn: "drawn by agreement or claim (not judged)",
@@ -534,8 +616,8 @@ tr: {
  lede: "Hiçbir legal hamle dizisiyle edemiyorsa oyun berabere biter (FIDE 6.9). Mateless bunu üç yoldan ispatlıyor: <b>yetersiz materyal</b>; piyon, şah ve fillerden hiçbir hamlenin açamayacağı <b>kilitli bir pozisyon</b>; ya da kısa bir <b>zorunlu hat</b>, yani Domino etkisi. Pozisyonları yapıştır ya da chasolver’ın CSV dosyalarını bırak; her hükmü, onu belirleyen testle birlikte gör.",
  sp1n: "~90 ns",
  sp1t: "Rust’ta kilitli bir pozisyonu ispatlama süresi (bu sayfanın JavaScript’inde 0,3–0,8 µs)",
- sp2n: "~70×",
- sp2t: "kilitli pozisyonlarda chasolver’ın hızlı kontrolünden hızlı; verinin tamamında ~17×",
+ sp2n: "~17–18×",
+ sp2t: "verinin tamamında bilinen en yakın yöntemden hızlı: bit düzeyinde tespit, bildiğimiz en hızlısı",
  sp3n: "%99,98",
  sp3t: "berabere bitmesi gerekirken süreden kaybedilmiş 195.287 Lichess oyununun ispatlanan payı",
  hPos: "Pozisyonlar",
@@ -559,8 +641,8 @@ tr: {
  assumeBoth: "“İki bayrağı da dene” açıkken etiketli her pozisyon, sıra kimde olursa olsun, iki kez yargılanır: her iki tarafın bayrağı için birer kez.",
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
- limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar",
- limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bu arama mat bulmadan, bütçesiyle ya da yalnızca şah, piyon ve fil olan bir tahtada başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe",
+ limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için",
+ limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bu arama mat bulmadan, bütçesiyle ya da yalnızca şah, piyon ve fil olan bir tahtada başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe. Bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için",
  lblVer: "sürüm",
  ver1: "hızlı (ilk sürüm)",
  ver2: "ikinci sürüm (daha geniş)",
@@ -706,6 +788,63 @@ tr: {
  tLive: "ölü değil",
  hPosition: "Pozisyon",
  kFlag: "bayrağı düşen",
+ edH: "Bir pozisyon kur",
+ edSub: "Taşları tahtaya sürükle: Mateless her taraf için hâlâ mat edip edemeyeceğini hemen, tahtanın yanındaki motor ayarlarıyla söyler.",
+ edTurn: "Sıra",
+ edCastle: "Rok",
+ edEp: "Geçerken alma",
+ edClock: "Yarım hamle sayacı",
+ edClockLeft: "{1} hamle kuralına {0} yarım hamle",
+ edClockOver: "{0} hamle kuralı oyunu zaten bitirdi",
+ edClockFast: "hızlı sürüm hamle sınırını hesaba katmaz",
+ edPre: "Hazır",
+ edStart: "Başlangıç",
+ edClear: "Temizle",
+ edEx: "Örnek",
+ edFlip: "Çevir",
+ edCopy: "Kopyala",
+ edPaste: "Yapıştır",
+ edCopied: "Kopyalandı",
+ edGo: "Nasıl karar verildi",
+ edAdd: "Aşağıdaki pozisyonlara ekle",
+ edAdded: "Eklendi",
+ edErase: "kareyi boşalt",
+ edSet: "tahta",
+ edInvalid: "Mateless’in yargılayabileceği bir pozisyon değil: {0}",
+ edHint: "Tahtanın üstündeki ve altındaki sıralardan bir taşı bir kareye sürükle; tahtada sürükleyerek taşı, tahtanın dışına sürükleyerek kaldır. Ya da bir taşa tıkla, sonra yerleştirmek için karelere tıkla (✕ kareleri boşaltır); sağ tık bir kareyi boşaltır. <b>Nasıl karar verildi</b>, aşağıdaki pozisyonlar gibi sırası gelen tarafın bayrağını yargılar.",
+ pn_k: "şah", pn_q: "vezir", pn_r: "kale", pn_b: "fil", pn_n: "at", pn_p: "piyon",
+ openBoard: "Tahtada aç",
+ engH: "Motor",
+ lblRule: "hamle sınırı",
+ rule75: "75 hamle (önerilen, FIDE’ye daha uygun)",
+ rule50: "50 hamle (dijitalde tercih edilen üst sınır)",
+ ruleNote: "yalnız ikinci sürüm: oyun bu kurallarda kendiliğinden berabere biter, yani ancak sonra gelebilecek bir mat hiç gelmez. Arama hamle sınırını yarım hamle sayacı ona yetecek kadar yakınsa, tekrar kuralını oyunun geçmişi varsa hesaba katar: aşağıdaki oyunlarda (PGN) evet, tek bir pozisyonda hayır.",
+ lblRep: "tekrar",
+ rep5: "beşli tekrar (önerilen, FIDE)",
+ rep3: "üçlü tekrar (dijitalde tercih edilen)",
+ edCap: "Tahta hemen cevap versin diye her taraf en çok {0} düğümle aranıyor; Nasıl karar verildi bütün bütçeyi kullanır.",
+ res14: "üçlü tekrar",
+ rsRule: "{0} hamle kuralı",
+ st3Rule: "{0} hamle kuralıyla: arama, kural hatları bitirecek şekilde yeniden koştu; hiçbir hat, kural oyunu bitirmeden mat etmiyor.",
+ st3RuleNo: "{0} hamle kuralıyla da yeniden koştu, ispat çıkmadı.",
+ st3RuleMate: "{0} hamle kuralıyla yeniden koştu: mat, kural oyunu bitirmeden geliyor.",
+ kRule: "hamle sınırı",
+ ruleVal: "{0} hamle ({1} yarım hamle)",
+ ruleNone: "yok (hızlı sürüm)",
+ res13: "50 hamle kuralı",
+ sdCan: "mat edebilir",
+ sdCannot: "mat edemez",
+ sd_mate: "mat yolu bulundu",
+ sd_open: "aksi ispatlanamadı",
+ sd_nolock: "kilit yok",
+ sdIf: "{0} tarafının bayrağı düşerse: {1}",
+ sdDead: "İki taraf da mat edemiyor: pozisyon ölü, oyun hemen berabere biter.",
+ sdOne: "Yalnız {0} mat edebiliyor: oyun sürer, {0} süreden kaybetmez.",
+ sdBoth: "İki taraf da mat edebiliyor: oyun sürer, bayrağı düşen kaybeder.",
+ infoH: "İki cevap ne demek",
+ info1: "İki taraf da mat edemiyorsa oyun hemen berabere bitebilir. Bitmesinde sakınca yok (FIDE 5.2.2, ölü pozisyon).",
+ info2: "Bir taraf mat edebiliyor, öbürü edemiyorsa oyun sürer. Ama mat edebilen taraf süresi bitse de kaybetmez: oyun berabere bitmeli (FIDE 6.9).",
+ info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,9’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm, {2} tanesi dışında hepsini ikinci sürüm ispatlıyor; oyunun kendi sınırlarıyla (6 ply, 100 düğüm).",
  flagToMove: "{0}, sırası gelen",
  flagForced: "{0}, “iki bayrağı da dene” ile; sıra {1} tarafında",
  kMoves: "legal hamle",
@@ -830,7 +969,7 @@ tr: {
  pgnThRight: "doğru sonuç",
  pc_ok: "kuralların bitirdiği yerde bitmiş",
  pc_lateDP: "ölü pozisyondan sonra oynanmış",
- pc_lateRule: "75 hamle kuralından ya da beşli tekrardan sonra oynanmış",
+ pc_lateRule: "bir hamle sınırı ya da tekrar bitirdikten sonra oynanmış",
  pc_wrongtm: "süreden ya da terkle kazanılmış, berabere olmalıydı",
  pc_wrongres: "sonuç son pozisyonla uyuşmuyor",
  pc_drawn: "anlaşma ya da taleple berabere (değerlendirilmedi)",
@@ -913,7 +1052,12 @@ function drawBoard(fen, flag, big) {
 var editor = function (f) { return 'https://lichess.org/editor/' + f.replace(/ /g, '_') };
 /* chasolver's page, asked whether the flagged side's opponent can mate */
 var askCha = function (f, side) { return '#chasolver?fen=' + encodeURIComponent(f) + '&side=' + (side ? 'black' : 'white') };
-function ply() { return +$('ply').value | 0 } function bud() { return +$('bud').value | 0 }
+/* the limits: whole numbers, the ply ceiling 1 to 1,500, the node budget 1 to 1,000,000,000 */
+var LIM = { ply: [1, 1500, 4], bud: [1, 1000000000, 8] };
+function limitOf(id) { var L = LIM[id], v = Math.floor(+$(id).value); return v >= L[0] ? Math.min(v, L[1]) : v === v && $(id).value !== '' ? L[0] : L[2] }
+function ply() { return limitOf('ply') } function bud() { return limitOf('bud') }
+/* the engine's options for a proof: the second version's rules, and a game's history for the repetition rule */
+function rulesOf(hist) { return VER === 2 ? { moveRule: RULE, repetition: REPN, history: hist || null } : {} }
 function say(s) { $('stat').innerHTML = s }
 
 /* ═══════════════════════════════ input: pasted lines and files ═══════════════════════════════ */
@@ -1049,7 +1193,8 @@ dropEl.ondrop = function (ev) { ev.preventDefault(); dropEl.classList.remove('ov
 /* ═══════════════════════════════ running ═══════════════════════════════ */
 var results = null, busy = false, cancel = false, page = 0;
 function lock(on) { busy = on; cancel = false;
-  ['ver', 'lockonly', 'ply', 'bud', 'rowA', 'rowB', 'bothdir', 'fen', 'example'].forEach(function (id) { $(id).disabled = on });
+  ['ver', 'lockonly', 'ply', 'bud', 'rowA', 'rowB', 'bothdir', 'fen', 'example', 'edGo'].forEach(function (id) { $(id).disabled = on });
+  Array.prototype.forEach.call(ROOT.querySelectorAll('input[name=mrule],input[name=mrep]'), function (x) { x.disabled = on });
   Array.prototype.forEach.call(ROOT.querySelectorAll('.labf,#flist select,#flist button'), function (x) { x.disabled = on });
   dropEl.classList.toggle('off', on);
   var g = $('go'); g.classList.toggle('stop', on);
@@ -1082,7 +1227,7 @@ $('go').onclick = go;
    JIT, so the proof is repeated for ~30 ms and the time divided by the number of runs. */
 function warmTime(w, P, B) {
   var setup = E.fromFen(w.fen); if (setup.error) return null;
-  var pos = setup.position, g = w.g === 0 || w.g === 1 ? w.g : (pos.side === E.WHITE ? 1 : 0), flagged = g ? E.WHITE : E.BLACK, lim = { maxPly: P, budget: B };
+  var pos = setup.position, g = w.g === 0 || w.g === 1 ? w.g : (pos.side === E.WHITE ? 1 : 0), flagged = g ? E.WHITE : E.BLACK, lim = Object.assign({ maxPly: P, budget: B }, rulesOf(null));
   var block = LOCKONLY ? function (k) { for (var i = 0; i < k; i++) E.lockCannotMate(pos, flagged) }
                        : function (k) { for (var i = 0; i < k; i++) E.proveCannotBeMated(pos, flagged, lim) };
   /* a block of calls between two readings of the clock; the first ~15 ms only warm the JIT up */
@@ -1092,7 +1237,7 @@ function warmTime(w, P, B) {
   do { block(k); n += k; t = performance.now() - t0 } while (t < 40);
   return t / n }
 function finish(work, res, secs, P, B, stopped) {
-  results = { rows: work.slice(0, res.length), total: work.length, res: res, secs: secs, P: P, B: B, stopped: stopped, ver: VER, lockOnly: LOCKONLY };
+  results = { rows: work.slice(0, res.length), total: work.length, res: res, secs: secs, P: P, B: B, stopped: stopped, ver: VER, lockOnly: LOCKONLY, rule: VER === 2 ? RULE : 0, rep: VER === 2 ? REPN : 0 };
   page = 0; filt = { show: '', set: '', why: '' }; renderBrowse.touched = false;
   lock(false);
   showResults() }
@@ -1256,8 +1401,9 @@ function detailHTML(k) {
   var A = String(w.fen).trim().split(/\s+/), tm = A[1] == 'w' ? 1 : 0, o = outcome(r), fl = sideName(r.side), op = sideName(1 - r.side), c = refCat(w, r);
   var who = r.side ? 'WHITE' : 'BLACK';
   var vt = r.draw ? (r.dead ? T('vt_dead') : F('vt_draw', fl, op)) : F(o == 'mate' ? 'vt_mate' : 'vt_open', fl, op);
+  var sd = r.sides || (r.sides = bothSides(w.fen, P, B));
   var h = '<div class="detail"><div class="dboard">' + drawBoard(w.fen, r.side, true) +
-        '<p class="cap"><b>⚑</b> ' + T('kFlag') + ' ' + fl + '</p></div><div>' +
+        '<p class="cap"><b>⚑</b> ' + T('kFlag') + ' ' + fl + '</p>' + infoHTML(sd) + '</div><div>' + sidesHTML(sd) +
         '<div class="vhead"><span class="score ' + kind(o) + '">' + score(r) + '</span><div><div class="vword">' + verdictWords(r) + '</div>' +
         '<span class="chip ' + kind(o) + '">' + T('rs_' + r.reason) + '</span>' +
         (c && c != 'ok' && c != 'okd' ? ' <span class="chip k-flag">' + T({ miss: 'kMiss', false: 'kBad', contra: 'kContra' }[c]) + '</span>' : '') + '</div></div>' +
@@ -1281,6 +1427,8 @@ function detailHTML(k) {
   /* the second version's second tier, when it ran: its limits are the ones the last search reached */
   var dp = r.deep ? DEEP[0] : P, db = r.deep ? DEEP[1] : B, dn = r.deep ? ' ' + F('st3Deep', P, num(B), DEEP[0], num(DEEP[1])) : '';
   if (r.deep) c3 += ' → Domino(' + who + ', ' + DEEP[0] + ', ' + num(DEEP[1]) + ')';
+  var rl = results.rule || 0, rn = '';
+  if (r.ruled) { c3 += ' · moveRule ' + rl; rn = ' ' + F(r.draw ? 'st3Rule' : r.reason == 'mate' ? 'st3RuleMate' : 'st3RuleNo', rl / 2); dn += rn }
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
   else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op) + dn);
   else if (r.reason == 'stalemate') s += stepRow('dec', T('s3n'), c3, T('st3SM'));
@@ -1313,18 +1461,44 @@ function detailHTML(k) {
   h += '<h4>' + T('hRun') + '</h4><dl class="kv">' +
      /* with the second tier, two searches: both limits, and the nodes of both against both budgets */
      '<dt>' + T('kLimits') + '</dt><dd>' + (r.lockOnly ? T('lblLockOnly') : F('limits', P, num(B)) + (r.deep ? ' → ' + F('limits', DEEP[0], num(DEEP[1])) : '')) + '</dd>' +
+     '<dt>' + T('kRule') + '</dt><dd>' + (results.rule ? F('ruleVal', results.rule / 2, results.rule) : T('ruleNone')) + '</dd>' +
      '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(r.deep ? B + DEEP[1] : B)) + '</dd>' +
      '<dt>' + T('kTime') + '</dt><dd>' + (r.warm === undefined ? (r.warm = warmTime(w, P, B)) : r.warm, us(r.warm)) + ' µs</dd>' +
      (r.why ? '<dt>' + T('kStop') + '</dt><dd>' + T({ horizon: 'rHorizon', budget: 'rBudget', mate: 'rMate', nolock: 'rNoLock' }[r.why]) + '</dd>' : '') + '</dl>';
   h += srcBlock(w, r) + '</div></div>';
   return h }
+/* The reason of one side's answer, as a chip. */
+function chipHTML(s) {
+  var can = !s.cannot, t = can ? T('sd_' + s.reason) : s.reason == 'rule' ? F('rsRule', RULE / 2) : T('rs_' + s.reason);
+  return '<span class="chip ' + (can ? (s.reason == 'mate' ? 'k-win' : 'k-open') : 'k-draw') + '">' + t + '</span>' }
+/* How many of the two sides can mate (-1 without an answer). */
+function canCount(sd) { return sd ? (sd[0].cannot ? 0 : 1) + (sd[1].cannot ? 0 : 1) : -1 }
+/* Above the verdict: can each side mate, and what that means when its opponent's flag falls. */
+function sidesHTML(sd) {
+  if (!sd) return '';
+  var h = '<div class="sides">', g, s, can, n = canCount(sd);
+  for (g = 1; g >= 0; g--) {
+    s = sd[g]; can = !s.cannot;
+    h += '<div class="sd"><span class="sdn">' + sideName(g) + '</span>' +
+      '<span class="sdv ' + (can ? 'k-win' : 'k-draw') + '">' + T(can ? 'sdCan' : 'sdCannot') + '</span>' +
+      chipHTML(s) +
+      '<span class="sdif">' + F('sdIf', sideName(1 - g), can ? (g ? '1–0' : '0–1') : '½–½') + '</span></div>' }
+  return h + '<p class="sdsum">' + (n === 0 ? T('sdDead') : n === 1 ? F('sdOne', sideName(sd[1].cannot ? 0 : 1)) : T('sdBoth')) + '</p></div>' }
+/* Under the board: the three things to know about the two answers; the one that applies is marked. */
+function infoHTML(sd) {
+  var n = canCount(sd);
+  return '<div class="sinfo"><b>' + T('infoH') + '</b><ul>' +
+    '<li' + (n === 0 ? ' class="on"' : '') + '>' + T('info1') + '</li>' +
+    '<li' + (n === 1 ? ' class="on"' : '') + '>' + T('info2') + '</li>' +
+    '<li>' + F('info3', num(LIST_ROWS), num(LIST_OPEN[0]), num(LIST_OPEN[1])) + '</li></ul></div>' }
 function srcBlock(w, r) {
   var game = /^[A-Za-z0-9]{8}$/.test(w.id) ? 'https://lichess.org/' + w.id : '';
   return '<h4>' + T('hSource') + '</h4><dl class="kv"><dt>' + T('kSet') + '</dt><dd>' + esc(w.set) + '</dd><dt>' + T('kId') + '</dt><dd>' + esc(w.id) + '</dd></dl>' +
     '<p class="fenbox">' + esc(w.fen) + '</p><div class="acts"><button class="cp" data-fen="' + esc(w.fen) + '">' + T('lbCopy') + '</button>' +
     '<a class="btn" target="_blank" rel="noopener" href="' + esc(editor(w.fen)) + '">' + T('openEditor') + '</a>' +
     (game ? '<a class="btn" target="_blank" rel="noopener" href="' + game + '">' + T('openGame') + '</a>' : '') +
-    (r ? '<a class="btn" href="' + esc(askCha(w.fen, r.side)) + '">' + T('askCha') + '</a>' : '') + '</div>' }
+    (r ? '<a class="btn" href="' + esc(askCha(w.fen, r.side)) + '">' + T('askCha') + '</a>' : '') +
+    '<button class="ob" data-fen="' + esc(w.fen) + '">' + T('openBoard') + '</button></div>' }
 ROOT.addEventListener('click', function (ev) {
   var b = ev.target.closest && ev.target.closest('button.cp'); if (!b) return;
   var t = b.getAttribute('data-fen');
@@ -1450,7 +1624,7 @@ function pgnGame(G, P, B) {
   var start = G.tags.FEN || PGN_START, setup = readFen(start);
   if (!setup) { o.err = { k: 'badstart', p: badReason }; return pgnClass(o) }
   if (!tk.moves.length && !G.tags.FEN) { o.err = { k: 'parse' }; return pgnClass(o) }
-  var game = new E.Game(setup.position), full = +(start.split(/\s+/)[5]) || 1;
+  var game = new E.Game(setup.position, VER === 2 ? { moveRule: RULE, repetition: REPN } : undefined), full = +(start.split(/\s+/)[5]) || 1;
   o.start = start; o.s0 = game.position.side === E.WHITE ? 1 : 0; o.full0 = full;
   code = game.status(); if (code) o.end = { ply: 0, code: code, fen: start };
   for (k = 0; k < tk.moves.length; k++) {
@@ -1468,7 +1642,7 @@ function pgnGame(G, P, B) {
     var g = o.res == '1-0' ? 0 : o.res == '0-1' ? 1 : game.position.side === E.WHITE ? 1 : 0;
     /* a side proven unable to mate earlier in the game stays unable: the draw needs no new search */
     if (game.neverMates(g ? E.BLACK : E.WHITE)) o.fin = { draw: true, dead: false, side: g, known: true };
-    else { var r = judge(o.fen, P, B, g); o.fin = r ? { draw: r.draw, dead: r.dead, reason: r.reason, side: g } : { side: g, bad: badReason } } }
+    else { var r = judge(o.fen, P, B, g, VER === 2 ? game.repetitionHistory() : null); o.fin = r ? { draw: r.draw, dead: r.dead, reason: r.reason, side: g } : { side: g, bad: badReason } } }
   return pgnClass(o) }
 function pgnRight(o) {
   if (o.end) return o.end.code == RES.WHITE_MATES ? '1-0' : o.end.code == RES.BLACK_MATES ? '0-1' : '1/2-1/2';
@@ -1631,22 +1805,258 @@ $('lockonly').onchange = function () {
   if (!$('lb').classList.contains('hide')) lbClose();
   results = null; showResults(); say('');
   applyI18n() };
+function useVersion(v) {
+  VER = v; E = engineOf(VER);
+  DEEP = VER === 2 ? [E.DOMINO_DEEP_PLY, E.DOMINO_DEEP_BUDGET] : [0, 0];
+  ENGINE_BYTES = new Blob([$(ENGINE_IDS[VER]).textContent]).size }
 $('ver').onchange = function () {
   if (busy || PGN.busy) { this.value = String(VER); return }
-  VER = +this.value; E = engineOf(VER);
-  DEEP = VER === 2 ? [E.DOMINO_DEEP_PLY, E.DOMINO_DEEP_BUDGET] : [0, 0];
-  ENGINE_BYTES = new Blob([$(ENGINE_IDS[VER]).textContent]).size;
+  useVersion(+this.value);
   if (!$('lb').classList.contains('hide')) lbClose();
   results = null; showResults(); say('');
   PGN.res = null; pgnRender();
   $('srcbox').textContent = $('fold-engine').open ? $(ENGINE_IDS[VER]).textContent.trim() : '';
   applyI18n() };
+/* ═══════════════════════════════ the board editor ═══════════════════════════════
+   A position set up by hand: pieces dragged from the two rows onto the board, moved on it, or
+   dragged off it; the side to move, castling, en passant and the halfmove clock beside it. After
+   every change both sides are judged at once (bothSides), with the version, rule and limits of the
+   engine strip, and the answers stand on the bars above and below the board. Squares are numbered
+   as the engine numbers them: a1 = 0, h1 = 7, a8 = 56. */
+var PGLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟', x: '✕' };
+var ED = { sq: new Array(64).fill(''), turn: 'w', castle: '', ep: '-', clock: 0, full: 1, flip: false, tool: '' };
+var ED_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+var ED_EXAMPLE = '5b2/p7/Pp3k2/1Pp1pBp1/2P1P1P1/5K2/8/8 w - - 0 1';      /* Lichess ijyj0mHa, a lock */
+function edGlyph(c) { return PGLYPH[c.toLowerCase()] + (c === 'x' ? '' : '︎') }
+function edColor(c) { return c === 'x' ? 'x' : c === c.toUpperCase() ? 'w' : 'b' }
+/* Reads a FEN into the editor; false (and nothing changed) when its board cannot be read. */
+function edLoad(fen) {
+  var A = String(fen).trim().split(/\s+/), rows = (A[0] || '').split('/'), sq = new Array(64).fill(''), r, f, k, ch;
+  if (rows.length !== 8) return false;
+  for (r = 0; r < 8; r++) {
+    f = 0;
+    for (k = 0; k < rows[r].length; k++) {
+      ch = rows[r][k];
+      if (/[1-8]/.test(ch)) f += +ch;
+      else if (/[kqrbnpKQRBNP]/.test(ch) && f < 8) sq[(7 - r) * 8 + f++] = ch;
+      else return false }
+    if (f !== 8) return false }
+  ED.sq = sq; ED.turn = A[1] === 'b' ? 'b' : 'w';
+  ED.castle = (A[2] || '').replace(/[^KQkq]/g, ''); ED.ep = /^[a-h][36]$/.test(A[3] || '') ? A[3] : '-';
+  ED.clock = /^\d+$/.test(A[4] || '') ? Math.min(+A[4], 9999) : 0; ED.full = /^\d+$/.test(A[5] || '') ? Math.max(1, +A[5]) : 1;
+  edFix(); return true }
+function edCastleOk(c) {
+  var s = ED.sq;
+  return c === 'K' ? s[4] === 'K' && s[7] === 'R' : c === 'Q' ? s[4] === 'K' && s[0] === 'R'
+       : c === 'k' ? s[60] === 'k' && s[63] === 'r' : s[60] === 'k' && s[56] === 'r' }
+/* The squares en passant can be on: the last move may have been a double step there, and a pawn can take. */
+function edEpSquares() {
+  var out = [], s = ED.sq, w = ED.turn === 'w', f, at, p, q;
+  for (f = 0; f < 8; f++) {
+    at = w ? 32 + f : 24 + f; p = w ? 'p' : 'P'; q = w ? 'P' : 'p';
+    if (s[at] !== p || s[w ? 40 + f : 16 + f] || s[w ? 48 + f : 8 + f]) continue;
+    if ((f > 0 && s[at - 1] === q) || (f < 7 && s[at + 1] === q)) out.push('abcdefgh'.charAt(f) + (w ? '6' : '3')) }
+  return out }
+/* Castling rights and an en passant square the board no longer allows are dropped. */
+function edFix() {
+  ED.castle = 'KQkq'.split('').filter(function (c) { return ED.castle.indexOf(c) >= 0 && edCastleOk(c) }).join('');
+  if (edEpSquares().indexOf(ED.ep) < 0) ED.ep = '-';
+  /* the halfmove clock cannot exceed the plies played: the move number follows it */
+  ED.full = Math.max(ED.full, Math.ceil((ED.clock - (ED.turn === 'b' ? 1 : 0)) / 2) + 1) }
+function edFen() {
+  var out = [], r, f, e, row, c;
+  for (r = 7; r >= 0; r--) {
+    row = ''; e = 0;
+    for (f = 0; f < 8; f++) { c = ED.sq[r * 8 + f]; if (c) { if (e) row += e; e = 0; row += c } else e++ }
+    out.push(row + (e ? e : '')) }
+  return out.join('/') + ' ' + ED.turn + ' ' + (ED.castle || '-') + ' ' + ED.ep + ' ' + ED.clock + ' ' + ED.full }
+/* A piece onto a square: a second king of a colour takes the first one's place; ✕ empties the square. */
+function edPut(s, c) {
+  if (c === 'x') { ED.sq[s] = ''; return }
+  if (c === 'K' || c === 'k') for (var i = 0; i < 64; i++) if (ED.sq[i] === c) ED.sq[i] = '';
+  ED.sq[s] = c }
+
+function edBoard() {
+  var h = '', row, col, r, f, s, c, cls;
+  for (row = 0; row < 8; row++) for (col = 0; col < 8; col++) {
+    r = ED.flip ? row : 7 - row; f = ED.flip ? 7 - col : col; s = r * 8 + f; c = ED.sq[s];
+    cls = ((r + f) & 1) ? 'l' : 'd';
+    if (c) cls += ' ' + edColor(c);
+    h += '<i class="' + cls + '" data-s="' + s + '">' + (c ? edGlyph(c) : '') +
+      (col === 0 ? '<s class="rk">' + (r + 1) + '</s>' : '') + (row === 7 ? '<s class="fl">' + 'abcdefgh'.charAt(f) + '</s>' : '') + '</i>' }
+  $('ebd').innerHTML = h; $('ebd').setAttribute('aria-label', edFen()) }
+function edPal() {
+  function row(set) {
+    return set.split('').map(function (c) {
+      var name = c === 'x' ? T('edErase') : sideName(edColor(c) === 'w' ? 1 : 0) + ' ' + T('pn_' + c.toLowerCase());
+      return '<button type="button" class="' + edColor(c) + (ED.tool === c ? ' on' : '') + '" data-p="' + c + '" aria-label="' + esc(name) + '" title="' + esc(name) + '">' + edGlyph(c) + '</button>' }).join('') }
+  $('palTop').innerHTML = row(ED.flip ? 'KQRBNPx' : 'kqrbnpx'); $('palBot').innerHTML = row(ED.flip ? 'kqrbnpx' : 'KQRBNPx') }
+function edSide() {
+  Array.prototype.forEach.call($('edTurn').children, function (b) { b.classList.toggle('on', b.getAttribute('data-v') === ED.turn) });
+  Array.prototype.forEach.call($('edCastle').children, function (b) {
+    var c = b.getAttribute('data-v'); b.classList.toggle('on', ED.castle.indexOf(c) >= 0); b.classList.toggle('off', !edCastleOk(c)) });
+  $('edEp').innerHTML = ['-'].concat(edEpSquares()).map(function (e) {
+    return '<button type="button" data-v="' + e + '"' + (ED.ep === e ? ' class="on"' : '') + '>' + (e === '-' ? '–' : e) + '</button>' }).join('');
+  if (document.activeElement !== $('edClock')) $('edClock').value = ED.clock;
+  var rule = VER === 2 && !LOCKONLY ? RULE : 0;
+  $('edClockNote').textContent = rule ? (ED.clock >= rule ? F('edClockOver', rule / 2) : F('edClockLeft', num(rule - ED.clock), rule / 2)) : VER === 2 ? '' : T('edClockFast');
+  if (document.activeElement !== $('edFen')) { $('edFen').value = edFen(); $('edFen').classList.remove('bad') } }
+/* The two bars: can each side mate? Black above the board, White below, unless the board is flipped. */
+var ED_CAP = 1000000;     /* nodes per side for the board's live answer */
+function edJudge() {
+  var fen = edFen(), setup = readFen(fen), B = bud(), sd = setup ? bothSides(fen, ply(), Math.min(B, ED_CAP)) : null, why = setup ? '' : badText(badReason);
+  var top = ED.flip ? 1 : 0;
+  edBar($('vbarTop'), top, sd); edBar($('vbarBot'), 1 - top, sd);
+  $('edBad').textContent = why ? F('edInvalid', why) : ''; $('edBad').classList.toggle('hide', !why);
+  var n = canCount(sd);
+  $('edSum').textContent = !sd ? '' : n === 0 ? T('sdDead') : n === 1 ? F('sdOne', sideName(sd[1].cannot ? 0 : 1)) : T('sdBoth');
+  $('edInfo').innerHTML = (B > ED_CAP && sd ? '<p class="hint">' + F('edCap', num(ED_CAP)) + '</p>' : '') + infoHTML(sd);
+  $('edGo').disabled = !sd || busy || PGN.busy; $('edAdd').disabled = !setup }
+function edBar(el, g, sd) {
+  var who = '<span class="who"><i class="' + (g ? 'w' : 'b') + '"></i>' + sideName(g) + '</span>';
+  if (!sd) { el.className = 'vbar bad'; el.innerHTML = who + '<span class="vv">—</span>'; return }
+  var s = sd[g], can = !s.cannot;
+  el.className = 'vbar ' + (can ? 'can' : 'cannot');
+  el.innerHTML = who + '<span class="vv ' + (can ? 'k-win' : 'k-draw') + '">' + T(can ? 'sdCan' : 'sdCannot') + '</span>' + chipHTML(s) +
+    '<span class="vif">' + F('sdIf', sideName(1 - g), can ? (g ? '1–0' : '0–1') : '½–½') + '</span>' }
+function edUpdate() { edFix(); edBoard(); edPal(); edSide(); edJudge() }
+
+/* dragging: from a row (from -1) or from a square (from = the square); a press that does not move is a click */
+var edDrag = null, edTgt = -1;
+function edSquareAt(x, y) {
+  var el = document.elementFromPoint(x, y);
+  el = el && el.closest ? el.closest('#ebd i[data-s]') : null;
+  return el ? +el.getAttribute('data-s') : -1 }
+function edTarget(s) {
+  if (edTgt === s) return;
+  var old = $('ebd').querySelector('i.tgt'); if (old) old.classList.remove('tgt');
+  edTgt = s;
+  if (s >= 0) { var el = $('ebd').querySelector('i[data-s="' + s + '"]'); if (el) el.classList.add('tgt') } }
+function edPress(ev, piece, from, sq, el) {
+  if (ev.button > 0) return;
+  edDrag = { piece: piece, from: from, sq: sq, x0: ev.clientX, y0: ev.clientY, moved: false, ghost: null, el: el };
+  ev.preventDefault() }
+$('ebd').addEventListener('pointerdown', function (ev) {
+  var el = ev.target.closest && ev.target.closest('i[data-s]'); if (!el) return;
+  var s = +el.getAttribute('data-s');
+  edPress(ev, ED.sq[s], ED.sq[s] ? s : -1, s, el) });
+$('ebd').addEventListener('contextmenu', function (ev) {
+  var el = ev.target.closest && ev.target.closest('i[data-s]'); if (!el) return;
+  ev.preventDefault(); ED.sq[+el.getAttribute('data-s')] = ''; edUpdate() });
+['palTop', 'palBot'].forEach(function (id) {
+  $(id).addEventListener('pointerdown', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[data-p]'); if (!b) return;
+    edPress(ev, b.getAttribute('data-p'), -2, -1, b) });
+  /* the keyboard: Enter or Space on a piece chooses it */
+  $(id).addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[data-p]'); if (!b || ev.detail !== 0) return;
+    var c = b.getAttribute('data-p'); ED.tool = ED.tool === c ? '' : c; edPal() }) });
+window.addEventListener('pointermove', function (ev) {
+  var d = edDrag; if (!d || !d.piece) return;
+  if (!d.moved) {
+    if (Math.abs(ev.clientX - d.x0) + Math.abs(ev.clientY - d.y0) < 5) return;
+    d.moved = true;
+    d.ghost = document.createElement('span'); d.ghost.className = 'ghost ' + edColor(d.piece); d.ghost.textContent = edGlyph(d.piece);
+    ROOT.appendChild(d.ghost);
+    if (d.from >= 0) d.el.classList.add('lift') }
+  d.ghost.style.left = ev.clientX + 'px'; d.ghost.style.top = ev.clientY + 'px';
+  edTarget(edSquareAt(ev.clientX, ev.clientY)) });
+function edRelease(ev, cancelled) {
+  var d = edDrag; if (!d) return;
+  edDrag = null; edTarget(-1);
+  if (d.ghost) d.ghost.remove();
+  if (cancelled) { if (d.from >= 0) d.el.classList.remove('lift'); return }
+  if (d.moved) {
+    var s = edSquareAt(ev.clientX, ev.clientY);
+    if (d.from >= 0) ED.sq[d.from] = '';            /* off the board: taken away */
+    if (s >= 0) edPut(s, d.piece);
+    edUpdate(); return }
+  if (d.from === -2) { ED.tool = ED.tool === d.piece ? '' : d.piece; edPal(); return }   /* a click on a row */
+  if (d.sq >= 0 && ED.tool) {                          /* a click on a square, with a piece chosen */
+    if (ED.tool === 'x' || ED.sq[d.sq] === ED.tool) ED.sq[d.sq] = ''; else edPut(d.sq, ED.tool);
+    edUpdate() } }
+window.addEventListener('pointerup', function (ev) { edRelease(ev, false) });
+window.addEventListener('pointercancel', function (ev) { edRelease(ev, true) });
+
+/* the side panel */
+$('edTurn').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-v]'); if (!b) return; ED.turn = b.getAttribute('data-v'); edUpdate() });
+$('edCastle').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-v]'); if (!b) return; var c = b.getAttribute('data-v');
+  if (!edCastleOk(c)) return;
+  ED.castle = ED.castle.indexOf(c) >= 0 ? ED.castle.replace(c, '') : ED.castle + c; edUpdate() });
+$('edEp').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-v]'); if (!b) return; ED.ep = b.getAttribute('data-v'); edUpdate() });
+$('edClock').addEventListener('input', function () {
+  var v = Math.floor(+this.value); ED.clock = v >= 0 && v <= 9999 ? v : 0; edFix(); edSide(); edJudge() });
+$('edFen').addEventListener('input', function () {
+  var ok = edLoad(this.value); this.classList.toggle('bad', !ok);
+  if (ok) { edBoard(); edPal(); edSide(); edJudge() } });
+$('edFen').addEventListener('blur', function () { this.value = edFen(); this.classList.remove('bad') });
+$('edStart').onclick = function () { edLoad(ED_START); edUpdate() };
+$('edEx').onclick = function () { edLoad(ED_EXAMPLE); edUpdate() };
+$('edClear').onclick = function () { ED.sq = new Array(64).fill(''); ED.castle = ''; ED.ep = '-'; edUpdate() };
+$('edFlip').onclick = function () { ED.flip = !ED.flip; edUpdate() };
+function edFlash(b, k) { var t = b.textContent; b.textContent = T(k); setTimeout(function () { b.textContent = t }, 1100) }
+$('edCopy').onclick = function () {
+  var t = edFen(), b = this;
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { edFlash(b, 'edCopied') }, function () {});
+  else { $('edFen').focus(); $('edFen').select(); document.execCommand('copy'); edFlash(b, 'edCopied') } };
+$('edPaste').onclick = function () {
+  var f = $('edFen');
+  if (navigator.clipboard && navigator.clipboard.readText)
+    navigator.clipboard.readText().then(function (t) { if (edLoad(t)) edUpdate(); else { f.value = t; f.classList.add('bad'); f.focus() } }, function () { f.focus(); f.select() });
+  else { f.focus(); f.select() } };
+/* "How it was decided": the flag of the side to move, in the detail view below the positions */
+$('edGo').onclick = function () {
+  if (busy || PGN.busy) return;
+  var fen = edFen(), P = ply(), B = bud(), r = judge(fen, P, B), w = { set: T('edSet'), id: '—', fen: fen, bad: r ? null : badReason };
+  results = { rows: [w], total: 1, res: [r], secs: 0, P: P, B: B, stopped: false, ver: VER, lockOnly: LOCKONLY, rule: VER === 2 ? RULE : 0, rep: VER === 2 ? REPN : 0 };
+  page = 0; filt = { show: '', set: '', why: '' };
+  showResults(); $('solo').scrollIntoView({ behavior: 'smooth', block: 'start' }) };
+$('edAdd').onclick = function () {
+  var t = $('fen').value.replace(/\s+$/, '');
+  $('fen').value = (t ? t + '\n' : '') + edFen(); inputChanged(); edFlash(this, 'edAdded') };
+/* "Open on the board", in the detail view and its dialog */
+ROOT.addEventListener('click', function (ev) {
+  var b = ev.target.closest && ev.target.closest('button.ob'); if (!b) return;
+  if (!edLoad(b.getAttribute('data-fen'))) return;
+  if (!$('lb').classList.contains('hide')) lbClose();
+  edUpdate(); $('ed').scrollIntoView({ behavior: 'smooth', block: 'start' }) });
+/* the limits: whole numbers only, kept in range as they are typed; the board is judged again */
+['ply', 'bud'].forEach(function (id) {
+  var el = $(id), L = LIM[id];
+  el.addEventListener('keydown', function (ev) {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length > 1) return;    /* shortcuts, arrows, Backspace, Tab */
+    if (!/^[0-9]$/.test(ev.key)) ev.preventDefault() });
+  el.addEventListener('input', function () {
+    var v = Math.floor(+el.value);
+    if (el.value !== '' && (v !== v || v > L[1] || String(v) !== el.value)) el.value = v === v ? Math.min(Math.max(v, L[0]), L[1]) : '';
+    edJudge() });
+  el.addEventListener('change', function () { el.value = limitOf(id); edJudge() }) });
+Array.prototype.forEach.call(ROOT.querySelectorAll('input[name=mrule],input[name=mrep]'), function (el) {
+  el.onchange = function () {
+    var move = this.name === 'mrule';
+    if (busy || PGN.busy) { this.checked = +this.value === (move ? RULE : REPN); return }
+    if (move) RULE = +this.value; else REPN = +this.value;
+    if (!$('lb').classList.contains('hide')) lbClose();
+    results = null; showResults(); say('');
+    PGN.res = null; pgnRender();
+    applyI18n() } });
+edLoad(ED_EXAMPLE);
+RULE = +(ROOT.querySelector('input[name=mrule]:checked') || { value: 150 }).value;
+REPN = +(ROOT.querySelector('input[name=mrep]:checked') || { value: 5 }).value;
+['ply', 'bud'].forEach(function (id) { $(id).value = limitOf(id) });
+if (+$('ver').value !== VER) useVersion(+$('ver').value);
+
 function applyI18n() {
   var els = ROOT.querySelectorAll('[data-i]'), i, el, k;
   for (i = 0; i < els.length; i++) { el = els[i]; k = els[i].getAttribute('data-i');
     if (el.hasAttribute('data-ihtml')) el.innerHTML = T(k); else el.textContent = T(k) }
   ROOT.querySelector('[data-i="engineNote"]').innerHTML = F(VER === 2 ? 'engineNote2' : 'engineNote', num(ENGINE_BYTES));
   limNote(); inputChanged();
+  $('rulerow').classList.toggle('hide', VER !== 2);
+  edUpdate();
   if (results) { var s = $('stat').innerHTML; showResults(); if (busy) say(s) }
   if (!$('lb').classList.contains('hide')) lbShow();
   pgnRefresh(); if (PGN.res) pgnRender() }

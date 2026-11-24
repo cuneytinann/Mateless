@@ -17,22 +17,22 @@ prove it leaves to the platform's rule (the flag loses) and to a complete solver
 [Design](docs/DESIGN.md) · [Results](docs/RESULTS.md) ·
 [for Lichess: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 
-## The whole structure, not its smallest parts
+## Bit-level detection of the whole structure
 
 The centre of Mateless is a **lock detector**: it recognises structures of pawns, kings and
 bishops that no series of legal moves can open, without generating a single move, in about 90
 nanoseconds.
 
-[chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022), the reference
-in this field, works up from the smallest parts: after a short search it analyses the position
-piece by piece, a reach for every piece, then a combinatorial check of the mating net. Mateless
-looks at the whole at once: all the pawns of a side form one cone, a king has one reach, and a
-few bitboard operations take the whole structure to a fixed point. On the locked positions of the
-Lichess data below that is **~70× faster** than chasolver's fast check (Rust against Rust), and
-with the short search behind it Mateless covers **99.98%** of that data ~17–18× faster.
+It looks at the whole structure at once, at the level of bits: all the pawns of a side form one
+cone, a king has one reach, and a few operations on 64-bit sets take the whole structure to a
+fixed point. As far as we know that makes it the fastest method of its kind: with the short
+search behind the detector, Mateless covers **99.98%** of the Lichess data below **~17–18×
+faster** than the nearest known method (Rust against Rust).
 
-chasolver is complete: it solves composed problems that Mateless does not try to. Mateless is the
-fast layer in front of a complete solver, small enough to run inside a game server on every move.
+[chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022) is the
+reference in this field, and a complete solver: it settles composed problems that Mateless does
+not try to. Mateless is the fast layer in front of such a solver, small enough to run inside a
+game server on every move.
 
 ## Speed
 
@@ -189,13 +189,16 @@ install. It is the site's front page,
 [cuneytinann.github.io/Mateless](https://cuneytinann.github.io/Mateless/), and its Download link
 saves the same file, which runs offline (only the fonts come from the internet). English by default,
 Turkish to choose. Five tabs:
-- **Arbiter**: a FEN, CSV or TXT files of positions, or PGN games. Each verdict is
+- **Arbiter**: a board on top, set up by hand (pieces dragged on and off, the side to move, castling,
+  en passant, the halfmove clock): above and below it, at once, whether each side can still mate,
+  with the engine's settings beside it. Below, a FEN, CSV or TXT files of positions, or PGN games. Each verdict is
   shown as a score with its reason (insufficient material, locked position, Domino effect, mate
   found, no proof) and the rungs that led to it; dead positions are marked; results download as
   CSV. chasolver's lists of the Lichess games lost on time that should have been drawn,
   [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in. Two versions
   to choose from: the fast one (this library, the rules proposed to Lichess) and the second version
-  (the `second-version` branch, below); a box runs the chosen version's lock detector alone, to see which
+  (the `second-version` branch, below), with a move rule (75 or 50 moves) and a repetition rule
+  (fivefold or threefold) to choose; a box runs the chosen version's lock detector alone, to see which
   positions it catches.
 - **Lock detector**: rung 2 from the simplest up. What the Lichess locks hold, and why knights,
   rooks, queens and twin bishops are left out; then pawns and kings on bitboards (a capture means
@@ -442,8 +445,10 @@ This version is the fast layer: sound, small, and meant to run on a game server 
 move. A second version stands beside it, on the `second-version` branch, and the arbiter page runs it when
 it is chosen. It is not complete either, but wider in scope, with completeness as its goal, and it
 keeps growing as new rules are added: open pawn pairs, boxed knights, rooks and queens, a second tier
-of the Domino search, twin bishops, and four rules for the ways a game of kings and pawns runs into
-a stalemate (of the 36 rows this version leaves unproven, it proves 34). This version already covers
+of the Domino search, twin bishops, four rules for the ways a game of kings and pawns runs into
+a stalemate (of the 36 rows this version leaves unproven, it proves 34), and, on request, the 75- or
+50-move rule and fivefold or threefold repetition (in JavaScript for now: sound, and complete within
+the search's limits). This version already covers
 99.98% of the Lichess data, so in practice the wider one matters mostly to the curious and to
 research; it is not rushed.
 

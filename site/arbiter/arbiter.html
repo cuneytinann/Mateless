@@ -2,9 +2,69 @@
 <p class="lede" data-ihtml data-i="lede"></p>
 <div class="speed">
   <div><b data-i="sp1n">~90 ns</b><span data-i="sp1t"></span></div>
-  <div><b data-i="sp2n">~70×</b><span data-i="sp2t"></span></div>
+  <div><b data-i="sp2n">~17–18×</b><span data-i="sp2t"></span></div>
   <div><b data-i="sp3n">99.98%</b><span data-i="sp3t"></span></div>
 </div>
+
+<section class="panel ed" id="ed" aria-labelledby="edlab">
+  <h2 class="edh" id="edlab" data-i="edH">Set up a position</h2>
+  <p class="hint edsub" data-i="edSub"></p>
+  <div class="edgrid">
+    <div class="edleft">
+      <div class="pal" id="palTop" role="toolbar"></div>
+      <div class="vbar" id="vbarTop" aria-live="polite"></div>
+      <div class="bd big ebd" id="ebd" role="img"></div>
+      <div class="vbar" id="vbarBot" aria-live="polite"></div>
+      <div class="pal" id="palBot" role="toolbar"></div>
+      <p class="sdsum" id="edSum"></p>
+      <div id="edInfo"></div>
+    </div>
+    <div class="edside">
+      <div class="edrow"><span class="lab" data-i="edTurn">Turn</span>
+        <div class="seg" id="edTurn"><button data-v="w" data-i="white">White</button><button data-v="b" data-i="black">Black</button></div></div>
+      <div class="edrow"><span class="lab" data-i="edCastle">Castling</span>
+        <div class="seg" id="edCastle"><button data-v="K">K</button><button data-v="Q">Q</button><button data-v="k">k</button><button data-v="q">q</button></div></div>
+      <div class="edrow"><span class="lab" data-i="edEp">En passant</span>
+        <div class="seg" id="edEp"></div></div>
+      <div class="edrow"><label class="lab" for="edClock" data-i="edClock">Halfmove clock</label>
+        <div class="seg"><input type="number" id="edClock" min="0" max="9999" value="0"><span class="dim small" id="edClockNote"></span></div></div>
+      <div class="edrow"><span class="lab" data-i="edPre">Presets</span>
+        <div class="seg"><button id="edStart" data-i="edStart">Start</button><button id="edClear" data-i="edClear">Clear</button><button id="edEx" data-i="edEx">Example</button><button id="edFlip" data-i="edFlip">Flip</button></div></div>
+      <div class="edrow"><label class="lab" for="edFen">FEN</label>
+        <div class="fenrow"><input type="text" id="edFen" spellcheck="false" autocomplete="off"><button id="edCopy" data-i="edCopy">Copy</button><button id="edPaste" data-i="edPaste">Paste</button></div>
+        <p class="hint hide" id="edBad"></p></div>
+      <div class="edrow edgo"><button class="primary" id="edGo" data-i="edGo">How it was decided</button><button id="edAdd" data-i="edAdd">Add to the positions below</button></div>
+      <p class="hint" data-ihtml data-i="edHint"></p>
+      <div class="edeng" aria-labelledby="englab">
+        <span class="lab" id="englab" data-i="engH">The engine</span>
+        <div class="engrow">
+          <select id="ver" aria-label="version">
+            <option value="2" data-i="ver2" selected>second version (wider)</option>
+            <option value="1" data-i="ver1">fast (the first version)</option>
+          </select>
+          <label class="chk"><input type="checkbox" id="lockonly"> <span data-i="lblLockOnly">lock detector only</span></label>
+        </div>
+        <p class="hint" id="vernote"></p>
+        <div id="rulerow">
+          <fieldset class="mrule"><legend class="lab" data-i="lblRule">move rule</legend>
+            <label><input type="radio" name="mrule" value="150" checked> <span data-i="rule75">75 moves (recommended, closer to FIDE)</span></label>
+            <label><input type="radio" name="mrule" value="100"> <span data-i="rule50">50 moves (the upper limit preferred online)</span></label>
+          </fieldset>
+          <fieldset class="mrule"><legend class="lab" data-i="lblRep">repetition</legend>
+            <label><input type="radio" name="mrep" value="5" checked> <span data-i="rep5">fivefold (recommended, FIDE)</span></label>
+            <label><input type="radio" name="mrep" value="3"> <span data-i="rep3">threefold (preferred online)</span></label>
+          </fieldset>
+          <p class="hint" data-i="ruleNote"></p>
+        </div>
+        <div class="engrow">
+          <label><span data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="4" min="1" max="1500" step="1" inputmode="numeric"></label>
+          <label><span data-i="lblBud">node budget</span> <input type="number" id="bud" value="8" min="1" max="1000000000" step="1" inputmode="numeric"></label>
+        </div>
+        <p class="hint" id="limnote"></p>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section class="panel" aria-labelledby="poslab">
   <div class="two">
@@ -31,19 +91,6 @@
     <p class="hide" id="assumeBoth" data-i="assumeBoth"></p>
   </div>
 
-  <div class="opts">
-    <label><span data-i="lblVer">version</span> <select id="ver">
-      <option value="1" data-i="ver1">fast (the first version)</option>
-      <option value="2" data-i="ver2">second version (wider)</option>
-    </select></label>
-    <label><input type="checkbox" id="lockonly"> <span data-i="lblLockOnly">lock detector only</span></label>
-    <span class="dim small" id="vernote"></span>
-  </div>
-  <div class="opts">
-    <label><span data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="6" min="1" max="600"></label>
-    <label><span data-i="lblBud">node budget</span> <input type="number" id="bud" value="100" min="1" step="10"></label>
-    <span class="dim small" id="limnote"></span>
-  </div>
   <div class="opts">
     <span class="rng"><label for="rowA" data-i="lblRange">positions</label> <input type="number" id="rowA" value="1" min="1" step="100">
       <label for="rowB" data-i="lblRangeTo">to</label> <input type="number" id="rowB" value="0" min="0" step="100">

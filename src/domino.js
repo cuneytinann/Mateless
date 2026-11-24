@@ -16,16 +16,17 @@ import { BLACK, computeContext, doMove, fail, FLAG_CASTLE, FLAG_EP, FLAG_PROMO, 
 import { FLAGGED_BLACK, FLAGGED_WHITE, pawnCheck, staticTests, staticTests2, TESTS_BOTH, testsAfter } from './lock.js';
 
 /* The search's memory of positions: a set, held as an open-addressing hash table with linear
-   probing. A slot is twelve words: the number of the search that filled it, the hash, the nine
-   words of the position's code, and the sides that have met it (FLAGGED_* bits, for run2, whose
-   two searches share the table). A lookup compares the full code, so it can only find the very
-   same position.
+   probing. A slot is thirteen words: the number of the search that filled it, the hash, the nine
+   words of the position's code, the sides that have met it (FLAGGED_* bits, for run2, whose two
+   searches share the table), and, in a search under a move rule, the halfmove clock the position
+   was first met with. A lookup compares the full code, so it can only find the very same
+   position.
 
    Because slots carry the number of their search, starting a new search clears the table in
    constant time. A Domino search plays at most a hundred moves, so it stays in its first table
-   (256 slots, 12 KB, in the first-level cache); the table still doubles when it is 70% full, into a table of the next size
+   (256 slots, 13 KB, in the first-level cache); the table still doubles when it is 70% full, into a table of the next size
    (tables of each size are kept for later searches), for callers that give a larger budget. */
-const MEMO_START_BITS = 8, SLOT = 12;
+const MEMO_START_BITS = 8, SLOT = 13;
 export class PositionSet {
   constructor() {
     this.tables = [];
@@ -55,8 +56,12 @@ export class PositionSet {
     this.count = 0;
   }
 
-  /** Adds the position with code k[at…] and hash h. Returns false when it was there already. */
-  add(k, at, h) {
+  /** Adds the position with code k[at…] and hash h. Returns false when it was there already.
+      clock ≥ 0 (a search under a move rule): the halfmove clock it is met with. Then a position
+      met before with a clock no lower is there already, and one met before with a higher clock
+      counts as new and keeps the lower clock: its lines now run longer before the rule ends
+      them. */
+  add(k, at, h, clock = -1) {
     const slots = this.slots, gen = this.generation, mask = this.mask;
     let slot = h & mask;
     for (;;) {
@@ -64,15 +69,34 @@ export class PositionSet {
       if (slots[i] !== gen) break;
       if (slots[i + 1] === h && slots[i + 2] === k[at] && slots[i + 3] === k[at + 1] && slots[i + 4] === k[at + 2] &&
           slots[i + 5] === k[at + 3] && slots[i + 6] === k[at + 4] && slots[i + 7] === k[at + 5] &&
-          slots[i + 8] === k[at + 6] && slots[i + 9] === k[at + 7] && slots[i + 10] === k[at + 8]) return false;
+          slots[i + 8] === k[at + 6] && slots[i + 9] === k[at + 7] && slots[i + 10] === k[at + 8]) {
+        if (clock < 0 || slots[i + 12] <= clock) return false;
+        slots[i + 12] = clock;
+        return true;
+      }
       slot = (slot + 1) & mask;
     }
     const i = slot * SLOT;
     slots[i] = gen;
     slots[i + 1] = h;
     for (let j = 0; j < KEY_WORDS; j++) slots[i + 2 + j] = k[at + j];
+    slots[i + 12] = clock;
     if (++this.count > this.limit) this.grow();
     return true;
+  }
+
+  /** Is the position with code k[at…] and hash h in the set? */
+  has(k, at, h) {
+    const slots = this.slots, gen = this.generation, mask = this.mask;
+    let slot = h & mask;
+    for (;;) {
+      const i = slot * SLOT;
+      if (slots[i] !== gen) return false;
+      if (slots[i + 1] === h && slots[i + 2] === k[at] && slots[i + 3] === k[at + 1] && slots[i + 4] === k[at + 2] &&
+          slots[i + 5] === k[at + 3] && slots[i + 6] === k[at + 4] && slots[i + 7] === k[at + 5] &&
+          slots[i + 8] === k[at + 6] && slots[i + 9] === k[at + 7] && slots[i + 10] === k[at + 8]) return true;
+      slot = (slot + 1) & mask;
+    }
   }
 
   /** Adds the position for the sides in `live` (FLAGGED_* bits) and returns those of them that
@@ -138,10 +162,30 @@ export class PositionSet {
      'budget'   the node budget runs out.
    A failure proves nothing the arbiter acts on: it only ever acts on a proof.
 
-   No move-count rule ends a line: the 50- and 75-move rules and repetitions play no part. A
-   proof without them holds with them too, since they only cut lines short, so leaving them out
-   can cost a proof but never make a false one; and the search's memory is a plain set of
-   positions.
+   By default no move-count rule ends a line: the 50- and 75-move rules and repetitions play no
+   part. A proof without them holds with them too, since they only cut lines short, so leaving
+   them out can cost a proof but never make a false one; and the search's memory is a plain set
+   of positions.
+
+   Under a move rule (run's moveRule: 150 plies, the 75-move rule, FIDE 9.6.2, or 100, the
+   50-move rule that some platforms apply by themselves) a line also ends, drawn, at a position
+   whose halfmove clock has reached the rule and which has a legal move: the game is over there.
+   With no legal move the line ends as before, so a mate on the move that reaches the rule still
+   counts (9.6.2: the mate takes precedence). The memory then keeps each position with the clock
+   it was first met with: met again with a clock no lower, its lines are covered (they are the
+   same moves, cut sooner); met with a lower one, it is searched again. The rule only ever ends
+   lines that would otherwise go on, so it never fails a search that succeeds without it; where
+   the clock is far from the rule it changes nothing but the cost. Only run takes a rule (the
+   ladder calls it where the rule can matter); run2 has none.
+
+   Under a repetition rule (run's repeat: fivefold repetition, FIDE 9.6.1, or threefold, which
+   some platforms apply by themselves) a line also ends, drawn, at a position the game has already
+   had N − 1 times before the root: met there, it occurs for the N-th time at least, and the game
+   is over. repeat is the set of those positions (the ladder builds it from the game's history).
+   Whatever the line that reaches such a position, it reaches it for at least the N-th time, so
+   the end does not depend on the line, and a position met before is still covered where it was
+   met. A position on the line itself that comes back is covered by the memory as before; without
+   a history the set is empty and the rule changes nothing.
 
    After a move, a node asks only the static tests that move can have changed, and only while no
    en passant square is set (testsAfter in lock.js: the material test after a capture or a
@@ -166,6 +210,10 @@ export class PositionSet {
 export const DOMINO_PLY = 6, DOMINO_BUDGET = 100;
 /** The second tier (the second version, see ladder.js): 9 plies, 10,000 nodes. */
 export const DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 10000;
+/** The search under a move rule (the second version, see ladder.js): at least 200,000 nodes. Near the
+    rule its tree is closed by the rule itself, a tree a few plies deep but wide: with a queen, every
+    one of its moves. */
+export const DOMINO_RULE_BUDGET = 200000;
 
 /** The static tests the move of a piece of type `type` to `to` (with `flags`) from `pos` can
     change (testsAfter in lock.js); checked: the side to move is in a pawn's check. */
@@ -185,17 +233,26 @@ export class Domino {
     this.budget = 0;
     this.failure = null;
     this.running = false;
+    /** The move rule of the search running (0: none), its repetition set (null: none), and whether
+        either has ended a line. */
+    this.moveRule = 0;
+    this.repeat = null;
+    this.ruled = false;
     /** For run2: each side's budget and failure, and the sides whose search has failed. */
     this.budgetWhite = 0; this.budgetBlack = 0;
     this.failureWhite = null; this.failureBlack = null;
     this.dead = 0;
   }
 
-  /** Runs the search from `root` and reports { proven, failure, budgetLeft }.
-      rootStatic: false when the caller has already asked the static tests at the root. */
-  run(root, flagged, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, { rootStatic = true } = {}) {
+  /** Runs the search from `root` and reports { proven, failure, budgetLeft, ruled }.
+      rootStatic: false when the caller has already asked the static tests at the root.
+      moveRule: 0 (no move rule), or the halfmove clock at which the game ends by itself (150,
+      the 75-move rule; 100, the 50-move rule); repeat: null, or the positions a repetition rule
+      ends a line at (a PositionSet, see above); ruled: a rule ended a line. */
+  run(root, flagged, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, { rootStatic = true, moveRule = 0, repeat = null } = {}) {
     if (flagged !== WHITE && flagged !== BLACK) fail('flagged must be WHITE or BLACK');
     if (!(maxPly >= 0) || !(budget >= 0)) fail('maxPly and budget must be numbers ≥ 0');
+    if (!(Number.isInteger(moveRule) && moveRule >= 0)) fail('moveRule must be an integer ≥ 0');
     if (!Number.isInteger(root.halfmove)) fail('the halfmove clock must be an integer');
     if (this.running) fail('the search was started again while running');
     this.running = true;
@@ -206,11 +263,16 @@ export class Domino {
       this.flagged = flagged;
       this.budget = budget;
       this.failure = null;
+      this.moveRule = moveRule;
+      this.repeat = repeat && repeat.count > 0 ? repeat : null;
+      this.ruled = false;
       const proven = this.node(0, maxPly, rootStatic ? TESTS_BOTH : 0);
       if (!proven && !this.failure) fail('search failed without a reason');
       if (this.pos.undoTop !== 0) fail('search left moves on the board');
-      return { proven, failure: proven ? null : this.failure, budgetLeft: Math.max(this.budget, 0) };
+      return { proven, failure: proven ? null : this.failure, budgetLeft: Math.max(this.budget, 0), ruled: this.ruled };
     } finally {
+      this.moveRule = 0;
+      this.repeat = null;
       this.running = false;
     }
   }
@@ -219,12 +281,16 @@ export class Domino {
   node(ply, depth, tests) {
     const pos = this.pos, key = this.key;
     writeKey(pos, key, 0);
-    if (!this.seen.add(key, 0, hashKey(key, 0))) return true;     // met before: covered there
+    const rule = this.moveRule, h = hashKey(key, 0);
+    if (this.repeat && this.repeat.has(key, 0, h)) { this.ruled = true; return true; }   // the repetition rule ends the game: drawn
+    if (!this.seen.add(key, 0, h, rule ? Math.min(pos.halfmove, 0x7fffffff) : -1)) return true;   // met before: covered there
     if (tests && staticTests(pos, this.flagged, tests)) return true;
 
     const ctx = this.contexts[ply];
-    if (depth === 0) {                                             // only "is there a legal move?" matters
+    const ruleEnds = rule > 0 && pos.halfmove >= rule;
+    if (depth === 0 || ruleEnds) {                                 // only "is there a legal move?" matters
       if (!hasLegalMove(pos, ctx)) return this.noLegalMove(ctx);
+      if (ruleEnds) { this.ruled = true; return true; }            // the move rule ends the game: drawn
       this.failure = 'horizon';
       return false;
     }

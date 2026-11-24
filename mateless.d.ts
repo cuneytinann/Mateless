@@ -25,9 +25,9 @@ declare namespace Mateless {
   /** a1 = 0, b1 = 1, …, h1 = 7, a2 = 8, …, h8 = 63; NO_SQUARE (-1) where there is none. */
   type Square = number;
   /** How a game ended, or 0 while it goes on (see Result and RESULT_NAMES). */
-  type ResultCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  type ResultCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
   /** The results in words, by code. */
-  type ResultName = 'ongoing' | 'white checkmates' | 'black checkmates' | 'stalemate' | '75-move rule' | 'fivefold repetition' | 'dead position' | 'white wins on time' | 'black wins on time' | 'white wins by resignation' | 'black wins by resignation' | 'draw on time' | 'draw on resignation';
+  type ResultName = 'ongoing' | 'white checkmates' | 'black checkmates' | 'stalemate' | '75-move rule' | 'fivefold repetition' | 'dead position' | 'white wins on time' | 'black wins on time' | 'white wins by resignation' | 'black wins by resignation' | 'draw on time' | 'draw on resignation' | '50-move rule' | 'threefold repetition';
 
   const BLACK: 0;
   const WHITE: 8;
@@ -43,7 +43,7 @@ declare namespace Mateless {
   /** Index = piece code; ' ' marks codes that are no piece. */
   const PIECE_LETTERS: string;
   /** Each result in words: RESULT_NAMES[code]. */
-  const RESULT_NAMES: readonly ['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation'];
+  const RESULT_NAMES: readonly ['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation', '50-move rule', 'threefold repetition'];
   /** The result codes by name. Claims (threefold repetition, the 50-move rule) and agreed draws are the platform's. */
   const Result: {
     readonly NONE: 0;
@@ -59,6 +59,10 @@ declare namespace Mateless {
     readonly BLACK_BY_RESIGNATION: 10;
     readonly DRAW_ON_TIME: 11;
     readonly DRAW_ON_RESIGNATION: 12;
+    /** Only in a game under the 50-move rule (moveRule 100). */
+    readonly FIFTY_MOVES: 13;
+    /** Only in a game under threefold repetition (repetition 3). */
+    readonly THREEFOLD: 14;
   };
   /** The castling skeleton of standard chess: one digit per file, 3 king, 1 king-side rook, 2 queen-side rook. */
   const STANDARD_SKELETON: '20003001';
@@ -219,6 +223,8 @@ declare namespace Mateless {
     nodes: number;
     /** The second tier ran. */
     deep: boolean;
+    /** The searches under the move rule ran, and the answer is theirs. */
+    ruled: boolean;
   }
 
   interface ProofOptions {
@@ -228,7 +234,19 @@ declare namespace Mateless {
     deepPly?: number;
     /** The second tier's node budget (default DOMINO_DEEP_BUDGET); 0: no second tier. */
     deepBudget?: number;
+    /** The halfmove clock at which the game ends by itself: 150 (the 75-move rule), 100 (the 50-move rule) or 0 (default: no rule). */
+    moveRule?: MoveRule;
+    /** The repetition at which the game ends by itself: 5, 3, or 0 (default: no rule). Needs a history. */
+    repetition?: Repetition;
+    /** The game's positions before this one since its last capture or pawn move (Game.repetitionHistory). */
+    history?: RepetitionHistory | null;
   }
+  /** A move rule: 0 none, 100 the 50-move rule, 150 the 75-move rule (halfmove clocks). */
+  type MoveRule = 0 | 100 | 150;
+  /** A repetition rule: 0 none, 3 threefold, 5 fivefold. */
+  type Repetition = 0 | 3 | 5;
+  /** Position codes (KEY_WORDS words each), n of them. */
+  interface RepetitionHistory { keys: Int32Array; n: number; }
 
   /** Can `flagged` never be mated? The static tests, then the Domino search (6 plies, 100 nodes by
       default) and, where it allows, its second tier (9 plies, 10,000 nodes). */
@@ -236,7 +254,7 @@ declare namespace Mateless {
   /** proveCannotBeMated for both sides in one pass: [White flagged, Black flagged]. */
   function proveBoth(pos: Position, options?: ProofOptions): [Proof, Proof];
   /** Is the position dead (FIDE 5.2.2)? Both sides proven unable to mate; a single position, no game around it. */
-  function isDeadPosition(pos: Position): boolean;
+  function isDeadPosition(pos: Position, options?: { moveRule?: MoveRule; repetition?: Repetition; history?: RepetitionHistory | null }): boolean;
 
   interface StatusOptions {
     /** How many times the current position has occurred (default 1). */
@@ -245,6 +263,10 @@ declare namespace Mateless {
     deadPositionSearch?: boolean;
     /** A game whose flags decide the dead position. */
     memory?: Game | null;
+    /** 0 (default): the game ends at the 75-move rule, proofs without a rule; 150 or 100: it ends at that rule, proofs under it. With a memory, the game's rule. */
+    moveRule?: MoveRule;
+    /** 0 (default): the game ends at fivefold repetition; 5 or 3: it ends at that repetition. With a memory, the game's. */
+    repetition?: Repetition;
   }
 
   /** How the game stands: mate, stalemate, dead position, fivefold repetition, the 75-move rule (the endings that need no claim); 0 while it goes on. */
@@ -257,6 +279,9 @@ declare namespace Mateless {
     budget?: number;
     deepPly?: number;
     deepBudget?: number;
+    moveRule?: MoveRule;
+    repetition?: Repetition;
+    history?: RepetitionHistory | null;
   }
 
   /** The verdict when the flag of `side` falls (or it resigns), in a single position: a draw if its opponent can never mate. */
@@ -265,7 +290,12 @@ declare namespace Mateless {
   /** The two flags of a game played move by move ("may still mate"): a side whose flag is down has
       been proven unable to mate for the rest of the game. */
   class Flags {
-    constructor();
+    /** moveRule: the proofs hold for a game that ends at that rule (default 0: no rule). */
+    constructor(options?: { moveRule?: MoveRule; repetition?: Repetition });
+    /** The move rule the flags are proven under. */
+    readonly moveRule: MoveRule;
+    /** The repetition rule the flags are proven under. */
+    readonly repetition: Repetition;
     /** The ply at which White was proven unable to mate; -1 while its flag is up. */
     whiteDownAt: number;
     /** The ply at which Black was proven unable to mate; -1 while its flag is up. */
@@ -281,14 +311,21 @@ declare namespace Mateless {
     /** Has `color` been proven unable to mate, for the rest of the game? */
     neverMates(color: Color): boolean;
     /** Climbs the ladder for each side whose flag is still up, at `pos`, the position of game ply `ply`; once per ply. */
-    update(pos: Position, ply: number): void;
+    update(pos: Position, ply: number, history?: RepetitionHistory | null): void;
     /** The game is back at ply `ply` (moves taken back): a flag that came down after it goes up again, and the next update is for ply + 1. */
     rewind(ply: number): void;
   }
 
   /** A game played move by move: its positions, repetitions and the two flags ("may still mate"). */
   class Game {
-    constructor(position: Position);
+    /** moveRule 150 or 100: the game ends at that rule and its flags are proven under it; 0 (default): it ends at the 75-move rule, flags without a rule. */
+    constructor(position: Position, options?: { moveRule?: MoveRule; repetition?: Repetition });
+    /** The game's move rule. */
+    readonly moveRule: MoveRule;
+    /** The game's repetition rule. */
+    readonly repetition: Repetition;
+    /** The positions before the current one that it can still repeat (for a repetition rule). */
+    repetitionHistory(): RepetitionHistory;
     /** The current position. */
     position: Position;
     /** How many times the current position has occurred. */

@@ -14,21 +14,23 @@ import { cannotMate } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY } from './domino.js';
 import { Flags, isDeadPosition, proveCannotBeMated } from './ladder.js';
 
-/* The twelve results the engine decides, as it numbers them; 0 means the game goes on.
+/* The fourteen results the engine decides, as it numbers them; 0 means the game goes on.
      the board ends the game         1, 2 checkmate; 3 stalemate; 4 the 75-move rule; 5 fivefold
-                                     repetition (FIDE 9.6); 6 a dead position (FIDE 5.2.2)
+                                     repetition (FIDE 9.6); 6 a dead position (FIDE 5.2.2);
+                                     13 the 50-move rule, only in a game under it (moveRule 100);
+                                     14 threefold repetition, only in a game under it (repetition 3)
      a flag falls (FIDE 6.9)         7, 8 a win on time; 11 a draw: the opponent can never mate
      a side resigns (FIDE 5.1.2)     9, 10 a win; 12 a draw: the opponent can never mate
    RESULT_NAMES gives each one in words. Draws that need a claim (threefold repetition, FIDE 9.2;
    the 50-move rule, 9.3) or an agreement are the platform's to decide: a Game counts repetitions
    and every position keeps its halfmove clock. */
-export const RESULT_NAMES = Object.freeze(['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation']);
+export const RESULT_NAMES = Object.freeze(['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation', '50-move rule', 'threefold repetition']);
 export const Result = Object.freeze({
   NONE: 0,
   WHITE_MATES: 1, BLACK_MATES: 2, STALEMATE: 3,
   SEVENTY_FIVE_MOVES: 4, FIVEFOLD: 5, DEAD_POSITION: 6,
   WHITE_ON_TIME: 7, BLACK_ON_TIME: 8, WHITE_BY_RESIGNATION: 9, BLACK_BY_RESIGNATION: 10,
-  DRAW_ON_TIME: 11, DRAW_ON_RESIGNATION: 12,
+  DRAW_ON_TIME: 11, DRAW_ON_RESIGNATION: 12, FIFTY_MOVES: 13, THREEFOLD: 14,
 });
 
 
@@ -39,19 +41,33 @@ export const Result = Object.freeze({
       repetitions         how many times the current position has occurred;
       memory              a Game: its flags decide the dead position (see Flags.update);
       deadPositionSearch  false: only the static tests (material, lock) can find a dead
-                          position, with no Domino search (a single position only). */
-export function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = null } = {}) {
+                          position, with no Domino search (a single position only);
+      moveRule            0 (the default): the game ends at the 75-move rule, and the proofs of a
+                          dead position take no move rule into account; 150 or 100: the game ends
+                          at that rule (the 75- or the 50-move rule), and the proofs are made under
+                          it (ladder.js). With a memory, the Game's own rule.
+      repetition          0 (the default): the game ends at fivefold repetition, and the proofs of a
+                          dead position take no repetition into account; 5 or 3: the game ends at
+                          that repetition, and a Game's flags are proven under it. With a memory,
+                          the Game's own. */
+export function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = null, moveRule = 0, repetition = 0 } = {}) {
+  if (memory) { moveRule = memory.moveRule; repetition = memory.repetition; }
   if (!hasLegalMove(pos)) {
     if (SHARED_CONTEXT.checks === 0) return Result.STALEMATE;
     return pos.side === WHITE ? Result.BLACK_MATES : Result.WHITE_MATES;
   }
+  // Under a move rule, the rule is what ended a game at it: there every side is proven unable to mate
+  // (the rule ends every line at once), but the rule's own result says why.
+  if (moveRule && pos.halfmove >= moveRule) return moveRule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
+  // The same for a repetition rule: a position that occurs for the N-th time ends the game there.
+  if (repetition && repetitions >= repetition) return repetition === 3 ? Result.THREEFOLD : Result.FIVEFOLD;
   let dead;
   if (memory) { memory.updateFlags(); dead = memory.neverMates(WHITE) && memory.neverMates(BLACK); }
-  else if (deadPositionSearch) dead = isDeadPosition(pos);
+  else if (deadPositionSearch) dead = isDeadPosition(pos, { moveRule, repetition });
   else dead = cannotMate(pos, WHITE) && cannotMate(pos, BLACK);
   if (dead) return Result.DEAD_POSITION;
-  if (repetitions >= 5) return Result.FIVEFOLD;
-  if (pos.halfmove >= 150) return Result.SEVENTY_FIVE_MOVES;
+  if (repetitions >= 5) return Result.FIVEFOLD;   // (0: no repetition rule above)
+  if (pos.halfmove >= (moveRule || 150)) return moveRule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
   return Result.NONE;
 }
 
@@ -60,8 +76,9 @@ export function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, me
     opponent can never mate, otherwise a win for the opponent. In a game, Game.flagVerdict reads
     the flags instead. */
 export function flagVerdict(pos, side, { resigned = false, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
-  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget }).proven, resigned);
+                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
+                                         repetition = 0, history = null } = {}) {
+  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget, moveRule, repetition, history }).proven, resigned);
 }
 
 function verdictCode(side, draw, resigned) {
@@ -74,9 +91,14 @@ function verdictCode(side, draw, resigned) {
     it counts how many times the current position has occurred, and
     the two flags (Flags, ladder.js). A position before the last capture or pawn move can never
     come back, so only the positions since then are compared, every other one, with the same side
-    to move. */
+    to move.
+    moveRule: 0 (the default), the game ends at the 75-move rule and its flags take no move rule
+    into account; 150 or 100, it ends at that rule and its flags are proven under it.
+    repetition: 0 (the default), the game ends at fivefold repetition and its flags take no
+    repetition into account; 5 or 3, it ends at that repetition and its flags are proven under it,
+    with the game's own history. */
 export class Game {
-  constructor(position) {
+  constructor(position, { moveRule = 0, repetition = 0 } = {}) {
     this.position = position.clone();
     this.history = new Int32Array(KEY_WORDS * 64);
     this.length = 0;
@@ -86,8 +108,10 @@ export class Game {
     this.repetitions = 1;
     /** Plies played since the first position. */
     this.ply = 0;
-    /** The two flags "may still mate" (ladder.js). */
-    this.flags = new Flags();
+    /** The two flags "may still mate" (ladder.js), under the game's move rule. */
+    this.flags = new Flags({ moveRule, repetition });
+    this.moveRule = moveRule;
+    this.repetition = repetition;
   }
   /** The ply at which each side was proven unable to mate; -1 while its flag is up (this.flags). */
   get whiteDownAt() { return this.flags.whiteDownAt; }
@@ -100,7 +124,13 @@ export class Game {
   /** Has `color` been proven unable to mate, for the rest of the game? */
   neverMates(color) { return this.flags.neverMates(color); }
   /** Climbs the ladder for each side whose flag is still up, once per position (Flags.update). */
-  updateFlags() { this.flags.update(this.position, this.ply); }
+  updateFlags() { this.flags.update(this.position, this.ply, this.repetition ? this.repetitionHistory() : null); }
+  /** The positions before the current one that it can still repeat (those since the last capture
+      or pawn move), as { keys, n }: n codes of KEY_WORDS words each, for a repetition rule. */
+  repetitionHistory() {
+    const n = Math.min(this.position.halfmove, this.length - 1), end = (this.length - 1) * KEY_WORDS;
+    return { keys: this.history.subarray(end - n * KEY_WORDS, end), n };
+  }
   record() {
     if ((this.length + 1) * KEY_WORDS > this.history.length) {
       const grown = new Int32Array(this.history.length * 2);

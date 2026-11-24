@@ -31,8 +31,11 @@
  *                                  position, and "is there a legal move?"
  *   flags                          the halfmove clock and the en passant square, which say when
  *                                  the static tests can have changed
- * No rule of the move counters (50 or 75 moves, repetitions) takes part in a proof: those rules
- * only cut lines short, so leaving them out can cost a proof but never make a false one.
+ * By default no rule of the move counters (50 or 75 moves, repetitions) takes part in a proof: those
+ * rules only cut lines short, so leaving them out can cost a proof but never make a false one. On
+ * request (moveRule 150 or 100) the second version searches again, under the 75- or the 50-move
+ * rule, the sides it leaves unproven where the rule can end a line (ladder.js); a game under such a
+ * rule ends at it (game.js).
  *
  * Notes on porting. The engine keeps module state that every call shares: the lock detector's
  * census and the sets its mating net reads (lock.js), the shared move-generation context

@@ -25,22 +25,20 @@ kendi durumu tahtadayken çalışıyor, geri kalan her pozisyon ilk sürümün k
 [Lichess için: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 (belgeler İngilizce)
 
-## En küçük parçaya değil, bütüne bakan bir tespit
+## Bütün yapının bit düzeyinde tespiti
 
 Mateless'in merkezinde bir **kilit dedektörü** var: hiçbir yasal hamle dizisinin açamayacağı
 piyon, şah ve fil yapılarını tek bir hamle üretmeden, yaklaşık 90 nanosaniyede tanıyor.
 
-Alanın referansı [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022)
-en küçük parçalardan yukarı çıkıyor: kısa bir aramadan sonra pozisyonu taş taş inceliyor, her taş
-için ayrı bir erişim kümesi, ardından mat ağı için kombinatoryal bir kontrol. Mateless bütüne bir
-kerede bakıyor: bir tarafın bütün piyonları tek bir koni, bir şah tek bir erişim kümesi; birkaç
-bitboard işlemi bütün yapıyı bir sabit noktaya taşıyor. Aşağıdaki Lichess verisinin kilitli
-pozisyonlarında bu, chasolver'ın hızlı kontrolünden **~70 kat hızlı** (Rust'a karşı Rust);
-arkasındaki kısa aramayla Mateless o verinin **%99,98'ini** ~17–18 kat hızlı kapsıyor.
+Yapının bütününe bir kerede, bit düzeyinde bakıyor: bir tarafın bütün piyonları tek bir koni, bir
+şah tek bir erişim kümesi; 64 bitlik kümeler üzerinde birkaç işlem bütün yapıyı bir sabit noktaya
+taşıyor. Bildiğimiz kadarıyla bu, onu türünün en hızlı yöntemi yapıyor: dedektörün arkasındaki
+kısa aramayla Mateless, aşağıdaki Lichess verisinin **%99,98'ini** bilinen en yakın yöntemden
+**~17–18 kat hızlı** kapsıyor (Rust'a karşı Rust).
 
-chasolver tam bir çözücü: Mateless'in denemediği bestelenmiş problemleri de çözüyor. Mateless tam
-bir çözücünün önüne konan hızlı katman; bir oyun sunucusunun içinde her hamlede çalışacak kadar
-küçük.
+Alanın referansı [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022)
+tam bir çözücü: Mateless'in denemediği bestelenmiş problemleri de çözüyor. Mateless böyle bir
+çözücünün önüne konan hızlı katman; bir oyun sunucusunun içinde her hamlede çalışacak kadar küçük.
 
 ## Hız
 
@@ -110,7 +108,7 @@ hiç mat edemeyeceğini ispatlayan ilk basamak bayrağını indiriyor, kalıcı 
   (`testsAfter`). Bunun için bayraklar bir önceki ply'dan iki şey hatırlıyor: en passant karesi
   var mıydı, sıradaki taraf piyon şahında mıydı. Ply atlanırsa ya da hamle geri alınırsa
   pozisyonun kendisi karar veriyor (yarım hamle sayacı en fazla 1 ise iki test de).
-- **Hiçbir hamle sayacı kuralı ispata katılmıyor:** 50 ve 75 hamle kuralları ve tekrarlar dizileri
+- **Varsayılan olarak hiçbir hamle sayacı kuralı ispata katılmıyor** (istenirse ikinci sürüm hesaba katar: `moveRule`, `repetition`, İkinci sürüm bölümü): 50 ve 75 hamle kuralları ve tekrarlar dizileri
   yalnızca kısaltır; onları dışarıda bırakmak bir ispatı kaybettirebilir, yanlış bir ispat
   üretemez.
 
@@ -499,6 +497,28 @@ giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalıştırıyor;
 `_internal.coreLockTest` ilk sürümün dedektörü tek başına (`lock/`'taki, scalachess yamasındaki ve
 kilit sekmesinin çizdiği); `proveCannotBeMated(pos, side, { deepBudget: 0 })` ikinci kademeyi dışarıda bırakıyor.
+
+**Hamle kuralları, istenirse (şimdilik JavaScript).** Oyun, iki taraf da alış ve piyon hamlesi olmadan 75'er hamle
+yapınca (FIDE 9.6.2) ve bir pozisyon beşinci kez gelince (9.6.1) kendiliğinden berabere biter; bazı platformlarda 50
+hamlede ya da üçlü tekrarda. Ancak sonra gelebilecek bir mat hiç gelmez. `moveRule: 150` ya da `100` ve `repetition: 5`
+ya da `3` ile (tekrarlar için oyunun geçmişiyle: `history: game.repetitionHistory()`) `proveCannotBeMated`,
+`proveBoth`, `isDeadPosition`, `flagVerdict`, `Flags` ve `Game` bunu hesaba katıyor:
+- arama hattı, yarım hamle sayacı sınıra ulaşmış ve legal hamlesi olan bir pozisyonda berabere biter (o hamlede gelen
+  mat yine sayılır); oyunun kökten önce N − 1 kez gördüğü bir pozisyonda da;
+- kurallı arama yalnızca kuralsız aramalar başarısız olunca ve bir kuralın bir hattı bitirebildiği yerde koşar: sayaç
+  hamle sınırına aramanın ply'ı kadar yakınsa ya da geçmişte N − 1 kez görülmüş bir pozisyon varsa. Yani kuralsız her
+  ispat aynı düğümlerle duruyor; kurallar kapalıyken (varsayılan) cevaplar düğüm düğüm öncekiyle aynı;
+- ply tavanı iki kademenin derin olanı, bütçesi hamle sınırına yakınken en az 200.000 düğüm (`DOMINO_RULE_BUDGET`);
+- kurallı bir `Game` kurallarda biter: 75 hamle ve beşli tekrar kodlarını koruyor (4, 5); 50 hamle 13, üçlü tekrar 14.
+
+Sağlam, ama eksiksizliği yalnızca bu sınırlar içinde. Kurallı bir ispat o kurallarda biten bir oyun için geçerli
+(beşlininki üçlüde, 75 hamleninki 50'de de; tersi değil). Yine de bir ispatı kaçırabilir: sayaç sınıra aramanın
+ply'ından uzaksa ya da ispat daha çok düğüm istiyorsa cevap "mat edebilir" kalır, güvenli tarafta. Şah ve kaleye karşı
+şah (`7k/8/8/8/8/8/8/K5R1 w`, en kısa yardımlı mat 11 yarım hamle), 50 hamle kuralı: sayaç 89'dayken Beyaz zamanında mat
+edebilir, 90'da edemez. Varsayılan sınırlarla cevap 89'a kadar ve 92'den itibaren doğru; 90'da kural 10 yarım hamle
+uzakta, aramanın 9'unun ötesinde, 91'de ispat 331.592 düğüm istiyor. 20 ply ve bir milyon düğümle her sayaçta doğru.
+Bu motorun türediği motorun sayaçlı aramasıyla, o aramanın bitiremediği yerlerde statik testin kapattığı her yaprakta
+chasolver'la ve kurallara göre oynanan oyunlarla denetlendi: yanlış beraberlik yok.
 
 İkiz filler, mat edecek taraf öbür renkte şah çekebildiğinde önem kazanıyor: chasolver türünden
 bestelenmiş bir pozisyonda siyahın a7 ve b8'deki iki koyu fili a8'deki şahın iki kaçışını birden

@@ -25,22 +25,22 @@ the board, so every other position goes through the first version's code
 [Design](docs/DESIGN.md) · [Results](docs/RESULTS.md) ·
 [for Lichess: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 
-## The whole structure, not its smallest parts
+## Bit-level detection of the whole structure
 
 The centre of Mateless is a **lock detector**: it recognises structures of pawns, kings and
 bishops that no series of legal moves can open, without generating a single move, in about 90
 nanoseconds.
 
-[chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022), the reference
-in this field, works up from the smallest parts: after a short search it analyses the position
-piece by piece, a reach for every piece, then a combinatorial check of the mating net. Mateless
-looks at the whole at once: all the pawns of a side form one cone, a king has one reach, and a
-few bitboard operations take the whole structure to a fixed point. On the locked positions of the
-Lichess data below that is **~70× faster** than chasolver's fast check (Rust against Rust), and
-with the short search behind it Mateless covers **99.98%** of that data ~17–18× faster.
+It looks at the whole structure at once, at the level of bits: all the pawns of a side form one
+cone, a king has one reach, and a few operations on 64-bit sets take the whole structure to a
+fixed point. As far as we know that makes it the fastest method of its kind: with the short
+search behind the detector, Mateless covers **99.98%** of the Lichess data below **~17–18×
+faster** than the nearest known method (Rust against Rust).
 
-chasolver is complete: it solves composed problems that Mateless does not try to. Mateless is the
-fast layer in front of a complete solver, small enough to run inside a game server on every move.
+[chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022) is the
+reference in this field, and a complete solver: it settles composed problems that Mateless does
+not try to. Mateless is the fast layer in front of such a solver, small enough to run inside a
+game server on every move.
 
 ## Speed
 
@@ -109,8 +109,9 @@ side can never mate brings its flag down, for good.
   (`testsAfter`). For that the flags remember two facts of the ply before: whether an en passant
   square stood, and whether the side to move was in a pawn's check. After plies left out or a
   takeback, the position alone decides (both tests when the halfmove clock is at most 1).
-- **No move-count rule takes part in a proof:** the 50- and 75-move rules and repetitions only cut
-  lines short, so leaving them out can cost a proof but never make a false one.
+- **By default no move-count rule takes part in a proof:** the 50- and 75-move rules and repetitions
+  only cut lines short, so leaving them out can cost a proof but never make a false one. On request
+  the second version takes them into account (`moveRule`, `repetition`, see The second version).
 
 > **Takebacks.** A flag that is down holds for every position reached from that one. A platform
 > that lets moves be taken back calls `flags.rewind(ply)` with the ply the game is back at
@@ -498,6 +499,36 @@ measured, and only where its own situation is on the board.
 In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
 is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
 lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out.
+
+**The move rules, on request (JavaScript for now).** A game ends by itself, drawn, after 75 moves of
+each side with no capture and no pawn move (FIDE 9.6.2) and when a position occurs for the fifth
+time (9.6.1); some platforms already at 50 moves, or at threefold repetition. A mate that could come
+only later never comes. With `moveRule: 150` or `100` and `repetition: 5` or `3` (and, for
+repetitions, the game's history: `history: game.repetitionHistory()`), `proveCannotBeMated`,
+`proveBoth`, `isDeadPosition`, `flagVerdict`, `Flags` and `Game` take that into account:
+- a line of the search ends, drawn, at a position whose halfmove clock has reached the rule and that
+  has a legal move (a mate on that very move still counts), and at a position the game has already
+  had N − 1 times before;
+- the search under the rules runs only after the searches without them have failed, and only where
+  a rule can end a line: the clock within the search's plies of the move rule, or a position of the
+  history that has occurred N − 1 times. So every proof without the rules stands, with the same
+  nodes, and with the rules off (the default) the answers are those of before, node for node;
+- its ply ceiling is the deeper of the two tiers', its budget at least 200,000 nodes
+  (`DOMINO_RULE_BUDGET`) near the move rule;
+- a `Game` under the rules ends at them: the 75-move rule and fivefold repetition keep their codes
+  (4, 5); the 50-move rule is 13 and threefold repetition 14.
+
+It is sound, and complete only within those limits. A proof under the rules holds for a game that
+ends at them (fivefold's holds under threefold, the 75-move rule's under the 50-move rule, not the
+other way round). It can still miss one: where the clock is further from the rule than the search's
+plies, or where the proof needs more nodes, the answer stays "may mate", on the safe side. King and
+rook against king (`7k/8/8/8/8/8/8/K5R1 w`, a helpmate of 11 plies at the shortest) under the
+50-move rule: White can mate in time with the clock at 89, not at 90. With the default limits the
+answer is right up to 89 and from 92; at 90 the rule is 10 plies away, beyond the 9 of the search,
+and at 91 the proof takes 331,592 nodes. With 20 plies and a million nodes it is right at every
+clock. Checked against the clocked search of the engine this one grew from, with chasolver on every
+leaf a static test closed where that search ran out, and on games played to the rules: no false
+draw.
 
 Twin bishops matter where the mater can check on the other colour: in a composed position of
 chasolver's kind, Black's two dark bishops on a7 and b8 hold both flights of a king on a8 while

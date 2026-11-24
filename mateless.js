@@ -33,8 +33,11 @@
  *                                  position, and "is there a legal move?"
  *   flags                          the halfmove clock and the en passant square, which say when
  *                                  the static tests can have changed
- * No rule of the move counters (50 or 75 moves, repetitions) takes part in a proof: those rules
- * only cut lines short, so leaving them out can cost a proof but never make a false one.
+ * By default no rule of the move counters (50 or 75 moves, repetitions) takes part in a proof: those
+ * rules only cut lines short, so leaving them out can cost a proof but never make a false one. On
+ * request (moveRule 150 or 100) the second version searches again, under the 75- or the 50-move
+ * rule, the sides it leaves unproven where the rule can end a line (ladder.js); a game under such a
+ * rule ends at it (game.js).
  *
  * Notes on porting. The engine keeps module state that every call shares: the lock detector's
  * census and the sets its mating net reads (lock.js), the shared move-generation context
@@ -2462,16 +2465,17 @@ function staticTests2(pos, ask, tests) {
    counts can change; what a proof proves does not. */
 
 /* The search's memory of positions: a set, held as an open-addressing hash table with linear
-   probing. A slot is twelve words: the number of the search that filled it, the hash, the nine
-   words of the position's code, and the sides that have met it (FLAGGED_* bits, for run2, whose
-   two searches share the table). A lookup compares the full code, so it can only find the very
-   same position.
+   probing. A slot is thirteen words: the number of the search that filled it, the hash, the nine
+   words of the position's code, the sides that have met it (FLAGGED_* bits, for run2, whose two
+   searches share the table), and, in a search under a move rule, the halfmove clock the position
+   was first met with. A lookup compares the full code, so it can only find the very same
+   position.
 
    Because slots carry the number of their search, starting a new search clears the table in
    constant time. A Domino search plays at most a hundred moves, so it stays in its first table
-   (256 slots, 12 KB, in the first-level cache); the table still doubles when it is 70% full, into a table of the next size
+   (256 slots, 13 KB, in the first-level cache); the table still doubles when it is 70% full, into a table of the next size
    (tables of each size are kept for later searches), for callers that give a larger budget. */
-const MEMO_START_BITS = 8, SLOT = 12;
+const MEMO_START_BITS = 8, SLOT = 13;
 class PositionSet {
   constructor() {
     this.tables = [];
@@ -2501,8 +2505,12 @@ class PositionSet {
     this.count = 0;
   }
 
-  /** Adds the position with code k[at…] and hash h. Returns false when it was there already. */
-  add(k, at, h) {
+  /** Adds the position with code k[at…] and hash h. Returns false when it was there already.
+      clock ≥ 0 (a search under a move rule): the halfmove clock it is met with. Then a position
+      met before with a clock no lower is there already, and one met before with a higher clock
+      counts as new and keeps the lower clock: its lines now run longer before the rule ends
+      them. */
+  add(k, at, h, clock = -1) {
     const slots = this.slots, gen = this.generation, mask = this.mask;
     let slot = h & mask;
     for (;;) {
@@ -2510,15 +2518,34 @@ class PositionSet {
       if (slots[i] !== gen) break;
       if (slots[i + 1] === h && slots[i + 2] === k[at] && slots[i + 3] === k[at + 1] && slots[i + 4] === k[at + 2] &&
           slots[i + 5] === k[at + 3] && slots[i + 6] === k[at + 4] && slots[i + 7] === k[at + 5] &&
-          slots[i + 8] === k[at + 6] && slots[i + 9] === k[at + 7] && slots[i + 10] === k[at + 8]) return false;
+          slots[i + 8] === k[at + 6] && slots[i + 9] === k[at + 7] && slots[i + 10] === k[at + 8]) {
+        if (clock < 0 || slots[i + 12] <= clock) return false;
+        slots[i + 12] = clock;
+        return true;
+      }
       slot = (slot + 1) & mask;
     }
     const i = slot * SLOT;
     slots[i] = gen;
     slots[i + 1] = h;
     for (let j = 0; j < KEY_WORDS; j++) slots[i + 2 + j] = k[at + j];
+    slots[i + 12] = clock;
     if (++this.count > this.limit) this.grow();
     return true;
+  }
+
+  /** Is the position with code k[at…] and hash h in the set? */
+  has(k, at, h) {
+    const slots = this.slots, gen = this.generation, mask = this.mask;
+    let slot = h & mask;
+    for (;;) {
+      const i = slot * SLOT;
+      if (slots[i] !== gen) return false;
+      if (slots[i + 1] === h && slots[i + 2] === k[at] && slots[i + 3] === k[at + 1] && slots[i + 4] === k[at + 2] &&
+          slots[i + 5] === k[at + 3] && slots[i + 6] === k[at + 4] && slots[i + 7] === k[at + 5] &&
+          slots[i + 8] === k[at + 6] && slots[i + 9] === k[at + 7] && slots[i + 10] === k[at + 8]) return true;
+      slot = (slot + 1) & mask;
+    }
   }
 
   /** Adds the position for the sides in `live` (FLAGGED_* bits) and returns those of them that
@@ -2583,10 +2610,30 @@ class PositionSet {
      'budget'   the node budget runs out.
    A failure proves nothing the arbiter acts on: it only ever acts on a proof.
 
-   No move-count rule ends a line: the 50- and 75-move rules and repetitions play no part. A
-   proof without them holds with them too, since they only cut lines short, so leaving them out
-   can cost a proof but never make a false one; and the search's memory is a plain set of
-   positions.
+   By default no move-count rule ends a line: the 50- and 75-move rules and repetitions play no
+   part. A proof without them holds with them too, since they only cut lines short, so leaving
+   them out can cost a proof but never make a false one; and the search's memory is a plain set
+   of positions.
+
+   Under a move rule (run's moveRule: 150 plies, the 75-move rule, FIDE 9.6.2, or 100, the
+   50-move rule that some platforms apply by themselves) a line also ends, drawn, at a position
+   whose halfmove clock has reached the rule and which has a legal move: the game is over there.
+   With no legal move the line ends as before, so a mate on the move that reaches the rule still
+   counts (9.6.2: the mate takes precedence). The memory then keeps each position with the clock
+   it was first met with: met again with a clock no lower, its lines are covered (they are the
+   same moves, cut sooner); met with a lower one, it is searched again. The rule only ever ends
+   lines that would otherwise go on, so it never fails a search that succeeds without it; where
+   the clock is far from the rule it changes nothing but the cost. Only run takes a rule (the
+   ladder calls it where the rule can matter); run2 has none.
+
+   Under a repetition rule (run's repeat: fivefold repetition, FIDE 9.6.1, or threefold, which
+   some platforms apply by themselves) a line also ends, drawn, at a position the game has already
+   had N − 1 times before the root: met there, it occurs for the N-th time at least, and the game
+   is over. repeat is the set of those positions (the ladder builds it from the game's history).
+   Whatever the line that reaches such a position, it reaches it for at least the N-th time, so
+   the end does not depend on the line, and a position met before is still covered where it was
+   met. A position on the line itself that comes back is covered by the memory as before; without
+   a history the set is empty and the rule changes nothing.
 
    After a move, a node asks only the static tests that move can have changed, and only while no
    en passant square is set (testsAfter in lock.js: the material test after a capture or a
@@ -2611,6 +2658,10 @@ class PositionSet {
 const DOMINO_PLY = 6, DOMINO_BUDGET = 100;
 /** The second tier (the second version, see ladder.js): 9 plies, 10,000 nodes. */
 const DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 10000;
+/** The search under a move rule (the second version, see ladder.js): at least 200,000 nodes. Near the
+    rule its tree is closed by the rule itself, a tree a few plies deep but wide: with a queen, every
+    one of its moves. */
+const DOMINO_RULE_BUDGET = 200000;
 
 /** The static tests the move of a piece of type `type` to `to` (with `flags`) from `pos` can
     change (testsAfter in lock.js); checked: the side to move is in a pawn's check. */
@@ -2630,17 +2681,26 @@ class Domino {
     this.budget = 0;
     this.failure = null;
     this.running = false;
+    /** The move rule of the search running (0: none), its repetition set (null: none), and whether
+        either has ended a line. */
+    this.moveRule = 0;
+    this.repeat = null;
+    this.ruled = false;
     /** For run2: each side's budget and failure, and the sides whose search has failed. */
     this.budgetWhite = 0; this.budgetBlack = 0;
     this.failureWhite = null; this.failureBlack = null;
     this.dead = 0;
   }
 
-  /** Runs the search from `root` and reports { proven, failure, budgetLeft }.
-      rootStatic: false when the caller has already asked the static tests at the root. */
-  run(root, flagged, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, { rootStatic = true } = {}) {
+  /** Runs the search from `root` and reports { proven, failure, budgetLeft, ruled }.
+      rootStatic: false when the caller has already asked the static tests at the root.
+      moveRule: 0 (no move rule), or the halfmove clock at which the game ends by itself (150,
+      the 75-move rule; 100, the 50-move rule); repeat: null, or the positions a repetition rule
+      ends a line at (a PositionSet, see above); ruled: a rule ended a line. */
+  run(root, flagged, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, { rootStatic = true, moveRule = 0, repeat = null } = {}) {
     if (flagged !== WHITE && flagged !== BLACK) fail('flagged must be WHITE or BLACK');
     if (!(maxPly >= 0) || !(budget >= 0)) fail('maxPly and budget must be numbers ≥ 0');
+    if (!(Number.isInteger(moveRule) && moveRule >= 0)) fail('moveRule must be an integer ≥ 0');
     if (!Number.isInteger(root.halfmove)) fail('the halfmove clock must be an integer');
     if (this.running) fail('the search was started again while running');
     this.running = true;
@@ -2651,11 +2711,16 @@ class Domino {
       this.flagged = flagged;
       this.budget = budget;
       this.failure = null;
+      this.moveRule = moveRule;
+      this.repeat = repeat && repeat.count > 0 ? repeat : null;
+      this.ruled = false;
       const proven = this.node(0, maxPly, rootStatic ? TESTS_BOTH : 0);
       if (!proven && !this.failure) fail('search failed without a reason');
       if (this.pos.undoTop !== 0) fail('search left moves on the board');
-      return { proven, failure: proven ? null : this.failure, budgetLeft: Math.max(this.budget, 0) };
+      return { proven, failure: proven ? null : this.failure, budgetLeft: Math.max(this.budget, 0), ruled: this.ruled };
     } finally {
+      this.moveRule = 0;
+      this.repeat = null;
       this.running = false;
     }
   }
@@ -2664,12 +2729,16 @@ class Domino {
   node(ply, depth, tests) {
     const pos = this.pos, key = this.key;
     writeKey(pos, key, 0);
-    if (!this.seen.add(key, 0, hashKey(key, 0))) return true;     // met before: covered there
+    const rule = this.moveRule, h = hashKey(key, 0);
+    if (this.repeat && this.repeat.has(key, 0, h)) { this.ruled = true; return true; }   // the repetition rule ends the game: drawn
+    if (!this.seen.add(key, 0, h, rule ? Math.min(pos.halfmove, 0x7fffffff) : -1)) return true;   // met before: covered there
     if (tests && staticTests(pos, this.flagged, tests)) return true;
 
     const ctx = this.contexts[ply];
-    if (depth === 0) {                                             // only "is there a legal move?" matters
+    const ruleEnds = rule > 0 && pos.halfmove >= rule;
+    if (depth === 0 || ruleEnds) {                                 // only "is there a legal move?" matters
       if (!hasLegalMove(pos, ctx)) return this.noLegalMove(ctx);
+      if (ruleEnds) { this.ruled = true; return true; }            // the move rule ends the game: drawn
       this.failure = 'horizon';
       return false;
     }
@@ -2827,6 +2896,9 @@ class Domino {
      3. the Domino search   (domino.js), 6 plies and 100 nodes
      4. the Domino search's second tier, 9 plies and 10,000 nodes, where the first fails in a
         way a deeper search can mend (the second version, below)
+     5. under a move rule (moveRule 150 or 100) or a repetition rule (repetition 5 or 3, with the
+        game's history), the second version, below: the searches again, with the rules ending
+        lines, where they can end one
    This layer puts them together: for one position (proveCannotBeMated, proveBoth, isDeadPosition)
    and for a game played move by move (Flags). What a proof means for the result of a game is the
    game layer's business (game.js); here a side is only proven unable to mate, or not.
@@ -2902,29 +2974,126 @@ function secondTier(pos, open, fw, fb) {
   return (d[0].proven ? FLAGGED_WHITE : 0) | (d[1].proven ? FLAGGED_BLACK : 0);
 }
 
+/* ─── The move rule (the second version) ─────────────────────────────────────────────────
+
+   A game ends by itself, drawn, once 75 moves of each side have passed with no capture and no
+   pawn move (FIDE 9.6.2: the halfmove clock at 150), and on some platforms already at 50 (100).
+   Then a mate that would come later can never come, and a side that could mate only after it
+   cannot mate at all. With a moveRule (0, the default: none) the ladder takes that into account:
+   a side the searches above leave unproven is searched again under the rule (Domino.run's
+   moveRule), once, with the deeper of the two tiers' ply ceilings and a budget of at least
+   DOMINO_RULE_BUDGET (200,000) nodes, but only where the rule can end a line within those plies:
+   halfmove clock + plies ≥ moveRule. Elsewhere the search under the rule is the search without
+   it, at a higher cost. The clock is its gate, and a game comes that close to the rule rarely (in
+   chasolver's 201,060 Lichess rows, one flag fell with the clock above 99, none above 139); there
+   the rule cuts every line within a few plies, but the tree is wide. King and queen against king
+   (k7/3Q4/8/8/8/8/8/K7 w, a helpmate of 9 plies at the shortest) under the 50-move rule: with the
+   clock at 92 the proof that no mate comes in time takes 160,185 nodes, at 95 20,951, at 96
+   2,574; with 10,000 nodes the answer between 92 and 95 fell to the safe side. A search that
+   finds a mate under the rule has found one before the rule ends the game: no search follows
+   it.
+
+   Since it runs only after the searches without the rule have failed, every proof they make
+   stands, with the same nodes; the rule can only add proofs, never take one away. A proof under
+   the rule holds for a game that ends at that rule: a game that goes on past it needs the proof
+   without it. So a game under a rule must end at that rule (gameStatus's moveRule, game.js).
+   With the 75-move rule a proof holds under the 50-move rule too (its lines are cut sooner), not
+   the other way round.
+
+   The repetition rule works the same way. A game ends by itself, drawn, when a position occurs for
+   the fifth time (FIDE 9.6.1), and on some platforms already for the third. With a repetition (0,
+   the default: none) and the game's history (the positions before the root since the last capture
+   or pawn move), the positions the game has already had repetition − 1 times end a line, drawn,
+   wherever the search meets them (Domino.run's repeat). That only matters with a history: a
+   position of the line that comes back is covered by the search's memory already. In a cage that
+   is what proves it; but where the only move leads, a few plies on, into a position the game has
+   had four times, only the rule ends the line. The searches under the rules run when the move
+   rule can end a line within their plies, or when there is such a position: the first tier's
+   limits always, the second tier's where the move rule is that close or the second tier was
+   allowed without the rules, with its budget. Same as the move rule, a proof under a repetition rule holds for a
+   game that ends at it, and fivefold's holds under threefold too. */
+
+/** The positions of a history that occur there at least repetition − 1 times: there a line ends,
+    the game drawn. history: { keys, n }, the codes (KEY_WORDS words each) of the game's positions
+    before the root since its last capture or pawn move. Returns null when there are none, or no
+    rule or no history. A position comes back at the earliest 4 plies later, so with fewer than
+    4 (repetition − 2) + 1 positions none can have occurred repetition − 1 times. */
+const repeatSet = new PositionSet();
+function repetitionSet(repetition, history) {
+  if (!repetition || !history) return null;
+  const k = history.keys, n = history.n, need = repetition - 1;
+  if (!(n >= 4 * (repetition - 2) + 1)) return null;
+  repeatSet.clear();
+  for (let a = 0; a < n; a++) {
+    let c = 0;
+    for (let b = 0; b < n && c < need; b++) if (keysEqual(k, a * KEY_WORDS, k, b * KEY_WORDS)) c++;
+    if (c >= need) repeatSet.add(k, a * KEY_WORDS, hashKey(k, a * KEY_WORDS));
+  }
+  return repeatSet.count ? repeatSet : null;
+}
+
+/** The Domino search again under the rules, once, for a side the searches without them left
+    unproven (failure: why the first tier failed): repeat is the repetition set or null. Its ply
+    ceiling is the deeper of the two tiers' (deepBudget 0: the first tier's). Where the move rule can
+    end a line within those plies, its budget is the larger of the tiers' and DOMINO_RULE_BUDGET;
+    with only a repetition set, the first tier's, or the second tier's where it was allowed without
+    the rules. Returns { r, nodes }, or null when no rule can end a line. */
+function ruleSearch(pos, flagged, moveRule, repeat, failure, maxPly, budget, deepPly, deepBudget) {
+  const ply = deepBudget > 0 ? Math.max(maxPly, deepPly) : maxPly;
+  const near = moveRule > 0 && pos.halfmove + ply >= moveRule;
+  if (!near && !repeat) return null;
+  const nodes = near ? Math.max(budget, deepBudget, DOMINO_RULE_BUDGET)
+              : Math.max(budget, deepBudget > 0 && deepAllowed(pos, failure) ? deepBudget : 0);
+  const r = sharedSearch.run(pos, flagged, ply, nodes, { rootStatic: false, moveRule: near ? moveRule : 0, repeat });
+  return { r, nodes: nodes - r.budgetLeft };
+}
+
+/** moveRule must be 0 (none), 100 or 150; repetition 0 (none), 3 or 5. */
+function checkMoveRule(moveRule) {
+  if (moveRule !== 0 && moveRule !== 100 && moveRule !== 150) fail('moveRule must be 0, 100 or 150');
+}
+function checkRepetition(repetition) {
+  if (repetition !== 0 && repetition !== 3 && repetition !== 5) fail('repetition must be 0, 3 or 5');
+}
+
 /** Can `flagged` never be mated? The static tests at the root, then the Domino search (by
     default 6 plies, 100 nodes) and, where it allows, its second tier (9 plies, 10,000 nodes;
-    deepBudget 0: none). Returns { proven, staticProof, failure, foundBy, nodes, deep }:
-    staticProof says the static tests proved it at the root; failure is 'mate', 'horizon' or
-    'budget' when nothing was proven ('mate' with foundBy 'search': the search played a line
-    that mates); nodes counts the moves the searches played; deep says the second tier ran. */
+    deepBudget 0: none) and, with a moveRule or a repetition (and the game's history: { keys, n },
+    see repetitionSet), the searches under the rules (see above). Returns
+    { proven, staticProof, failure, foundBy, nodes, deep, ruled }: staticProof says the static
+    tests proved it at the root; failure is 'mate', 'horizon' or 'budget' when nothing was proven
+    ('mate' with foundBy 'search': the search played a line that mates, under the rule when it
+    ran: then a mate before the rule ends the game); nodes counts the moves the searches played;
+    deep says the second tier ran; ruled says the searches under the rule ran, and the answer is
+    theirs. */
 function proveCannotBeMated(pos, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                                   deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
-  if (cannotMate(pos, flagged)) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false };
+                                                   deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET,
+                                                   moveRule = 0, repetition = 0, history = null } = {}) {
+  checkMoveRule(moveRule); checkRepetition(repetition);
+  if (cannotMate(pos, flagged)) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false, ruled: false };
   let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft, deep = false;
+  const firstFailure = r.failure;
   if (!r.proven && deepBudget > 0 && deepAllowed(pos, r.failure)) {
     r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
     nodes += deepBudget - r.budgetLeft; deep = true;
   }
-  return { proven: r.proven, staticProof: false, failure: r.failure, foundBy: r.failure === 'mate' ? 'search' : null, nodes, deep };
+  let ruled = false;
+  if (!r.proven && (moveRule > 0 || repetition > 0)) {
+    const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), firstFailure, maxPly, budget, deepPly, deepBudget);
+    if (u) { r = u.r; nodes += u.nodes; ruled = true; }
+  }
+  return { proven: r.proven, staticProof: false, failure: r.failure, foundBy: r.failure === 'mate' ? 'search' : null, nodes, deep, ruled };
 }
 
 /** proveCannotBeMated for both sides at once: one pass of the static tests, then one walk of the
     search (Domino.run2) for the sides they leave open, and one more of the second tier for the
-    sides it is allowed for. Returns [White flagged, Black flagged], each the same proof as
+    sides it is allowed for, then, with a moveRule or a repetition, the searches under the rules
+    for each side still open. Returns [White flagged, Black flagged], each the same proof as
     proveCannotBeMated gives. */
 function proveBoth(pos, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                 deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
+                                 deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
+                                 repetition = 0, history = null } = {}) {
+  checkMoveRule(moveRule); checkRepetition(repetition);
   const both = FLAGGED_WHITE | FLAGGED_BLACK, st = cannotMate2(pos, both);
   const r = st !== both ? sharedSearch.run2(pos, both & ~st, maxPly, budget, { rootStatic: false }) : null;
   let deepAsk = 0;
@@ -2932,20 +3101,29 @@ function proveBoth(pos, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
     if (!((st >> i) & 1) && !r[i].proven && deepAllowed(pos, r[i].failure)) deepAsk |= 1 << i;
   const d = deepAsk ? sharedSearch.run2(pos, deepAsk, deepPly, deepBudget, { rootStatic: false }) : null;
   const proof = i => {
-    if ((st >> i) & 1) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false };
-    const first = budget - r[i].budgetLeft;
-    const x = (deepAsk >> i) & 1 ? d[i] : r[i], nodes = (deepAsk >> i) & 1 ? first + deepBudget - d[i].budgetLeft : first;
+    if ((st >> i) & 1) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false, ruled: false };
+    const first = budget - r[i].budgetLeft, deep = ((deepAsk >> i) & 1) === 1;
+    let x = deep ? d[i] : r[i], nodes = deep ? first + deepBudget - d[i].budgetLeft : first, ruled = false;
+    if (!x.proven && (moveRule > 0 || repetition > 0)) {
+      const u = ruleSearch(pos, i ? BLACK : WHITE, moveRule, repetitionSet(repetition, history), r[i].failure, maxPly, budget, deepPly, deepBudget);
+      if (u) { x = u.r; nodes += u.nodes; ruled = true; }
+    }
     return { proven: x.proven, staticProof: false, failure: x.failure, foundBy: x.failure === 'mate' ? 'search' : null,
-             nodes, deep: ((deepAsk >> i) & 1) === 1 };
+             nodes, deep, ruled };
   };
   return [proof(0), proof(1)];
 }
 
-/** One side's searches for isDeadPosition: the first tier, then the second where it allows. */
-function searchProves(pos, flagged) {
+/** One side's searches for isDeadPosition: the first tier, then the second where it allows, then,
+    with rules, both again under them. */
+function searchProves(pos, flagged, moveRule, repetition, history) {
   const r = sharedSearch.run(pos, flagged, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
   if (r.proven) return true;
-  return deepAllowed(pos, r.failure) && sharedSearch.run(pos, flagged, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, { rootStatic: false }).proven;
+  const deep = deepAllowed(pos, r.failure);
+  if (deep && sharedSearch.run(pos, flagged, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, { rootStatic: false }).proven) return true;
+  if (!moveRule && !repetition) return false;
+  const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), r.failure, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET);
+  return !!u && u.r.proven;
 }
 
 /** Is the position dead (FIDE 5.2.2)? For each side, the static tests, then the Domino search
@@ -2953,11 +3131,12 @@ function searchProves(pos, flagged) {
     around it. The static tests run for both sides in one pass (cannotMate2); the searches run one
     side at a time, Black flagged first: the first that fails already answers no, and one search
     costs less than the shared walk of two (run2 pays off only when both answers are needed:
-    proveBoth, Flags). */
-function isDeadPosition(pos) {
+    proveBoth, Flags). With a moveRule or a repetition (and a history), under those rules. */
+function isDeadPosition(pos, { moveRule = 0, repetition = 0, history = null } = {}) {
+  checkMoveRule(moveRule); checkRepetition(repetition);
   const open = (FLAGGED_WHITE | FLAGGED_BLACK) & ~cannotMate2(pos, FLAGGED_WHITE | FLAGGED_BLACK);
-  if ((open & FLAGGED_BLACK) && !searchProves(pos, BLACK)) return false;
-  return !(open & FLAGGED_WHITE) || searchProves(pos, WHITE);
+  if ((open & FLAGGED_BLACK) && !searchProves(pos, BLACK, moveRule, repetition, history)) return false;
+  return !(open & FLAGGED_WHITE) || searchProves(pos, WHITE, moveRule, repetition, history);
 }
 
 /* ─── The flags of a game ────────────────────────────────────────────────────────────────
@@ -2973,7 +3152,10 @@ function isDeadPosition(pos) {
      3. the Domino search      after every move;
      4. its second tier        after a failure of the Domino search on its budget, or on its
                                horizon with no knight, rook or queen on the board and a king
-                               shut in (see above).
+                               shut in (see above);
+     5. under the rules        (new Flags({ moveRule, repetition }), the history given to update)
+                               the searches again, with the rules, for a side still open, where a
+                               rule can end a line (see above).
    Only those moves change what the static tests look at (testsAfter in lock.js), so the flags
    remember of the ply before only whether an en passant square stood and the side to move was in
    a pawn's check. A platform that leaves plies out gets the clock rule (both tests whenever the
@@ -2998,7 +3180,12 @@ function isDeadPosition(pos) {
    by the clock rule, as after plies left out. (The same holds when updatedPly is
    written by hand.) */
 class Flags {
-  constructor() {
+  /** moveRule: 0 (none), 150 or 100; repetition: 0 (none), 5 or 3. The proofs hold for a game that
+      ends at those rules. */
+  constructor({ moveRule = 0, repetition = 0 } = {}) {
+    checkMoveRule(moveRule); checkRepetition(repetition);
+    this.moveRule = moveRule;
+    this.repetition = repetition;
     /** The ply at which each side was proven unable to mate; -1 while its flag is up. */
     this.whiteDownAt = -1;
     this.blackDownAt = -1;
@@ -3014,8 +3201,9 @@ class Flags {
   neverMates(color) { return (color === WHITE ? this.whiteDownAt : this.blackDownAt) >= 0; }
   /** Climbs the ladder (see above) for each side whose flag is still up, at `pos`, the position
       of game ply `ply`, once per ply: both sides in one pass (cannotMate2, then
-      Domino.run2), with the answers each side would get alone. */
-  update(pos, ply) {
+      Domino.run2), with the answers each side would get alone. history: the game's positions
+      before this one since its last capture or pawn move ({ keys, n }), for a repetition rule. */
+  update(pos, ply, history = null) {
     if (this.updatedPly === ply) return;
     const first = this.updatedPly < 0;
     // The memory of the ply before: only if the last update was for it, and nothing since
@@ -3050,6 +3238,16 @@ class Flags {
       const fw = r[0].failure, fb = r[1].failure;
       if ((fw === 'budget' || fb === 'budget' || ((fw === 'horizon' || fb === 'horizon') && noKnightRookQueen(pos))) && (open & ~proven))
         proven |= secondTier(pos, open & ~proven, fw, fb);
+      // Under the rules, the searches again with them, only where a rule can end a line.
+      const rule = this.moveRule, near = rule && pos.halfmove + DOMINO_DEEP_PLY >= rule;
+      const repeat = (open & ~proven) && this.repetition ? repetitionSet(this.repetition, history) : null;
+      if (near || repeat)
+        for (let i = 0; i < 2; i++) {
+          const bit = i ? FLAGGED_BLACK : FLAGGED_WHITE;
+          if (!(open & ~proven & bit)) continue;
+          const u = ruleSearch(pos, i ? BLACK : WHITE, rule, repeat, i ? fb : fw, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET);
+          if (u && u.r.proven) proven |= bit;
+        }
     }
     if (proven & FLAGGED_BLACK) this.whiteDownAt = ply;
     if (proven & FLAGGED_WHITE) this.blackDownAt = ply;
@@ -3074,21 +3272,23 @@ class Flags {
                    back only over the moves since the last capture or pawn move, every other ply
                    (the side to move must match). */
 
-/* The twelve results the engine decides, as it numbers them; 0 means the game goes on.
+/* The fourteen results the engine decides, as it numbers them; 0 means the game goes on.
      the board ends the game         1, 2 checkmate; 3 stalemate; 4 the 75-move rule; 5 fivefold
-                                     repetition (FIDE 9.6); 6 a dead position (FIDE 5.2.2)
+                                     repetition (FIDE 9.6); 6 a dead position (FIDE 5.2.2);
+                                     13 the 50-move rule, only in a game under it (moveRule 100);
+                                     14 threefold repetition, only in a game under it (repetition 3)
      a flag falls (FIDE 6.9)         7, 8 a win on time; 11 a draw: the opponent can never mate
      a side resigns (FIDE 5.1.2)     9, 10 a win; 12 a draw: the opponent can never mate
    RESULT_NAMES gives each one in words. Draws that need a claim (threefold repetition, FIDE 9.2;
    the 50-move rule, 9.3) or an agreement are the platform's to decide: a Game counts repetitions
    and every position keeps its halfmove clock. */
-const RESULT_NAMES = Object.freeze(['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation']);
+const RESULT_NAMES = Object.freeze(['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation', '50-move rule', 'threefold repetition']);
 const Result = Object.freeze({
   NONE: 0,
   WHITE_MATES: 1, BLACK_MATES: 2, STALEMATE: 3,
   SEVENTY_FIVE_MOVES: 4, FIVEFOLD: 5, DEAD_POSITION: 6,
   WHITE_ON_TIME: 7, BLACK_ON_TIME: 8, WHITE_BY_RESIGNATION: 9, BLACK_BY_RESIGNATION: 10,
-  DRAW_ON_TIME: 11, DRAW_ON_RESIGNATION: 12,
+  DRAW_ON_TIME: 11, DRAW_ON_RESIGNATION: 12, FIFTY_MOVES: 13, THREEFOLD: 14,
 });
 
 /** How the game stands: checkmate, stalemate, dead position, fivefold repetition,
@@ -3098,19 +3298,33 @@ const Result = Object.freeze({
       repetitions         how many times the current position has occurred;
       memory              a Game: its flags decide the dead position (see Flags.update);
       deadPositionSearch  false: only the static tests (material, lock) can find a dead
-                          position, with no Domino search (a single position only). */
-function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = null } = {}) {
+                          position, with no Domino search (a single position only);
+      moveRule            0 (the default): the game ends at the 75-move rule, and the proofs of a
+                          dead position take no move rule into account; 150 or 100: the game ends
+                          at that rule (the 75- or the 50-move rule), and the proofs are made under
+                          it (ladder.js). With a memory, the Game's own rule.
+      repetition          0 (the default): the game ends at fivefold repetition, and the proofs of a
+                          dead position take no repetition into account; 5 or 3: the game ends at
+                          that repetition, and a Game's flags are proven under it. With a memory,
+                          the Game's own. */
+function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = null, moveRule = 0, repetition = 0 } = {}) {
+  if (memory) { moveRule = memory.moveRule; repetition = memory.repetition; }
   if (!hasLegalMove(pos)) {
     if (SHARED_CONTEXT.checks === 0) return Result.STALEMATE;
     return pos.side === WHITE ? Result.BLACK_MATES : Result.WHITE_MATES;
   }
+  // Under a move rule, the rule is what ended a game at it: there every side is proven unable to mate
+  // (the rule ends every line at once), but the rule's own result says why.
+  if (moveRule && pos.halfmove >= moveRule) return moveRule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
+  // The same for a repetition rule: a position that occurs for the N-th time ends the game there.
+  if (repetition && repetitions >= repetition) return repetition === 3 ? Result.THREEFOLD : Result.FIVEFOLD;
   let dead;
   if (memory) { memory.updateFlags(); dead = memory.neverMates(WHITE) && memory.neverMates(BLACK); }
-  else if (deadPositionSearch) dead = isDeadPosition(pos);
+  else if (deadPositionSearch) dead = isDeadPosition(pos, { moveRule, repetition });
   else dead = cannotMate(pos, WHITE) && cannotMate(pos, BLACK);
   if (dead) return Result.DEAD_POSITION;
-  if (repetitions >= 5) return Result.FIVEFOLD;
-  if (pos.halfmove >= 150) return Result.SEVENTY_FIVE_MOVES;
+  if (repetitions >= 5) return Result.FIVEFOLD;   // (0: no repetition rule above)
+  if (pos.halfmove >= (moveRule || 150)) return moveRule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
   return Result.NONE;
 }
 
@@ -3119,8 +3333,9 @@ function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = 
     opponent can never mate, otherwise a win for the opponent. In a game, Game.flagVerdict reads
     the flags instead. */
 function flagVerdict(pos, side, { resigned = false, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
-  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget }).proven, resigned);
+                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
+                                         repetition = 0, history = null } = {}) {
+  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget, moveRule, repetition, history }).proven, resigned);
 }
 
 function verdictCode(side, draw, resigned) {
@@ -3133,9 +3348,14 @@ function verdictCode(side, draw, resigned) {
     it counts how many times the current position has occurred, and
     the two flags (Flags, ladder.js). A position before the last capture or pawn move can never
     come back, so only the positions since then are compared, every other one, with the same side
-    to move. */
+    to move.
+    moveRule: 0 (the default), the game ends at the 75-move rule and its flags take no move rule
+    into account; 150 or 100, it ends at that rule and its flags are proven under it.
+    repetition: 0 (the default), the game ends at fivefold repetition and its flags take no
+    repetition into account; 5 or 3, it ends at that repetition and its flags are proven under it,
+    with the game's own history. */
 class Game {
-  constructor(position) {
+  constructor(position, { moveRule = 0, repetition = 0 } = {}) {
     this.position = position.clone();
     this.history = new Int32Array(KEY_WORDS * 64);
     this.length = 0;
@@ -3145,8 +3365,10 @@ class Game {
     this.repetitions = 1;
     /** Plies played since the first position. */
     this.ply = 0;
-    /** The two flags "may still mate" (ladder.js). */
-    this.flags = new Flags();
+    /** The two flags "may still mate" (ladder.js), under the game's move rule. */
+    this.flags = new Flags({ moveRule, repetition });
+    this.moveRule = moveRule;
+    this.repetition = repetition;
   }
   /** The ply at which each side was proven unable to mate; -1 while its flag is up (this.flags). */
   get whiteDownAt() { return this.flags.whiteDownAt; }
@@ -3159,7 +3381,13 @@ class Game {
   /** Has `color` been proven unable to mate, for the rest of the game? */
   neverMates(color) { return this.flags.neverMates(color); }
   /** Climbs the ladder for each side whose flag is still up, once per position (Flags.update). */
-  updateFlags() { this.flags.update(this.position, this.ply); }
+  updateFlags() { this.flags.update(this.position, this.ply, this.repetition ? this.repetitionHistory() : null); }
+  /** The positions before the current one that it can still repeat (those since the last capture
+      or pawn move), as { keys, n }: n codes of KEY_WORDS words each, for a repetition rule. */
+  repetitionHistory() {
+    const n = Math.min(this.position.halfmove, this.length - 1), end = (this.length - 1) * KEY_WORDS;
+    return { keys: this.history.subarray(end - n * KEY_WORDS, end), n };
+  }
   record() {
     if ((this.length + 1) * KEY_WORDS > this.history.length) {
       const grown = new Int32Array(this.history.length * 2);

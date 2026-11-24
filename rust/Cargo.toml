@@ -15,7 +15,9 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 # Only for the examples that run chasolver: vs_chasolver.rs (speed) and oracle.rs (full analysis).
-chasolver = { git = "https://github.com/miguel-ambrona/chasolver" }
+# chasolver's main (cb1e9da) plus our stalemate-filter fix, miguel-ambrona/chasolver#51, not yet
+# merged: the same chasolver as the site's chasolver tab.
+chasolver = { git = "https://github.com/cuneytinann/chasolver", rev = "ec0d899c5ae507327fce40a7f9488373954b9b30" }
 chess = "3.2"
 
 [profile.release]

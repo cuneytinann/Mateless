@@ -47,7 +47,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 [[package]]
 name = "chasolver"
 version = "3.0.0"
-source = "git+https://github.com/miguel-ambrona/chasolver#3484c7e65247003fac8705a9290dc2b5d0978b94"
+source = "git+https://github.com/cuneytinann/chasolver?rev=ec0d899c5ae507327fce40a7f9488373954b9b30#ec0d899c5ae507327fce40a7f9488373954b9b30"
 dependencies = [
  "chess",
  "rustc-hash",

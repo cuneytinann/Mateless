@@ -18,7 +18,9 @@ takes from the board. Every public item is also re-exported at the crate root (`
 
 No dependencies. The dev-dependencies (`chasolver`, `chess`) are only for the examples that run
 chasolver: the speed comparison (`vs_chasolver`) and its full analysis line by line (`oracle`, for
-`test/fuzz_lock_gen.js`).
+`test/fuzz_lock_gen.js`). `chasolver` is pinned to its main branch plus our stalemate-filter fix
+([miguel-ambrona/chasolver#51](https://github.com/miguel-ambrona/chasolver/pull/51), not yet
+merged), the same chasolver as the site's chasolver tab.
 
 `wasm/` is a thin C ABI over the crate for WebAssembly (`mateless.wasm`, used through
 `mateless-wasm.js`): positions and the flags of games kept in two tables behind handles, a FEN in

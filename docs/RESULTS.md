@@ -271,6 +271,13 @@ then to be checked by machine.
 
 ## 5. The second version
 
+**26 November 2026:** the second tier is gone. The second version now has one Domino search, 60
+plies and 10,000 nodes by default, and every search runs with the limits it is given
+([DESIGN.md](DESIGN.md), "The limits"). On chasolver's list of 19 November (204,484 rows) it
+leaves 1 row unproven (RwnQJq1k; the second tier left 2, the first version leaves 36); a game's two
+flags cost ~11 µs a move in JavaScript instead of ~1.4 µs. The tables below were measured with the
+second tier, as it was then.
+
 The second version's rules (open pawn pairs, boxed knights, rooks and queens, a second tier of the
 Domino search; [DESIGN.md](DESIGN.md), section 12), measured on the same data. The data files keep
 the first version's classification; `data/second_version.tsv` lists the 36 rows it leaves and

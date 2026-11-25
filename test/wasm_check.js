@@ -54,7 +54,7 @@ if (process.env.FENS) {
   console.log('FEN readers on', n, 'lines of', process.env.FENS);
 }
 
-const proof = p => [p.proven, p.staticProof, p.failure, p.foundBy, p.nodes, p.deep, p.ruled].join(',');
+const proof = p => [p.proven, p.staticProof, p.failure, p.foundBy, p.nodes, p.ruled].join(',');
 let positions = 0, searched = 0;
 for (let i = 0; i < fens.length; i++) {
   const fen = fens[i], sa = E.fromFen(fen), sb = W.fromFen(fen);   // the strict reading: error and what it put right

@@ -195,25 +195,18 @@ export class PositionSet {
    rule (after a capture or a pawn move and one ply later) they do too. At the root they are asked
    unless the caller has settled them already (rootStatic: false, see ladder.js).
 
-   The ply ceiling and node budget default to 6 and 100 (DOMINO_PLY, DOMINO_BUDGET). With them
-   the ladder proves 201,024 of chasolver's 201,060 wrongly decided Lichess timeouts (201,054 with
-   the second tier, ladder.js); a proof takes 1 node at the median, at most 8 nodes in 99% of the
-   rows, and a ceiling above 6 plies at this budget proves no more rows (the second tier raises
-   both). In an open position the first line runs to the ceiling and fails there,
-   after about as many nodes as plies. The budget pays for every move played, each promotion
-   separately.
+   The ply ceiling and node budget default to 60 and 10,000 in this version (DOMINO_PLY,
+   DOMINO_BUDGET; the first version's are 6 and 100). With them the ladder proves 204,483 of the
+   204,484 rows of chasolver's list of 19 November 2026 (the first version: 204,448); a proof takes
+   1 node at the median, at most 8 nodes in 99% of the rows. In an open position the first line
+   runs to the ceiling and fails there, after about as many nodes as plies. The budget pays for
+   every move played, each promotion separately.
 
    Moves are generated lazily, one piece at a time, in the generator's order (from a1, b1, …
    to h8): a node plays the first piece's moves before it works out the second piece's, and so
    on. Most searches that fail, fail on their first line, and then the other moves of the nodes
    on that line are never generated. */
-export const DOMINO_PLY = 6, DOMINO_BUDGET = 100;
-/** The second tier (the second version, see ladder.js): 9 plies, 10,000 nodes. */
-export const DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 10000;
-/** The search under a move rule (the second version, see ladder.js): at least 200,000 nodes. Near the
-    rule its tree is closed by the rule itself, a tree a few plies deep but wide: with a queen, every
-    one of its moves. */
-export const DOMINO_RULE_BUDGET = 200000;
+export const DOMINO_PLY = 60, DOMINO_BUDGET = 10000;
 
 /** The static tests the move of a piece of type `type` to `to` (with `flags`) from `pos` can
     change (testsAfter in lock.js); checked: the side to move is in a pawn's check. */

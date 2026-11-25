@@ -1,5 +1,5 @@
-//! Rung 3, the Domino search (`src/domino.js`): a helpmate search of 6 plies and 100 nodes, by
-//! default with no move-count rules, that asks at its nodes the static tests the move just made can
+//! Rung 3, the Domino search (`src/domino.js`): a helpmate search, 60 plies and 10,000 nodes by
+//! default in this version (the first version's: 6 and 100), with no move-count rules, that asks at its nodes the static tests the move just made can
 //! have changed (lock::tests_after), while no en passant square is set. From the board it needs the
 //! legal moves one piece at a time in a fixed order, moves made and taken back in place, "is there
 //! a legal move?", and the exact code of a position. Under the rules (`run_rules`, the second
@@ -11,14 +11,9 @@ use crate::board::{BLACK, compute_context, Ctx, FLAG_CASTLE, FLAG_EP, FLAG_PROMO
 use crate::lock::{flagged_bit, FLAGGED_BLACK, FLAGGED_WHITE, pawn_check, static_tests,
     static_tests2, tests_after, TESTS_BOTH};
 
-/// The Domino search's defaults: ply ceiling and node budget.
-pub const DOMINO_PLY: u32 = 6;
-pub const DOMINO_BUDGET: i64 = 100;
-/// The second tier (the second version, see ladder.rs): 9 plies, 10,000 nodes.
-pub const DOMINO_DEEP_PLY: u32 = 9;
-pub const DOMINO_DEEP_BUDGET: i64 = 10_000;
-/// The search under a move rule (the second version, see ladder.rs): at least 200,000 nodes.
-pub const DOMINO_RULE_BUDGET: i64 = 200_000;
+/// The Domino search's defaults: ply ceiling and node budget (the first version's: 6 and 100).
+pub const DOMINO_PLY: u32 = 60;
+pub const DOMINO_BUDGET: i64 = 10_000;
 
 
 /// A set of positions: open addressing, linear probing, cleared in constant time by a generation

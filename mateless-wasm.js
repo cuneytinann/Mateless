@@ -16,7 +16,7 @@
  * position no game reaches); a composed one goes in as W.fromFen(fen, { strict: false }).position. A Position and a Flags hold memory in the module: free() returns it, and
  * a FinalizationRegistry returns it when they are collected.
  *
- * What it covers: the ladder (material test, lock detector, Domino search and its second tier, both
+ * What it covers: the ladder (material test, lock detector, Domino search with the limits given, both
  * sides at once, a game's flags), on request under the rules a game ends at by itself (moveRule 150
  * or 100, repetition 5 or 3 with the game's history: the clock search near the move rule), perft.
  * The rules engine itself (legal moves, game status, results) is mateless.js's.
@@ -31,8 +31,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 'use strict';
 
-const WHITE = 8, BLACK = 0, FLAGGED_WHITE = 1, FLAGGED_BLACK = 2, DOMINO_PLY = 6, DOMINO_BUDGET = 100,
-      DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 10000;
+const WHITE = 8, BLACK = 0, FLAGGED_WHITE = 1, FLAGGED_BLACK = 2, DOMINO_PLY = 60, DOMINO_BUDGET = 10000;
 const FEN_ERRORS = ['', 'syntax', 'kings', 'pawnrank', 'oppcheck', 'pawns', 'pieces', 'promo', 'captures', 'checks'];
 const FIXED = [[1, 'castling'], [2, 'en passant'], [8, 'halfmove'], [4, 'fullmove']];
 const FAILURES = [null, 'mate', 'horizon', 'budget'];
@@ -101,7 +100,7 @@ function instantiate(source) {
   }
 
   const proofAt = (o, i) => ({ proven: o[i] === 1, staticProof: o[i + 1] === 1, failure: FAILURES[o[i + 2]],
-                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3], deep: o[i + 4] === 1, ruled: o[i + 5] === 1 });
+                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3], ruled: o[i + 4] === 1 });
 
   /* The rules, checked as mateless.js checks them, and a game's history put into the module: null
      (none), mateless.js's { keys, n } (game.repetitionHistory()), or an array of FENs or Positions
@@ -118,24 +117,23 @@ function instantiate(source) {
     x.history_from_keys(n);
   }
 
-  /** Can `flagged` never be mated? The static tests, then the Domino search and, where it allows,
-      its second tier, and with moveRule or repetition the searches under the rules; the same
-      { proven, staticProof, failure, foundBy, nodes, deep, ruled } as mateless.js. */
-  function proveCannotBeMated(p, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY,
-                                            deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0, repetition = 0, history = null } = {}) {
+  /** Can `flagged` never be mated? The static tests, then the Domino search, and with moveRule or
+      repetition the searches under the rules, all with the limits given; the same
+      { proven, staticProof, failure, foundBy, nodes, ruled } as mateless.js. */
+  function proveCannotBeMated(p, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, moveRule = 0, repetition = 0,
+                                            history = null } = {}) {
     checkRules(moveRule, repetition);
     return withPosition(p, h => {
       setHistory(repetition ? history : null);
-      x.prove(h, flagged, maxPly, budget, deepPly, deepBudget, moveRule, repetition); return proofAt(out(), 0);
+      x.prove(h, flagged, maxPly, budget, moveRule, repetition); return proofAt(out(), 0);
     });
   }
   /** Both sides in one pass: [White flagged, Black flagged]. */
-  function proveBoth(p, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET,
-                          moveRule = 0, repetition = 0, history = null } = {}) {
+  function proveBoth(p, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, moveRule = 0, repetition = 0, history = null } = {}) {
     checkRules(moveRule, repetition);
     return withPosition(p, h => {
       setHistory(repetition ? history : null);
-      x.prove_both(h, maxPly, budget, deepPly, deepBudget, moveRule, repetition); const o = out(); return [proofAt(o, 0), proofAt(o, 6)];
+      x.prove_both(h, maxPly, budget, moveRule, repetition); const o = out(); return [proofAt(o, 0), proofAt(o, 5)];
     });
   }
   /** Is the position dead (FIDE 5.2.2)? With moveRule or repetition (and a history), under those rules. */
@@ -176,7 +174,7 @@ function instantiate(source) {
   }
 
   return Object.freeze({
-    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET,
+    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET,
     Position, fromFen,
     materialCannotMate: (p, flagged) => withPosition(p, h => x.material_test(h, flagged) === 1),
     lockCannotMate: (p, flagged) => withPosition(p, h => x.lock_test(h, flagged) === 1),

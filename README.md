@@ -16,8 +16,9 @@ prove it leaves to the platform's rule (the flag loses) and to a complete solver
 It comes in two versions, side by side in one library. The **fast** version (the first) is the
 layer proposed for Lichess: the lock detector of [`lock/`](lock/) and of the scalachess patch, and
 a short search. The **full** version (the second) adds rules that see more: open pawn pairs, boxed
-knights, rooks and queens, a second tier of the search, and, on request, the move and repetition
-rules, with a search bounded by the clock near the move rule. It is not complete either; its name
+knights, rooks and queens, a deeper search by default (60 plies and 10,000 nodes, where the fast
+version has 6 and 100), and, on request, the move and repetition rules, with a search bounded by
+the clock near the move rule. Every search runs with the limits it is given, nothing beyond them. It is not complete either; its name
 is its goal, and each of its rules runs only when its own situation is on the board, so every
 other position goes through the fast version's code ([the second version](#the-second-version)).
 
@@ -51,11 +52,14 @@ and following a game costs **~0.35 µs per move** for both sides' flags. The spe
 measured on chasolver's list up to July 2026 (201,060 rows, 50,970 locks), before the rows of the
 August–September scan were added.
 
-The tables below were measured on the first version. The second version costs about 2% more per
-move on the positions of a game, most of it a quick look for boxed pieces where a knight, rook or
-queen stands (~2 ns in Rust, ~10 ns in JavaScript); against chasolver its ratios are the same
-within the noise, and its whole ladder proves 201,054 of chasolver's 201,060 rows, at ~0.22 µs a
-row over the 204,060 rows up to September (Rust; [docs/RESULTS.md](docs/RESULTS.md#the-second-version)).
+The tables below were measured on the first version. The second version's static tests cost
+about 2% more per move on the positions of a game, most of it a quick look for boxed pieces where
+a knight, rook or queen stands (~2 ns in Rust, ~10 ns in JavaScript); against chasolver its ratios
+are the same within the noise ([docs/RESULTS.md](docs/RESULTS.md#the-second-version)). Its deeper
+search by default (60 plies, 10,000 nodes) costs nothing measurable per Lichess timeout (~0.72 µs a
+row in JavaScript over chasolver's 204,484 rows of 19 November, the fast version ~0.64 µs; it
+proves all but 1 of them, the fast version all but 36), but a game's two flags cost ~11 µs a move
+in JavaScript instead of ~1.4 µs, where the search runs to its ceiling while a side can still mate.
 The four rules added in November (below) make it 201,058. They cost ~13% more per lock test in
 JavaScript and ~30% in Rust (both sides of the 204,060 rows: ~40 → ~54 ns), ~4% per row on the whole
 ladder in JavaScript and nothing measurable in Rust.
@@ -97,8 +101,7 @@ side can never mate brings its flag down, for good.
 |---|---|---|---|
 | **1. material test** | after a capture or a pawn move (in the search: after a capture or a promotion) | the side lacks the material to mate at all | ~0.1 µs |
 | **2. lock detector** | after a capture, a pawn move, the lapse of an en passant right, or a king's step out of a pawn's check | pawns, kings and bishops form a structure no series of legal moves can open (first version: any knight, rook or queen fails it at once; the second version lets boxed ones stay and splits open pawn pairs) | ~0.3–0.8 µs |
-| **3. Domino search** | after every move | a helpmate search of 6 plies and 100 nodes finds no mate, and every line ends in a position already seen, a static proof or a stalemate | ~1–5 µs |
-| **4. second tier** (second version) | after the Domino search fails without a mate: on its budget, or on its horizon on a board of kings, pawns and bishops where a king is shut in | the same search at 9 plies and 10,000 nodes | up to 10,000 nodes; at a few plies of a game |
+| **3. Domino search** | after every move | a helpmate search (by default 6 plies and 100 nodes in the first version, 60 plies and 10,000 nodes in the second) finds no mate, and every line ends in a position already seen, a static proof or a stalemate | ~1–5 µs (the second version's deeper search: ~10 µs a move in a game) |
 
 - **Both flags down** means a dead position (FIDE 5.2.2): the game ends in a draw.
 - **When a flag falls, or a player resigns,** nothing is computed: if the opponent's flag is
@@ -143,7 +146,7 @@ classified by Mateless (JS, Rust and WebAssembly give the same answer on every r
 | **all** | **195,287** | | **138,572** (71.0%) | **190,465** (97.5%) | 190,719 (97.7%) |
 
 The table is the first version's classification (the data files keep it). The second version
-proves 34 of the 36 unproven rows; 2 remain ([`data/second_version.tsv`](data/second_version.tsv)).
+proves 35 of the 36 unproven rows; 1 remains ([`data/second_version.tsv`](data/second_version.tsv)).
 
 Lichess today draws most forced lines: scalachess #821 (merged in August 2026; on Lichess from
 6 September, judging by the data) added a one-move lookahead to the test that lila asks when a
@@ -185,10 +188,9 @@ the rest locked), and 1 a knight boxed in by its own pawns. They, and whatever a
 rules leave, are what a refund after the game would cover: a complete solver (chasolver) judges
 them once the game is over. With the whole ladder that is 36 rows of 195,287; with the lock
 detector alone on top of today's Lichess, 4,822 (`in-game` alone) or 4,568 (`a-lock`, and #916,
-which does both). The second version proves 34 of the 36: the search 27 of the cages (21 with its
-second tier of 9 plies and 10,000 nodes, 6 now within the first, the new static rules cutting its
-trees), the stalemate guard 3 more, the open-pair rule the 3 pairs, the boxed rule the knight. The
-2 left are cages.
+which does both). The second version proves 35 of the 36: the search 28 of the cages (with its
+default limits, 60 plies and 10,000 nodes, the new static rules cutting its trees), the stalemate
+guard 3 more, the open-pair rule the 3 pairs, the boxed rule the knight. The 1 left is a cage.
 
 **Soundness.** There is no written proof yet; there is strong test evidence.
 - No false draw against chasolver's labels (its 68,950 labelled positions, both sides;
@@ -292,7 +294,7 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: a dead positi
 './mateless.mjs'`, or `import Mateless from './mateless.mjs'`). The source modules
 (`./src/index.js`) give the same answers but run ~10–30% slower in V8.
 
-**WebAssembly.** The Rust port compiled to `mateless.wasm` (245 KB, 80 KB gzipped), with
+**WebAssembly.** The Rust port compiled to `mateless.wasm` (239 KB, 78 KB gzipped), with
 `mateless-wasm.js` as its dependency-free bridge: the whole ladder (static tests, Domino, both
 proofs, a game's flags, perft) and, on request, the rules a game ends at by itself, with
 `mateless.js`'s answers to the node count. Proofs run ~2.5–4× faster than in JS, a game's flags
@@ -455,8 +457,8 @@ the board.
 |---|---|---|
 | `src/material.js` | **rung 1:** the material test | the piece sets; no move generation |
 | `src/lock.js` | **rung 2:** the lock detector; the two static tests together | the piece sets, the en passant square, a few shifts; no move generation |
-| `src/domino.js` | **rung 3:** the Domino search (6 plies / 100 nodes) | legal moves piece by piece in a fixed order, made and taken back in place, "is there a legal move?", an exact code of a position |
-| `src/ladder.js` | **the ladder:** when each rung is asked, the second tier (rung 4), the proofs for one position, a game's two flags (`Flags`) | the halfmove clock and the en passant square |
+| `src/domino.js` | **rung 3:** the Domino search (by default 60 plies / 10,000 nodes; the first version 6 / 100) | legal moves piece by piece in a fixed order, made and taken back in place, "is there a legal move?", an exact code of a position |
+| `src/ladder.js` | **the ladder:** when each rung is asked, the proofs for one position, a game's two flags (`Flags`), the searches under the rules | the halfmove clock and the en passant square |
 | `src/board.js` | a reference board: bitboards, magic bitboards, legal moves, FEN, Chess960 | — |
 | `src/fen.js` | **the outer layer:** reading a FEN into a position some game can reach (`fromFen`): what it puts right, what it refuses | the board's FEN reader and attack test |
 | `src/game.js` | a reference game: result codes, repetitions, the 75-move rule, fivefold repetition, `Game` | — |
@@ -534,7 +536,7 @@ measured, and only where its own situation is on the board.
 |---|---|---|---|
 | **open pawn pairs**: a white and a black pawn on a file with one square between them, the rest locked; the reachable positions split into three families by what the pair's pawns have done (neither moved, the white one stepped into the gap, the black one did), each an ordinary level with walls of its own, up to 3 pairs | the pawns hold such a pair (two shifts tell) | 3 (and the death of 5 drawn games of August and September at the ply it happens) | none measurable |
 | **boxed knights, rooks and queens**: a piece whose every step square holds its own fixed pawn or boxed piece never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history); its king is never a wall, so castling, Chess960's too, never moves a boxed rook (`test/chess960_boxed_check.js`). A rook beside its own king may look boxed and still castle: `8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1` is dead, and with the castling right (`w K`, Chess960) it has a mate in four (1.O-O exf1=N 2.Bb2 Ne3 3.dxe3 d2 4.Kh1 dxe1=Q#); no test claims it, and the same check keeps it so | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
-| **a second tier of the Domino search**: 9 plies, 10,000 nodes | the search failed without a mate, on its budget, or on its horizon on a board of kings, pawns and bishops where a king is shut in | 26 | at 6 of 14,755 such failures in 1,000 games |
+| **a deeper Domino search by default**: 60 plies, 10,000 nodes (the first version: 6 and 100); every search, the rules' too, runs with the limits given and nothing beyond them | always (the defaults; a caller may give others) | 28 | a game's flags ~11 µs a move in JavaScript instead of ~1.4 (~3.8 µs in Rust instead of ~1.0, FEN reading included); a Lichess timeout the same (~0.7 µs) |
 | **the stalemate guard**: a pawn the enemy king may take stays a wall if taking it always stalemates its owner (its king, wherever it may stand, defends the pawn or has no square left; nothing else of the owner's moves; the capture uncovers no bishop's check) | the cycle meets a takeable fixed pawn of a side without bishops | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
 | **the stuck mater**: the flagged side is to move and, whatever it plays, the mater has no legal move (the game ends at the mater's turn); read from the bitboards, no move is made | kings and pawns, the flagged side to move, the lock found nothing | | |
@@ -543,7 +545,8 @@ measured, and only where its own situation is on the board.
 
 In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
 is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
-lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out.
+lock tab draws); `proveCannotBeMated(pos, side, { maxPly: 6, budget: 100 })` searches with the
+first version's limits.
 
 **The move rules, on request.** A game ends by itself, drawn, after 75 moves of
 each side with no capture and no pawn move (FIDE 9.6.2) and when a position occurs for the fifth
@@ -555,9 +558,8 @@ repetitions, the game's history: `history: game.repetitionHistory()`), `proveCan
   has a legal move (a mate on that very move still counts), and at a position the game has already
   had N − 1 times before;
 - the search under the rules runs only after the searches without them have failed, and only where
-  a rule can end a line: the clock within 40 plies of the move rule (`REGION_REACH`: 20 moves of
-  each side, or the search's plies if they are more), or a position of the history that has
-  occurred N − 1 times. So every proof without the rules stands, with the same nodes, and with the
+  a rule can end a line: the clock within the ply ceiling of the move rule (60 plies by default),
+  or a position of the history that has occurred N − 1 times. So every proof without the rules stands, with the same nodes, and with the
   rules off (the default) the answers are those of before, node for node;
 - near the move rule it is the **clock search** (`src/clock.js`), a search closed by the clock
   rather than by a ply ceiling. It walks the positions reachable without a capture or a pawn move,
@@ -569,9 +571,8 @@ repetitions, the game's history: `history: game.repetitionHistory()`), `proveCan
   a pawn or meeting a piece to take it, leaving out captures after which the mater has no mating
   material. An exit is judged by the searches without the rule, with the caller's limits: where
   they do not prove the side can never be mated after it, the answer is "may mate". Its budget is
-  at least 200,000 nodes (`DOMINO_RULE_BUDGET`), the exits' searches included. With only a
-  repetition position, the Domino search runs with it, the first tier's limits (the second's where
-  it was allowed without the rules);
+  the node budget given (10,000 by default), a budget of its own, the exits' searches included.
+  With only a repetition position, the Domino search runs with it, with the same limits;
 - a `Game` under the rules ends at them: the 75-move rule and fivefold repetition keep their codes
   (4, 5); the 50-move rule is 13 and threefold repetition 14.
 
@@ -583,22 +584,22 @@ on 20,972 positions with the clock near a rule and 1,200 games under four settin
 
 It is sound, and complete only within those limits. A proof under the rules holds for a game that
 ends at them (fivefold's holds under threefold, the 75-move rule's under the 50-move rule, not the
-other way round). It can still miss one: where the clock is further from the rule than its reach,
+other way round). It can still miss one: where the clock is further from the rule than the ply ceiling,
 where the position after an exit needs more than the searches without the rule prove, or where the
 proof needs more nodes, the answer stays "may mate", on the safe side. King and rook against king
 (`7k/8/8/8/8/8/8/K5R1 w`, a helpmate of 11 plies at the shortest) under the 50-move rule: White can
 mate in time with the clock at 89, not at 90, and with the default limits the answer is right at
-every clock, from 90 on in 6 nodes (the Domino search under the rule, before it, was wrong at 90,
-10 plies away, beyond its 9, and needed 331,592 nodes at 91). On 12,962 cases of endings with
+every clock, from 90 on in 96 nodes (90 of them the Domino search that runs first, 6 the clock
+search). On 12,962 cases of endings with
 three to five men (KQK, KRK, KBBK, KBNK, KRRK, KRKB, KRKN, KQKN, KQKR, KBNKN, either side mating),
 each a position with a rule and a clock around its rule distance (the fewest plies to a mate, or
 to a capture or a pawn move into a position chasolver's full analysis calls winnable, from an
-exact search of every position reachable without one), it proves 6,966 of the 6,978 that cannot be
-mated in time (99.8%) and none that can, with the arbiter page's limits (4 plies, 8 nodes); the
-Domino search under the rule proved 5,976 (85.6%), with 20 times the nodes. On 2,628 such cases
-from 400 endings with pawns of chasolver's positions it proves 1,018 of 1,028 (the Domino search:
-1,014), and on 5,382 from 650 positions whose pawns are all locked against pawns, 2,670 of 2,798
-(2,270); none wrong. Checked against that exact search on the cases above; against the clocked
+exact search of every position reachable without one), it proves 6,834 of the 6,978 that cannot be
+mated in time (97.9%) and none that can, with the default limits (60 plies, 10,000 nodes). On
+2,572 such cases from 400 endings with pawns of chasolver's positions it proves 998 of 1,008, and
+on 5,370 from 650 positions whose pawns are all locked against pawns, 2,590 of 2,794 (92.7%); none
+wrong (68 more cases had an en passant square with a clock above 0, which no game reaches, and
+were left out). Checked against that exact search on the cases above; against the clocked
 search of the engine this one grew from on every proof the rules give for chasolver's positions at
 clocks near the rules and up to 38 plies from them (33,454 proofs: it found a mate in none); and on
 games played to the rules (6,888 under the move rules, 13,776 under the repetition rules, every flag
@@ -616,7 +617,7 @@ and the invariant check knows their certificates ([docs/RESULTS.md](docs/RESULTS
 They are in the JavaScript, Rust and WebAssembly engines, with the same answers and node counts, and
 in the simple detector's 20 languages (`lock/second/`, the same answers on 60,471 positions).
 
-**What comes next**, in order: the 2 cages left (RwnQJq1k, bKHPqNEw), a bounded full closure for
+**What comes next**, in order: the cage left (RwnQJq1k), a bounded full closure for
 what stays open, and a written proof of soundness for the detector and the rules above.
 
 ## License and credits

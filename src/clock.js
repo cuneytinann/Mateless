@@ -54,10 +54,6 @@ import { PositionSet } from './domino.js';
 
 /** No bound: more plies than any rule allows. */
 const CLOCK_INF = 1000;
-/** The search under a move rule runs where the rule can end a line within this many plies (or the
-    caller's ply ceiling, if higher): 20 moves of each side. Further from the rule, a mate in
-    time is all but certain, and the search would only find one. */
-export const REGION_REACH = 40;
 
 const KNIGHT_STEPS_FR = [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]];
 const KING_STEPS_FR = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];

@@ -12,8 +12,8 @@ search owns its memory), so the library can be used from many threads, one `Domi
 
 Both versions are here, as in `mateless.js`: the first version's lock detector and search, and the
 second version's rules, each run only when its own situation is on the board (open pawn pairs and
-boxed knights, rooks and queens in `lock`; the search's second tier, 9 plies and 10,000 nodes, in
-`ladder`: `prove_cannot_be_mated_deep` and `prove_both_deep` take its size, 0 for none).
+boxed knights, rooks and queens in `lock`; a deeper Domino search by default, 60 plies and 10,000
+nodes, `DOMINO_PLY` and `DOMINO_BUDGET`; every search runs with the limits it is given).
 
 The rules a game ends at by itself are here too, as in `mateless.js` (the second version's
 README: "The move rules, on request"): `Rules { move_rule, repetition, history }` (150 or 100, 0
@@ -29,7 +29,7 @@ four settings, the same lines, node counts included.
 The modules are the layers of the JavaScript sources (`src/`): `material` (rung 1, the material
 test), `lock` (rung 2, the lock detector and the two static tests together), `domino` (rung 3, the
 Domino search), `clock` (the clock search, near the move rule), `ladder` (`prove_cannot_be_mated`,
-`prove_both`, `is_dead_position`, `Flags`, rung 4, the second tier, and the rules), and under them
+`prove_both`, `is_dead_position`, `Flags`, and the rules), and under them
 `board`, a
 reference board (bitboards, magic bitboards, legal moves, FEN as written: `read_fen`), and over
 them `fen`, the outer layer, as `src/fen.js`: `from_fen` reads a FEN into a position some game can

@@ -35,11 +35,11 @@ solver can judge it after the game.
 |---|---|---|---|
 | 1. material test | `src/material.js` | the piece sets | ~0.1 µs (JS), 1–3 ns above an empty loop (Rust) |
 | 2. lock detector | `src/lock.js` | pawns, kings, bishops, the en passant square | ~0.3–0.8 µs (JS), ~50–110 ns (Rust) on a lock; a few ns when a knight, rook or queen stands |
-| 3. Domino search | `src/domino.js` | legal moves, made and taken back in place | ~1–5 µs (JS) |
-| 4. second tier (second version) | `src/ladder.js` | the same, 9 plies and 10,000 nodes, only after a failure the deeper search can mend | up to 10,000 nodes, at a few plies of a game |
+| 3. Domino search | `src/domino.js` | legal moves, made and taken back in place | ~1–5 µs (JS); the second version's deeper default, ~10 µs a move in a game |
 
-Rungs 2 and 4 carry the second version's rules (section 12); the first version is rungs 1–3 with
-the lock detector's first version.
+Rung 2 carries the second version's rules (section 12), and rung 3 its deeper default limits (60
+plies and 10,000 nodes; the first version's: 6 and 100); the first version is rungs 1–3 with the
+lock detector's first version. Every search runs with the limits it is given, nothing beyond them.
 
 Each proof is permanent. Material never grows back (only a promotion adds a piece, and that needs
 a pawn the test counts). A lock or a Domino proof says that no series of legal moves from here
@@ -401,30 +401,35 @@ move changes what it reads (a king or bishop stays inside its reach). Checked: a
 quiet knight, rook and queen moves from boxed and chasolver positions, no lock; `trigger_check.js`
 with boxed and open-pair positions, 57,000 games: no difference from the clock rule.
 
-### A second tier of the Domino search
+### The limits: one Domino search, nothing beyond it
 
-Where the 6-ply, 100-node search fails without a mate, the same search runs once more at 9 plies
-and 10,000 nodes. A failure on a mate proves nothing can be proven, so it never runs then. In the
-positions of real games the first search almost always fails on its horizon at its first line,
-where the deeper one fails on its horizon too after ~9 nodes: run there, it would double the
-search's cost in every ending. So it runs only
+The second version's Domino search runs by default at 60 plies and 10,000 nodes (`DOMINO_PLY`,
+`DOMINO_BUDGET`; the first version's are 6 and 100), and every search runs with the limits it is
+given and no others: the Domino search; the searches under the rules (the clock search near the
+move rule, the Domino search with a repetition set), with the same ply ceiling and a node budget of
+their own, the exits' searches paid from it; the clock search only where the move rule can end a
+line within the ply ceiling. Nothing runs in the background with limits a caller does not see.
 
-- after a failure on the budget (every line ended within 6 plies, but more than 100 nodes of them:
-  21 of chasolver's 131,000 winnable Lichess positions), or
-- after a failure on the horizon on a board with no knight, rook or queen where some king has no
-  square to step to: each square next to it holds one of its own pawns or bishops, is attacked by an
-  enemy pawn or is next to the enemy king.
+From 28 October to 25 November 2026 the second version had instead a second tier: where the
+6-ply, 100-node search failed without a mate, on its budget or on its horizon with a king shut in on
+a board of kings, pawns and bishops, the same search ran once more at 9 plies and 10,000 nodes;
+and the search under the move rule took at least 200,000 nodes and ran within 40 plies of the rule
+(`DOMINO_DEEP_PLY`, `DOMINO_DEEP_BUDGET`, `DOMINO_RULE_BUDGET`, `REGION_REACH`). Both were limits a
+caller did not set, and on 26 November they went: one search, with the limits shown.
 
-Of the 36 rows the first version leaves, the second tier proves 26: 19 after a budget failure and
-7 after a horizon failure, all 7 with a king shut in. In 1,000 games played from chasolver's
-Lichess positions the first search failed on its horizon 14,755 times on boards of kings, pawns and
-bishops, and a king was shut in at 6 of them. Without the shut-in condition the second tier would
-also prove 8 composed positions of chasolver's test set; none of the Lichess data.
-
-In a game the second tier is one more walk of `Domino.run2`, for the sides it is allowed for; the
-gate is one look at the failures and, after a horizon failure, at the piece sets, and the rest is
-out of line (Rust: `second_tier`, so that the first search stays the one inlined into
-`Flags::update`).
+What it changes, measured on 26 November:
+- chasolver's list of 19 November (204,484 rows): the second tier left 2 rows unproven, the one
+  search at 60/10,000 leaves 1 (RwnQJq1k); at 6/100, which a caller can still ask for, 23. The
+  first version, at its own 6/100: 36. A row costs the same (~0.72 µs in JavaScript).
+- chasolver's labelled positions (positions.txt and lichess.txt as they stood before 29 August, both sides): no false
+  draw; of the composed positions labelled "cannot mate", 68.9% proven (63.8% with the second tier
+  at 6/100).
+- A game's two flags: ~11 µs a move in JavaScript instead of ~1.4 µs (~3.8 µs in Rust instead of
+  ~1.0, FEN reading included), since the search now runs to 60 plies in every position where a
+  side can still mate.
+- Under the move rule, on 12,962 cases of endings of three to five men around their rule distances:
+  6,834 of the 6,978 that cannot be mated in time proven (97.9%; with the hidden 200,000 nodes
+  99.8%), none wrong; against the exact search of the region on every case: no unsound answer.
 
 ### The four rules of November
 

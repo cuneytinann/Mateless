@@ -1,15 +1,15 @@
 'use strict';
 /* The second version's rules, held to what they were measured to do.
    - data/second_version.tsv: the 36 Lichess timeouts that the first version leaves unproven. The
-     ladder must prove each one as the file says (lock, lock-open-pair, lock-boxed, lock-stuck,
-     lock-forced, domino, domino-deep), with the same node count, and leave the 2 cages left
-     unproven; the first version's detector (_internal.coreLockTest) must prove none of the locks,
-     and a ladder without the second tier (deepBudget 0) none of the domino-deep rows.
+     ladder, with its default limits (60 plies, 10,000 nodes), must prove each one as the file says
+     (lock, lock-open-pair, lock-boxed, lock-stuck, lock-forced, domino), with the same node count,
+     and leave the one cage left unproven; the first version's detector (_internal.coreLockTest)
+     must prove none of the locks.
    - A few positions of each rule, with the answer for both sides, and the certificate's shape
      (lockSets: families for an open pair; boxed, the pieces no enemy king or bishop reaches,
      for knights, rooks and queens; stuck for the stuck mater; forced for the forced step).
-   - Where the second tier is allowed: never after a mate, after a budget failure, after a horizon
-     failure only with no knight, rook or queen and a king shut in.
+   - Nothing beyond the limits: a proof without a rule plays at most the budget's nodes, and an
+     option the ladder does not know (the old second tier's deepPly, deepBudget) changes nothing.
      node second_version_check.js        (ENGINE: the engine, default ../mateless.js) */
 const fs = require('fs'), path = require('path');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js')), I = E._internal;
@@ -26,11 +26,10 @@ for (const line of rows) {
   kinds[want] = (kinds[want] || 0) + 1;
   const proof = E.proveCannotBeMated(p, fl), lock = E.lockCannotMate(p, fl), sets = I.lockSets(p, fl);
   const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : sets.stuck ? 'lock-stuck' : sets.forced ? 'lock-forced' : 'lock')
-    : proof.proven ? (proof.deep ? 'domino-deep' : 'domino') : 'unproven';
+    : proof.proven ? 'domino' : 'unproven';
   if (got !== want) problem(`${id}: ${got}, the file says ${want}`);
   if (!lock && proof.nodes !== +nodes) problem(`${id}: ${proof.nodes} nodes, the file says ${nodes}`);
   if (I.coreLockTest(p, fl)) problem(`${id}: the first version's detector proves it`);
-  if (want === 'domino-deep' && E.proveCannotBeMated(p, fl, { deepBudget: 0 }).proven) problem(`${id}: proven without the second tier`);
 }
 
 // 2. Positions of each rule: [fen, white cannot be mated, black cannot be mated, certificate kind for each proven side].
@@ -89,12 +88,19 @@ for (const [fen, w, b, kind] of CASES) {
   }
 }
 
-// 3. When the second tier runs.
-const deepRan = fen => E.proveCannotBeMated(E.fromFen(fen, LOOSE).position, E.fromFen(fen, LOOSE).position.side).deep;
-if (deepRan('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')) problem('the second tier ran at the start position');
-if (deepRan('8/8/4k3/8/3PK3/8/8/8 w - - 0 1')) problem('the second tier ran in an open king and pawn ending');
-if (!deepRan('8/p1p5/6k1/8/8/6p1/P5Pp/7K w - - 0 44')) problem('the second tier did not run with a king shut in (w1GmdvNK)');
-if (!deepRan('8/7p/6k1/7P/8/1q6/2q5/K7 b - - 0 47')) problem('the second tier did not run after a budget failure (WPNvLYdo)');
+// 3. Nothing beyond the limits: the defaults are 60 plies and 10,000 nodes; a proof without a rule
+// plays at most the budget's nodes, at any limits; the old second tier's options change nothing.
+if (E.DOMINO_PLY !== 60 || E.DOMINO_BUDGET !== 10000) problem(`defaults ${E.DOMINO_PLY}/${E.DOMINO_BUDGET}, want 60/10000`);
+for (const line of rows) {
+  const fen = line.split('\t')[4], p = E.fromFen(fen, LOOSE).position, fl = p.side;
+  for (const [maxPly, budget] of [[4, 8], [6, 100], [9, 2000], [60, 10000]]) {
+    const r = E.proveCannotBeMated(p, fl, { maxPly, budget });
+    if (r.nodes > budget) problem(`${fen}: ${r.nodes} nodes at ${maxPly}/${budget}`);
+    const q = E.proveCannotBeMated(p, fl, { maxPly, budget, deepPly: 9, deepBudget: 10000 });
+    if (JSON.stringify(q) !== JSON.stringify(r)) problem(`${fen}: deepPly/deepBudget changed the proof at ${maxPly}/${budget}`);
+    if ('deep' in r) problem('a proof still has a "deep" field');
+  }
+}
 
 console.log(`${rows.length} rows (${Object.entries(kinds).map(([k, n]) => n + ' ' + k).join(', ')}), ${CASES.length} positions: ${problems} problems`);
 process.exit(problems ? 1 : 0);

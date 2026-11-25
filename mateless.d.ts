@@ -189,15 +189,10 @@ declare namespace Mateless {
   /** The static tests for both sides at once: of the sides in `ask`, those that cannot be mated (cannotMate for each). */
   function cannotMate2(pos: Position, ask: number): FlaggedSides;
 
-  /** The ply ceiling of the Domino search (6). */
+  /** The default ply ceiling of the Domino search (60 in this version; the first version's: 6). */
   const DOMINO_PLY: number;
-  /** The node budget of the Domino search (100); every move played counts, each promotion separately. */
+  /** The default node budget of the Domino search (10,000 in this version; the first version's: 100); every move played counts, each promotion separately. */
   const DOMINO_BUDGET: number;
-  /** The ply ceiling of the Domino search's second tier (9): asked after a failure without a mate,
-      on the budget, or on the horizon with no knight, rook or queen on the board. */
-  const DOMINO_DEEP_PLY: number;
-  /** The node budget of the second tier (10,000). */
-  const DOMINO_DEEP_BUDGET: number;
 
   /** Why a search proved nothing: a line mates the flagged king, a line still has moves at the ply ceiling, or the budget ran out. */
   type Failure = 'mate' | 'horizon' | 'budget';
@@ -232,21 +227,17 @@ declare namespace Mateless {
     failure: Failure | null;
     /** 'search' when the search played a line that mates. */
     foundBy: 'search' | null;
-    /** The moves the searches played (both tiers). */
+    /** The moves the searches played (with a rule, the search under it too). */
     nodes: number;
-    /** The second tier ran. */
-    deep: boolean;
     /** The searches under the move rule ran, and the answer is theirs. */
     ruled: boolean;
   }
 
   interface ProofOptions {
+    /** The ply ceiling (default DOMINO_PLY); under a move rule, also how near the rule must be for the clock search to run. */
     maxPly?: number;
+    /** The node budget of each search (default DOMINO_BUDGET): the Domino search's, and the search under a rule's own. */
     budget?: number;
-    /** The second tier's ply ceiling (default DOMINO_DEEP_PLY). */
-    deepPly?: number;
-    /** The second tier's node budget (default DOMINO_DEEP_BUDGET); 0: no second tier. */
-    deepBudget?: number;
     /** The halfmove clock at which the game ends by itself: 150 (the 75-move rule), 100 (the 50-move rule) or 0 (default: no rule). */
     moveRule?: MoveRule;
     /** The repetition at which the game ends by itself: 5, 3, or 0 (default: no rule). Needs a history. */
@@ -261,8 +252,8 @@ declare namespace Mateless {
   /** Position codes (KEY_WORDS words each), n of them. */
   interface RepetitionHistory { keys: Int32Array; n: number; }
 
-  /** Can `flagged` never be mated? The static tests, then the Domino search (6 plies, 100 nodes by
-      default) and, where it allows, its second tier (9 plies, 10,000 nodes). */
+  /** Can `flagged` never be mated? The static tests, then the Domino search (60 plies, 10,000 nodes by
+      default), then, with a rule, the search under it with the same limits. Nothing is searched beyond the limits. */
   function proveCannotBeMated(pos: Position, flagged: Color, options?: ProofOptions): Proof;
   /** proveCannotBeMated for both sides in one pass: [White flagged, Black flagged]. */
   function proveBoth(pos: Position, options?: ProofOptions): [Proof, Proof];
@@ -290,8 +281,6 @@ declare namespace Mateless {
     resigned?: boolean;
     maxPly?: number;
     budget?: number;
-    deepPly?: number;
-    deepBudget?: number;
     moveRule?: MoveRule;
     repetition?: Repetition;
     history?: RepetitionHistory | null;
@@ -460,7 +449,5 @@ declare namespace Mateless {
     readonly KEY_WORDS: 9;
     /** The clock search (src/clock.js). */
     readonly ClockSearch: new () => ClockSearch;
-    /** The clock search runs where the move rule can end a line within this many plies (or the ply ceiling): 40. */
-    readonly REGION_REACH: 40;
   };
 }

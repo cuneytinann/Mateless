@@ -197,8 +197,8 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   ve ona götüren basamaklarla gösterilir; ölü pozisyonlar işaretlenir; sonuçlar CSV olarak
   indirilir. chasolver'ın, berabere bitmesi gerekirken süreden kaybedilmiş Lichess oyunları
   listeleri ([chasolver.org/unfair-games](https://chasolver.org/unfair-games)) doğrudan bırakılabilir.
-  İki sürümden biri seçilebilir: hızlı olan (bu kütüphane, Lichess'e önerilen kurallar) ve ikinci
-  sürüm (`second-version` dalı, aşağıda), seçilebilir bir hamle sınırı (75 ya da 50 hamle) ve tekrar kuralıyla
+  İki sürümden biri seçilebilir: hızlı olan (bu kütüphane, Lichess'e önerilen kurallar) ve tam
+  olan (`second-version` dalı, aşağıda), seçilebilir bir hamle sınırı (75 ya da 50 hamle) ve tekrar kuralıyla
   (beşli ya da üçlü); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
   hangi pozisyonları yakaladığını gösteriyor.
 - **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
@@ -440,14 +440,19 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 
 ## Sırada ne var
 
-Bu sürüm hızlı katman: sağlam, küçük ve bir oyun sunucusunda her hamleden sonra çalışmak için
-yapıldı. Yanında `second-version` dalında ikinci bir sürüm duruyor; hakem sayfası, seçilince onu
-çalıştırıyor. O da tam değil, ama kapsamı daha geniş; hedefi tamlık ve yeni kurallar eklendikçe
-büyüyor: önü açık piyon çiftleri, kutulu at, kale ve vezir, Domino aramasına ikinci kademe, ikiz
-filler, şah ve piyonlu bir oyunun pata gidiş yolları için dört kural (bu sürümün ispatlayamadığı
-36 satırın 34'ünü ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da üçlü tekrar (şimdilik
-JavaScript'te: sağlam, eksiksizliği aramanın sınırları içinde). Bu sürüm Lichess verisinin %99,98'ini zaten karşılıyor; bu yüzden
-geniş sürüm pratikte en çok meraklıları ve araştırmayı ilgilendiriyor, aceleye getirilmiyor.
+Bu sürüm, hızlı olanı, bir oyun sunucusu için yapılan katman: sağlam, küçük ve her hamleden sonra
+çalışmak için yapıldı. Yanında `second-version` dalında tam sürüm duruyor; hakem sayfası, seçilince
+onu çalıştırıyor. O da tam değil; "tam" hedefinin adı ve yeni kurallar eklendikçe büyüyor: önü açık
+piyon çiftleri, kutulu at, kale ve vezir, Domino aramasına ikinci kademe, ikiz filler, şah ve
+piyonlu bir oyunun pata gidiş yolları için dört kural (bu sürümün ispatlayamadığı 36 satırın 34'ünü
+ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da üçlü tekrar (şimdilik
+JavaScript'te). Hamle sınırına yakınken matın zamanında gelip gelemeyeceğine, saatin kendisiyle
+sınırlı ve mata ya da bir alışa veya piyon hamlesine kalan yarım hamlelerin alt sınırıyla budanan
+bir arama karar veriyor: üç ile beş taşlı oyun sonlarında, kural uzaklıklarının çevresinde,
+zamanında mat edilemeyen durumların %99,8'ini ispatlıyor, edilebilenlerden hiçbirini değil (yerine
+geçtiği, ply tavanlı arama %85,6'sını ispatlıyordu). Bu sürüm Lichess verisinin %99,98'ini zaten
+karşılıyor; bu yüzden tam sürüm pratikte en çok meraklıları ve araştırmayı ilgilendiriyor, aceleye
+getirilmiyor.
 
 ## Lisans ve teşekkür
 

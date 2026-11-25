@@ -196,7 +196,7 @@ Turkish to choose. Five tabs:
   found, no proof) and the rungs that led to it; dead positions are marked; results download as
   CSV. chasolver's lists of the Lichess games lost on time that should have been drawn,
   [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in. Two versions
-  to choose from: the fast one (this library, the rules proposed to Lichess) and the second version
+  to choose from: the fast one (this library, the rules proposed to Lichess) and the full one
   (the `second-version` branch, below), with a move rule (75 or 50 moves) and a repetition rule
   (fivefold or threefold) to choose; a box runs the chosen version's lock detector alone, to see which
   positions it catches.
@@ -441,16 +441,18 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, 
 
 ## What comes next
 
-This version is the fast layer: sound, small, and meant to run on a game server after every
-move. A second version stands beside it, on the `second-version` branch, and the arbiter page runs it when
-it is chosen. It is not complete either, but wider in scope, with completeness as its goal, and it
-keeps growing as new rules are added: open pawn pairs, boxed knights, rooks and queens, a second tier
-of the Domino search, twin bishops, four rules for the ways a game of kings and pawns runs into
-a stalemate (of the 36 rows this version leaves unproven, it proves 34), and, on request, the 75- or
-50-move rule and fivefold or threefold repetition (in JavaScript for now: sound, and complete within
-the search's limits). This version already covers
-99.98% of the Lichess data, so in practice the wider one matters mostly to the curious and to
-research; it is not rushed.
+This version, the fast one, is the layer for a game server: sound, small, and meant to run after
+every move. The full version stands beside it, on the `second-version` branch, and the arbiter page
+runs it when it is chosen. It is not complete either; "full" names its goal, and it keeps growing as
+new rules are added: open pawn pairs, boxed knights, rooks and queens, a second tier of the Domino
+search, twin bishops, four rules for the ways a game of kings and pawns runs into a stalemate (of
+the 36 rows this version leaves unproven, it proves 34), and, on request, the 75- or 50-move rule
+and fivefold or threefold repetition (in JavaScript for now). Near the move rule a search bounded by
+the clock itself, cut by a lower bound on the plies to a mate or to a capture or pawn move, decides
+whether a mate can still come in time: on endings of three to five men around their rule distances
+it proves 99.8% of the cases that cannot be mated in time, and none that can (the search it
+replaced, with a ply ceiling, proved 85.6%). This version already covers 99.98% of the Lichess
+data, so in practice the full one matters mostly to the curious and to research; it is not rushed.
 
 ## License and credits
 

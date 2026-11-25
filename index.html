@@ -9834,11 +9834,11 @@ function regionBuild(pos, mater) {
   dist[7] = distTable(KING, mater); dist[0] = distTable(KING, defender);
   att[7] = new Uint8Array(4096);
   for (let s = 0; s < 64; s++) attackRow(KING, s, att[7], s * 64);
-  const targets = [], kingMay = new Uint8Array(64), materPawnAtt = pawnAtt[mater >> 3];
+  const targets = [], materPawnAtt = pawnAtt[mater >> 3], kingList = [];
   for (let k = 0; k < 64; k++) {
     const T = [k];
     if (!isPawn[k] && !materPawnAtt[k]) {
-      kingMay[k] = 1;
+      kingList.push(k);
       for (const [df, dr] of KING_STEPS_FR) {
         const f = (k & 7) + df, r = (k >> 3) + dr;
         if (f < 0 || f > 7 || r < 0 || r > 7) continue;
@@ -9849,7 +9849,7 @@ function regionBuild(pos, mater) {
     }
     targets.push(T);
   }
-  return { isPawn, pawnOf, pawnAtt, dist, att, targets, kingMay, mater,
+  return { isPawn, pawnOf, pawnAtt, dist, att, targets, kingList: Uint8Array.from(kingList), byDistance: [], mater,
            cover: new Array(8 * 4096), front: new Array(8 * 4096), block: new Array(8 * 4096),
            take: new Int16Array(8 * 4096).fill(-1), meet: new Array(8 * 64), trap: null, placements: new Map(),
            blocked: new Map() };
@@ -9882,6 +9882,14 @@ function pieceNet(R, t, s, k) {
     if (!front.some(q => ((q & 0xffff) & m) === m)) front.push(o);
   }
   R.cover[key] = c; R.front[key] = Int32Array.from(front);
+}
+/* The squares the defending king may stand on, nearest to its square fk first (in the region; ties
+   from a1), the unreachable ones left out: mateBound stops at the first that is too far. */
+function kingOrder(R, fk) {
+  const d = R.dist[0], row = fk * 64, out = [];
+  for (const k of R.kingList) if (d[row + k] !== 255) out.push(k);
+  out.sort((a, b) => d[row + a] - d[row + b] || a - b);
+  return (R.byDistance[fk] = Uint8Array.from(out));
 }
 function coverOf(R, t, s, k) { const key = (t * 64 + s) * 64 + k; if (!R.cover[key]) pieceNet(R, t, s, k); return R.cover[key]; }
 function frontOf(R, t, s, k) { const key = (t * 64 + s) * 64 + k; if (!R.front[key]) pieceNet(R, t, s, k); return R.front[key]; }
@@ -10158,18 +10166,22 @@ class ClockSearch {
     return Math.min(he, this.mateBound(rem));
   }
 
-  /** The pieces on the board. */
+  /** The pieces on the board (all but the pawns, square by square from a1: the bitboards' order). */
   scan() {
-    const board = this.pos.board, mater = this.R.mater, mt = this.mt, ms = this.ms, ft = this.ft, fs = this.fs;
+    const pos = this.pos, board = pos.board, mater = this.R.mater, mt = this.mt, ms = this.ms, ft = this.ft, fs = this.fs;
     let nm = 0, nf = 0, fk = -1;
     const np = this.np; np[0] = 0; np[1] = 0;
-    for (let s = 0; s < 64; s++) {
-      const p = board[s]; if (!p) continue;
-      const t = p & 7; if (t === PAWN) continue;
-      const c = p & WHITE;
-      this.pieces[c >> 3][np[c >> 3]++] = s;
-      if (c === mater) { mt[nm] = t === KING ? 7 : t; ms[nm++] = s; }
-      else if (t === KING) fk = s; else { ft[nf] = t; fs[nf++] = s; }
+    const lo = pos.lo, hi = pos.hi;
+    for (let half = 0; half < 2; half++) {
+      let w = half ? (hi[WHITE] | hi[0]) & ~(hi[WHITE | PAWN] | hi[PAWN]) : (lo[WHITE] | lo[0]) & ~(lo[WHITE | PAWN] | lo[PAWN]);
+      while (w) {
+        const s = 32 * half + lowestBit(w);
+        w &= w - 1;
+        const p = board[s], t = p & 7, c = p & WHITE;
+        this.pieces[c >> 3][np[c >> 3]++] = s;
+        if (c === mater) { mt[nm] = t === KING ? 7 : t; ms[nm++] = s; }
+        else if (t === KING) fk = s; else { ft[nf] = t; fs[nf++] = s; }
+      }
     }
     this.nm = nm; this.nf = nf; this.fk = fk;
     if (nm <= 5) { let x = 0; for (let j = 0; j < nm; j++) x = x * 512 + mt[j] * 64 + ms[j]; this.placement = x; }
@@ -10221,25 +10233,27 @@ class ClockSearch {
     let piece = false;
     for (let j = 0; j < nm; j++) if (mt[j] !== 7) { piece = true; break; }
     if (!piece) return CLOCK_INF;                   // a king alone (its pawns stand still) gives no check
-    const materToMove = pos.side === R.mater, maxF = materToMove ? limit >> 1 : (limit + 1) >> 1;
+    // pliesFor(m, f) <= limit exactly when max(m, f + (materToMove ? 1 : 0), 1) <= most
+    const materToMove = pos.side === R.mater, most = materToMove ? (limit + 1) >> 1 : limit >> 1;
+    const maxF = materToMove ? most - 1 : most;
     let known = R.placements.get(this.placement);
     if (!known) {
       if (R.placements.size >= 300000) R.placements.clear();
       known = new Int16Array(64 * 5).fill(-1); R.placements.set(this.placement, known);
     }
-    const dK = R.dist[0], kingMay = R.kingMay;
+    if (most < 1) return CLOCK_INF;
+    const dK = R.dist[0], kings = R.byDistance[fk] || kingOrder(R, fk), nk = kings.length, row = fk * 64;
     let rest = null;
-    for (let k = 0; k < 64; k++) {
-      if (!kingMay[k]) continue;
-      const fK = dK[fk * 64 + k];
-      if (fK > maxF) continue;
+    for (let q = 0; q < nk; q++) {
+      const k = kings[q], fK = dK[row + k];
+      if (fK > maxF) break;                          // the rest are as far or farther
       let check = known[k];
       if (check === -1) {
         check = CLOCK_INF;
         for (let j = 0; j < nm; j++) if (mt[j] !== 7) { const c = coverOf(R, mt[j], ms[j], k)[1]; if (c < check) check = c; }
         known[k] = check;
       }
-      if (pliesFor(check, fK, materToMove) > limit) continue;
+      if (check > most) continue;
       const n = R.targets[k].length, full = (1 << n) - 1;
       if (known[64 + k] === -1) {
         let a = 0, b = 0, c3 = 0;                      // the three dearest single flights
@@ -10251,7 +10265,7 @@ class ClockSearch {
         known[64 + k] = a; known[192 + k] = b; known[256 + k] = c3;
       }
       const single = nf === 0 ? known[64 + k] : nf === 1 ? known[192 + k] : nf === 2 ? known[256 + k] : 0;
-      if (pliesFor(Math.max(check, single), fK, materToMove) > limit) continue;
+      if (single > most) continue;
       if (nf === 0) {
         let net = known[128 + k];
         if (net === -1) { net = materCover(R, mt, ms, nm, k, full); known[128 + k] = net; }

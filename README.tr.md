@@ -199,7 +199,8 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   listeleri ([chasolver.org/unfair-games](https://chasolver.org/unfair-games)) doğrudan bırakılabilir.
   İki sürümden biri seçilebilir: hızlı olan (bu kütüphane, Lichess'e önerilen kurallar) ve tam
   olan (`second-version` dalı, aşağıda), seçilebilir bir hamle sınırı (75 ya da 50 hamle) ve tekrar kuralıyla
-  (beşli ya da üçlü); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
+  (beşli ya da üçlü) ve Chess960'la (rok onun kurallarıyla, tahtanın rok sütunları bir başlangıç pozisyonunun
+  numarasından, 0–959); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
   hangi pozisyonları yakaladığını gösteriyor.
 - **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
   kale, vezir ve ikiz filler neden dışarıda; sonra bitboard'larla piyonlar ve şahlar (alış varsa
@@ -445,8 +446,8 @@ Bu sürüm, hızlı olanı, bir oyun sunucusu için yapılan katman: sağlam, k�
 onu çalıştırıyor. O da tam değil; "tam" hedefinin adı ve yeni kurallar eklendikçe büyüyor: önü açık
 piyon çiftleri, kutulu at, kale ve vezir, Domino aramasına ikinci kademe, ikiz filler, şah ve
 piyonlu bir oyunun pata gidiş yolları için dört kural (bu sürümün ispatlayamadığı 36 satırın 34'ünü
-ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da üçlü tekrar (şimdilik
-JavaScript'te). Hamle sınırına yakınken matın zamanında gelip gelemeyeceğine, saatin kendisiyle
+ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da üçlü tekrar (JavaScript, Rust
+ve WebAssembly'de). Hamle sınırına yakınken matın zamanında gelip gelemeyeceğine, saatin kendisiyle
 sınırlı ve mata ya da bir alışa veya piyon hamlesine kalan yarım hamlelerin alt sınırıyla budanan
 bir arama karar veriyor: üç ile beş taşlı oyun sonlarında, kural uzaklıklarının çevresinde,
 zamanında mat edilemeyen durumların %99,8'ini ispatlıyor, edilebilenlerden hiçbirini değil (yerine

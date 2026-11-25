@@ -45,6 +45,12 @@
           <label class="chk"><input type="checkbox" id="lockonly"> <span data-i="lblLockOnly">lock detector only</span></label>
         </div>
         <p class="hint" id="vernote"></p>
+        <div class="engrow">
+          <label class="chk"><input type="checkbox" id="c960"> <span data-i="lbl960">Chess960</span></label>
+          <label class="hide" id="c960idl"><span data-i="lbl960id">start position</span> <input type="number" id="c960id" value="518" min="0" max="959" step="1" inputmode="numeric"></label>
+          <code class="dim hide" id="c960arr"></code>
+        </div>
+        <p class="hint hide" id="c960note" data-i="c960Note"></p>
         <div id="rulerow">
           <fieldset class="mrule"><legend class="lab" data-i="lblRule">move rule</legend>
             <label><input type="radio" name="mrule" value="150" checked> <span data-i="rule75">75 moves (recommended, closer to FIDE)</span></label>

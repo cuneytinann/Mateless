@@ -708,6 +708,12 @@ html[lang="en"] .tab [lang="tr"],html[lang="tr"] .tab [lang="en"]{display:none!i
           <label class="chk"><input type="checkbox" id="lockonly"> <span data-i="lblLockOnly">lock detector only</span></label>
         </div>
         <p class="hint" id="vernote"></p>
+        <div class="engrow">
+          <label class="chk"><input type="checkbox" id="c960"> <span data-i="lbl960">Chess960</span></label>
+          <label class="hide" id="c960idl"><span data-i="lbl960id">start position</span> <input type="number" id="c960id" value="518" min="0" max="959" step="1" inputmode="numeric"></label>
+          <code class="dim hide" id="c960arr"></code>
+        </div>
+        <p class="hint hide" id="c960note" data-i="c960Note"></p>
         <div id="rulerow">
           <fieldset class="mrule"><legend class="lab" data-i="lblRule">move rule</legend>
             <label><input type="radio" name="mrule" value="150" checked> <span data-i="rule75">75 moves (recommended, closer to FIDE)</span></label>
@@ -8701,6 +8707,11 @@ function gapLevel(ask, k, frL, frH) {
    squares). In a game a rook or queen almost always has a square beside it that is empty or holds
    another man, and that ends it at a few operations; the levels above are not touched.
 
+   Castling, Chess960's too, never moves a boxed rook: a castling rook needs the square beside it
+   towards its king or its destination empty or holding the king, and a boxed rook has its own
+   men on both sides (its king is never one of them). test/chess960_boxed_check.js tries every
+   castling layout of Chess960 with the engine's own moves.
+
    A level is the plain loop (every set updated on every pass, as rust/src/lock.rs keeps it in
    lock_leaks_reference), with these additions:
      boxed   the pieces that no enemy king or bishop can ever reach: they never move nor fall.
@@ -13348,12 +13359,22 @@ const fenProblem = (function () {
    win     otherwise; reason: mate (the search found a mating line) or open (no proof within the
            limits, so the win stands by default). */
 let badReason = null;
-function readFen(fen) {
+function readFen(fen, allow960) {
   badReason = fenProblem(fen);
   if (badReason) return null;
   const setup = E.fromFen(fen);
   if (setup.error) { badReason = setup.error === 'castling' ? { k: 'castle' } : { k: 'engine', a: [setup.error] }; return null; }
+  if (!(allow960 === undefined ? C960 : allow960) && !standardCastling(setup.position)) { badReason = { k: 'castle960' }; return null; }
   return setup;
+}
+/* Castling as in standard chess: only the e-file for the king, the a- and h-files for the rooks
+   (the engine's skeleton: 3 the king's file, 2 the queen-side rook's, 1 the king-side rook's). */
+function standardCastling(pos) { return /^[02]000[03]00[01]$/.test(pos.castlingFiles.skeleton) }
+/* The castling field as a reader writes it: KQkq on the standard files, the rooks' file letters
+   otherwise (the engine writes letters whenever not all four rights are left). */
+function castleText(pos) {
+  const c = E.castlingField(pos);
+  return standardCastling(pos) ? c.replace(/[HAha]/g, function (x) { return { H: 'K', A: 'Q', h: 'k', a: 'q' }[x] }) : c;
 }
 function judge(fen, ply, bud, forced, hist) {
   const setup = readFen(fen);
@@ -13366,7 +13387,7 @@ function judge(fen, ply, bud, forced, hist) {
     const t1 = performance.now(), lk = E.lockCannotMate(pos, flagged), ms1 = performance.now() - t1;
     return { side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
              draw: lk, dead: lk && E.lockCannotMate(pos, other), reason: lk ? 'lock' : 'open', used: 0, deep: false, ms: ms1,
-             why: lk ? '' : 'nolock', castle: E.castlingField(pos), lockOnly: true };
+             why: lk ? '' : 'nolock', castle: castleText(pos), lockOnly: true };
   }
   const t0 = performance.now();
   const proof = E.proveCannotBeMated(pos, flagged, limits);
@@ -13382,7 +13403,7 @@ function judge(fen, ply, bud, forced, hist) {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
     draw: proof.proven, dead, reason, used: proof.nodes, deep: !!proof.deep, ruled: !!proof.ruled, ms,
     why: proof.proven ? '' : proof.failure,
-    castle: E.castlingField(pos),
+    castle: castleText(pos),
   };
 }
 /* For the detail view only, never for the verdict: how the game stood before the flag (status
@@ -13426,6 +13447,9 @@ var ENGINE_FILE = 'mateless.js';
 /* the rules of the second version: the move rule, 150 (the 75-move rule) or 100 (the 50-move rule),
    and the repetition rule, 5 (fivefold) or 3 (threefold); read from the radios when the page starts */
 var RULE = 150, REPN = 5;
+/* Chess960: castling by its rules (C960), and the start position whose files the board's castling
+   uses (C960_ID, 0–959; 518 is the standard one). Unticked, a FEN must castle as in standard chess. */
+var C960 = false, C960_ID = 518;
 var VER = 1, ENGINE_IDS = { 1: 'mateless-engine', 2: 'mateless-engine-2' }, ENGINES = { 1: E };
 function engineOf(v) {
   if (!ENGINES[v]) { var m = { exports: {} }; new Function('module', 'exports', $(ENGINE_IDS[v]).textContent)(m, m.exports); ENGINES[v] = m.exports }
@@ -13759,6 +13783,10 @@ en: {
  bad_ep: "the en passant square is inconsistent: there is no pawn in front of it that has just advanced two squares, or the squares behind it are not empty.",
  bad_epcheck: "the en passant square says the last move was a two-square pawn advance, but that move cannot explain the check.",
  bad_castle: "the castling field could not be read or contradicts itself.",
+ bad_castle960: "these castling rights need Chess960 (a king or a castling rook off its standard square): tick Chess960 in the engine settings.",
+ lbl960: "Chess960",
+ lbl960id: "start position",
+ c960Note: "Castling by Chess960’s rules. The start position with this number (0–959; 518 is the standard one) gives the king’s and the rooks’ files to the board’s castling buttons and its Start button; a FEN brings its own (KQkq for the outermost rooks, or the rooks’ file letters). Unticked, castling is standard chess’s. The engines need nothing new: a rook may stay on the board in a lock only when its own pawns, knights, rooks or queens hold every square next to it, never its king, and such a rook can never castle (checked on every castling layout of Chess960); the fast version keeps no rook in a lock at all.",
  bad_engine: "the engine could not read it ({0}).",
  bk_syntax: "malformed",
  bk_clock: "move counters",
@@ -13832,7 +13860,7 @@ en: {
  pk_moves: "Moves",
  secEngine: "The engine on this page",
  engineNote: "<code>mateless.js</code>, exactly as it runs here ({0} bytes): a reference board, the material test, the lock detector, the Domino search and a flag per side that a game keeps move by move. The same engine is in the repository, with its Rust port and WebAssembly build.",
- engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, a second tier of the Domino search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers without the rules (the rules are in JavaScript for now).",
+ engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, a second tier of the Domino search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too.",
  foot: "Mateless never declares a draw without a proof: a position it cannot prove falls to the win and is left to a complete solver after the game. Its verdicts were checked against chasolver’s labels, and every flag that came down in thousands of games against chasolver’s full analysis, with no false draw. MIT License, © 2026 Cüneyt İnan. Source, Rust port and data: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess data: Miguel Ambrona’s <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a>.",
 },
 tr: {
@@ -14151,6 +14179,10 @@ tr: {
  bad_ep: "geçerken alma karesi tutarsız: önünde iki kare ilerlemiş bir piyon yok ya da arkasındaki kareler boş değil.",
  bad_epcheck: "geçerken alma karesi son hamlenin iki kare piyon ilerleyişi olduğunu söylüyor, ama şah bu hamleyle açıklanamıyor.",
  bad_castle: "rok alanı okunamadı ya da kendi içinde çelişiyor.",
+ bad_castle960: "bu rok hakları Chess960 istiyor (bir şah ya da rok kalesi standart karesinde değil): motor ayarlarında Chess960’ı işaretle.",
+ lbl960: "Chess960",
+ lbl960id: "başlangıç pozisyonu",
+ c960Note: "Rok Chess960’ın kurallarıyla. Bu numaralı başlangıç pozisyonu (0–959; 518 standart olanı) şahın ve kalelerin sütunlarını tahtanın rok düğmelerine ve Başlangıç düğmesine verir; bir FEN kendi sütunlarını getirir (en dıştaki kaleler için KQkq ya da kalelerin sütun harfleri). İşaretli değilken rok standart satrancınki. Motorlara yeni bir şey gerekmiyor: bir kale kilitte tahtada ancak yanındaki her kareyi kendi piyonu, atı, kalesi ya da veziri tutuyorsa kalabilir, şahı asla değil; böyle bir kale hiçbir zaman rok yapamaz (Chess960’ın bütün rok dizilişlerinde denendi). Hızlı sürüm kilitte hiç kale bırakmaz.",
  bad_engine: "motor bu FEN’i okuyamadı ({0}).",
  bk_syntax: "yazım",
  bk_clock: "sayaçlar",
@@ -14224,7 +14256,7 @@ tr: {
  pk_moves: "Hamleler",
  secEngine: "Bu sayfadaki motor",
  engineNote: "<code>mateless.js</code>, burada çalıştığı haliyle ({0} bayt): bir referans tahta, materyal testi, kilit dedektörü, Domino araması ve bir oyunun hamle hamle tuttuğu taraf başına bir bayrak. Aynı motor, Rust çevirisi ve WebAssembly derlemesiyle birlikte repoda.",
- engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında ikinci bir kademe ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi kurallar olmadan aynı cevapları veriyor (kurallar şimdilik JavaScript’te).",
+ engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında ikinci bir kademe ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor.",
  foot: "Mateless ispatı olmadan hiçbir zaman beraberlik demez: ispatlayamadığı pozisyon galibiyete düşer ve oyundan sonra tam bir çözücüye kalır. Hükümleri chasolver’ın etiketlerine, binlerce oyunda düşen her bayrak da chasolver’ın tam analizine karşı denetlendi; hiç yanlış beraberlik çıkmadı. MIT Lisansı, © 2026 Cüneyt İnan. Kaynak, Rust çevirisi ve veri: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess verisi: Miguel Ambrona’nın <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a> sayfası.",
 }};
 var lang = 'en';
@@ -14250,7 +14282,7 @@ function badText(p) {
 /* the short group a reason is counted under in the summary and on the cards */
 function bkOf(k) { return { syntax: 'bk_syntax', kings: 'bk_kings', pawnrank: 'bk_pawnrank', pawns: 'bk_material', pieces: 'bk_material',
   promo: 'bk_material', clock: 'bk_clock', oppcheck: 'bk_oppcheck', check3: 'bk_check', checkleap: 'bk_check', checkdiag: 'bk_check',
-  checkstraight: 'bk_check', ep: 'bk_ep', epcheck: 'bk_ep', castle: 'bk_castle', engine: 'bk_syntax' }[k] || 'bk_syntax' }
+  checkstraight: 'bk_check', ep: 'bk_ep', epcheck: 'bk_ep', castle: 'bk_castle', castle960: 'bk_castle', engine: 'bk_syntax' }[k] || 'bk_syntax' }
 
 /* ═══════════════════════════════ verdicts in words ═══════════════════════════════ */
 /* outcome: what the arbiter established, with no reference involved */
@@ -14849,7 +14881,7 @@ function pgnGame(G, P, B) {
   var tk = pgnTokens(G.text), v = String(G.tags.Variant || '').toLowerCase(), k, code;
   o.moves = tk.moves; o.res = pgnResult(G.tags.Result || tk.res);
   if (v && !/^(standard|chess ?960|fischerandom|from position)$/.test(v)) { o.err = { k: 'variant', a: [G.tags.Variant] }; return pgnClass(o) }
-  var start = G.tags.FEN || PGN_START, setup = readFen(start);
+  var start = G.tags.FEN || PGN_START, setup = readFen(start, C960 || /960|fischer/.test(v));
   if (!setup) { o.err = { k: 'badstart', p: badReason }; return pgnClass(o) }
   if (!tk.moves.length && !G.tags.FEN) { o.err = { k: 'parse' }; return pgnClass(o) }
   var game = new E.Game(setup.position, VER === 2 ? { moveRule: RULE, repetition: REPN } : undefined), full = +(start.split(/\s+/)[5]) || 1;
@@ -15052,7 +15084,12 @@ $('ver').onchange = function () {
    engine strip, and the answers stand on the bars above and below the board. Squares are numbered
    as the engine numbers them: a1 = 0, h1 = 7, a8 = 56. */
 var PGLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟', x: '✕' };
-var ED = { sq: new Array(64).fill(''), turn: 'w', castle: '', ep: '-', clock: 0, full: 1, flip: false, tool: '' };
+var ED = { sq: new Array(64).fill(''), turn: 'w', castle: '', ep: '-', clock: 0, full: 1, flip: false, tool: '',
+           files: { k: 4, q: 0, h: 7 } };   /* castling: the king's file, the queen-side and king-side rooks' */
+/* The castling files of a Chess960 start position (518: e, a, h, the standard ones), and that
+   position itself, both sides and their pawns, all four rights. */
+function filesOf(id) { var a = E.chess960Arrangement(id); return { k: a.indexOf('K'), q: a.indexOf('R'), h: a.lastIndexOf('R') } }
+function start960(id) { var a = E.chess960Arrangement(id); return a.toLowerCase() + '/pppppppp/8/8/8/8/PPPPPPPP/' + a + ' w KQkq - 0 1' }
 var ED_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 var ED_EXAMPLE = '5b2/p7/Pp3k2/1Pp1pBp1/2P1P1P1/5K2/8/8 w - - 0 1';      /* Lichess ijyj0mHa, a lock */
 function edGlyph(c) { return PGLYPH[c.toLowerCase()] + (c === 'x' ? '' : '︎') }
@@ -15070,13 +15107,38 @@ function edLoad(fen) {
       else return false }
     if (f !== 8) return false }
   ED.sq = sq; ED.turn = A[1] === 'b' ? 'b' : 'w';
-  ED.castle = (A[2] || '').replace(/[^KQkq]/g, ''); ED.ep = /^[a-h][36]$/.test(A[3] || '') ? A[3] : '-';
+  edReadCastling(A[2] || '-', sq); ED.ep = /^[a-h][36]$/.test(A[3] || '') ? A[3] : '-';
   ED.clock = /^\d+$/.test(A[4] || '') ? Math.min(+A[4], 9999) : 0; ED.full = /^\d+$/.test(A[5] || '') ? Math.max(1, +A[5]) : 1;
   edFix(); return true }
+/* A FEN's castling field into the editor: K, Q (k, q) the outermost rook on that side of the king,
+   a file letter that rook (Shredder-FEN). With Chess960 the files are the FEN's; without, rights
+   off the standard files are dropped by edFix. */
+function edReadCastling(field, sq) {
+  var F = { k: ED.files.k, q: ED.files.q, h: ED.files.h }, out = '';
+  if (!C960) F = { k: 4, q: 0, h: 7 };
+  field.split('').forEach(function (ch) {
+    var w = ch !== ch.toLowerCase(), base = w ? 0 : 56, R = w ? 'R' : 'r', up = ch.toUpperCase(), king = -1, rook = -1, f;
+    for (f = 0; f < 8; f++) if (sq[base + f] === (w ? 'K' : 'k')) king = f;
+    if (king < 0) return;
+    if (up === 'K') { for (f = 7; f > king; f--) if (sq[base + f] === R) { rook = f; break } }
+    else if (up === 'Q') { for (f = 0; f < king; f++) if (sq[base + f] === R) { rook = f; break } }
+    else if (up >= 'A' && up <= 'H') rook = up.charCodeAt(0) - 65;
+    if (rook < 0 || rook === king) return;
+    var c = rook > king ? 'K' : 'Q';
+    if (C960) { F.k = king; if (c === 'K') F.h = rook; else F.q = rook }
+    if (out.indexOf(w ? c : c.toLowerCase()) < 0) out += w ? c : c.toLowerCase() });
+  ED.files = F; ED.castle = out }
 function edCastleOk(c) {
-  var s = ED.sq;
-  return c === 'K' ? s[4] === 'K' && s[7] === 'R' : c === 'Q' ? s[4] === 'K' && s[0] === 'R'
-       : c === 'k' ? s[60] === 'k' && s[63] === 'r' : s[60] === 'k' && s[56] === 'r' }
+  var s = ED.sq, F = ED.files, w = c === 'K' || c === 'Q', base = w ? 0 : 56;
+  return s[base + F.k] === (w ? 'K' : 'k') && s[base + (c === 'K' || c === 'k' ? F.h : F.q)] === (w ? 'R' : 'r') }
+/* The castling field the editor writes: K, Q (k, q) when the castling rook is the outermost on its
+   side of the king, its file letter otherwise. */
+function edCastleField() {
+  if (!ED.castle) return '-';
+  return 'KQkq'.split('').filter(function (c) { return ED.castle.indexOf(c) >= 0 }).map(function (c) {
+    var w = c === 'K' || c === 'Q', ks = c === 'K' || c === 'k', base = w ? 0 : 56, R = w ? 'R' : 'r', rook = ks ? ED.files.h : ED.files.q, f;
+    for (f = ks ? rook + 1 : 0; f < (ks ? 8 : rook); f++) if (ED.sq[base + f] === R) return (w ? 'ABCDEFGH' : 'abcdefgh').charAt(rook);
+    return c }).join('') }
 /* The squares en passant can be on: the last move may have been a double step there, and a pawn can take. */
 function edEpSquares() {
   var out = [], s = ED.sq, w = ED.turn === 'w', f, at, p, q;
@@ -15097,7 +15159,7 @@ function edFen() {
     row = ''; e = 0;
     for (f = 0; f < 8; f++) { c = ED.sq[r * 8 + f]; if (c) { if (e) row += e; e = 0; row += c } else e++ }
     out.push(row + (e ? e : '')) }
-  return out.join('/') + ' ' + ED.turn + ' ' + (ED.castle || '-') + ' ' + ED.ep + ' ' + ED.clock + ' ' + ED.full }
+  return out.join('/') + ' ' + ED.turn + ' ' + edCastleField() + ' ' + ED.ep + ' ' + ED.clock + ' ' + ED.full }
 /* A piece onto a square: a second king of a colour takes the first one's place; ✕ empties the square. */
 function edPut(s, c) {
   if (c === 'x') { ED.sq[s] = ''; return }
@@ -15221,7 +15283,7 @@ $('edFen').addEventListener('input', function () {
   var ok = edLoad(this.value); this.classList.toggle('bad', !ok);
   if (ok) { edBoard(); edPal(); edSide(); edJudge() } });
 $('edFen').addEventListener('blur', function () { this.value = edFen(); this.classList.remove('bad') });
-$('edStart').onclick = function () { edLoad(ED_START); edUpdate() };
+$('edStart').onclick = function () { edLoad(C960 ? start960(C960_ID) : ED_START); edUpdate() };
 $('edEx').onclick = function () { edLoad(ED_EXAMPLE); edUpdate() };
 $('edClear').onclick = function () { ED.sq = new Array(64).fill(''); ED.castle = ''; ED.ep = '-'; edUpdate() };
 $('edFlip').onclick = function () { ED.flip = !ED.flip; edUpdate() };
@@ -15262,6 +15324,27 @@ ROOT.addEventListener('click', function (ev) {
     if (el.value !== '' && (v !== v || v > L[1] || String(v) !== el.value)) el.value = v === v ? Math.min(Math.max(v, L[0]), L[1]) : '';
     edJudge() });
   el.addEventListener('change', function () { el.value = limitOf(id); edJudge() }) });
+/* Chess960 and its start position: the board's castling files follow; what was judged is cleared,
+   since a line may now be read, or refused, otherwise */
+function use960() {
+  ED.files = C960 ? filesOf(C960_ID) : { k: 4, q: 0, h: 7 };
+  if (!$('lb').classList.contains('hide')) lbClose();
+  results = null; showResults(); say('');
+  PGN.res = null; pgnRender();
+  applyI18n() }
+$('c960').onchange = function () {
+  if (busy || PGN.busy) { this.checked = C960; return }
+  C960 = this.checked; use960() };
+(function () {
+  var el = $('c960id');
+  function read() { var v = Math.floor(+el.value); return v >= 0 ? Math.min(v, 959) : 518 }
+  el.addEventListener('keydown', function (ev) {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length > 1) return;
+    if (!/^[0-9]$/.test(ev.key)) ev.preventDefault() });
+  el.addEventListener('change', function () {
+    if (busy || PGN.busy) { el.value = C960_ID; return }
+    el.value = C960_ID = read(); use960() });
+})();
 Array.prototype.forEach.call(ROOT.querySelectorAll('input[name=mrule],input[name=mrep]'), function (el) {
   el.onchange = function () {
     var move = this.name === 'mrule';
@@ -15284,6 +15367,8 @@ function applyI18n() {
   ROOT.querySelector('[data-i="engineNote"]').innerHTML = F(VER === 2 ? 'engineNote2' : 'engineNote', num(ENGINE_BYTES));
   limNote(); inputChanged();
   $('rulerow').classList.toggle('hide', VER !== 2);
+  $('c960idl').classList.toggle('hide', !C960); $('c960arr').classList.toggle('hide', !C960); $('c960note').classList.toggle('hide', !C960);
+  $('c960arr').textContent = E.chess960Arrangement(C960_ID);
   edUpdate();
   if (results) { var s = $('stat').innerHTML; showResults(); if (busy) say(s) }
   if (!$('lb').classList.contains('hide')) lbShow();

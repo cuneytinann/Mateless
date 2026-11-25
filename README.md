@@ -198,7 +198,8 @@ Turkish to choose. Five tabs:
   [chasolver.org/unfair-games](https://chasolver.org/unfair-games), drop straight in. Two versions
   to choose from: the fast one (this library, the rules proposed to Lichess) and the full one
   (the `second-version` branch, below), with a move rule (75 or 50 moves) and a repetition rule
-  (fivefold or threefold) to choose; a box runs the chosen version's lock detector alone, to see which
+  (fivefold or threefold) to choose, and Chess960 (castling by its rules, the board's castling
+  files from a start position's number, 0–959); a box runs the chosen version's lock detector alone, to see which
   positions it catches.
 - **Lock detector**: rung 2 from the simplest up. What the Lichess locks hold, and why knights,
   rooks, queens and twin bishops are left out; then pawns and kings on bitboards (a capture means
@@ -447,7 +448,7 @@ runs it when it is chosen. It is not complete either; "full" names its goal, and
 new rules are added: open pawn pairs, boxed knights, rooks and queens, a second tier of the Domino
 search, twin bishops, four rules for the ways a game of kings and pawns runs into a stalemate (of
 the 36 rows this version leaves unproven, it proves 34), and, on request, the 75- or 50-move rule
-and fivefold or threefold repetition (in JavaScript for now). Near the move rule a search bounded by
+and fivefold or threefold repetition (in JavaScript, Rust and WebAssembly). Near the move rule a search bounded by
 the clock itself, cut by a lower bound on the plies to a mate or to a capture or pawn move, decides
 whether a mate can still come in time: on endings of three to five men around their rule distances
 it proves 99.8% of the cases that cannot be mated in time, and none that can (the search it

@@ -63,7 +63,7 @@ function divideCounts(pos, depth) {
 let failures = 0, totalNodes = 0, totalSeconds = 0;
 for (const P of POSITIONS) {
   if (only && P.n !== only) continue;
-  const setup = E.fromFen(P.fen);
+  const setup = E.fromFen(P.fen, { strict: false });   // position 4 is composed: no game reaches it (captures)
   if (setup.error) { console.log(pad(P.n, 3) + '  could not read the FEN: ' + setup.error); failures++; continue; }
   for (let d = 1; d <= maxDepth; d++) {
     if (P.expect[d - 1] === undefined && !all) { console.log(pad(P.n, 3) + pad(d, 7) + '   skipped: no reference value (--all runs it)'); break; }

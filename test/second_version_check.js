@@ -13,6 +13,7 @@
      node second_version_check.js        (ENGINE: the engine, default ../mateless.js) */
 const fs = require('fs'), path = require('path');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js')), I = E._internal;
+const LOOSE = { strict: false };   // the rows are composed positions: read without the reachability checks
 let problems = 0;
 const problem = m => { problems++; if (problems <= 20) console.log('PROBLEM', m); };
 
@@ -21,7 +22,7 @@ const rows = fs.readFileSync(path.join(__dirname, '..', 'data', 'second_version.
 const kinds = {};
 for (const line of rows) {
   const [id, , want, nodes, fen] = line.split('\t');
-  const p = E.fromFen(fen).position, fl = p.side;
+  const p = E.fromFen(fen, LOOSE).position, fl = p.side;
   kinds[want] = (kinds[want] || 0) + 1;
   const proof = E.proveCannotBeMated(p, fl), lock = E.lockCannotMate(p, fl), sets = I.lockSets(p, fl);
   const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : sets.stuck ? 'lock-stuck' : sets.forced ? 'lock-forced' : 'lock')
@@ -71,7 +72,7 @@ const CASES = [
   ['5k2/2b4B/1p3b2/pPp1p1p1/P1P1P1P1/7K/8/8 w - - 0 1', true, false, 'levels'],
 ];
 for (const [fen, w, b, kind] of CASES) {
-  const s = E.fromFen(fen); if (s.error) { problem('bad FEN ' + fen); continue; }
+  const s = E.fromFen(fen, LOOSE); if (s.error) { problem('bad FEN ' + fen); continue; }
   const p = s.position;
   for (const [side, want] of [[E.WHITE, w], [E.BLACK, b]]) {
     const got = E.lockCannotMate(p, side);
@@ -89,7 +90,7 @@ for (const [fen, w, b, kind] of CASES) {
 }
 
 // 3. When the second tier runs.
-const deepRan = fen => E.proveCannotBeMated(E.fromFen(fen).position, E.fromFen(fen).position.side).deep;
+const deepRan = fen => E.proveCannotBeMated(E.fromFen(fen, LOOSE).position, E.fromFen(fen, LOOSE).position.side).deep;
 if (deepRan('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')) problem('the second tier ran at the start position');
 if (deepRan('8/8/4k3/8/3PK3/8/8/8 w - - 0 1')) problem('the second tier ran in an open king and pawn ending');
 if (!deepRan('8/p1p5/6k1/8/8/6p1/P5Pp/7K w - - 0 44')) problem('the second tier did not run with a king shut in (w1GmdvNK)');

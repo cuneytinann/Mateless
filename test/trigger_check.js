@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* The static tests' trigger: asking only the tests a move can have changed (testsAfter in
    src/lock.js) against the clock rule, both tests after every capture or pawn move and
    one ply later (halfmove <= 1, no en passant square). A copy of the engine is patched at run time
@@ -60,7 +61,7 @@ const zero = () => { for (const E of [A, B]) { E.ASKED.material = 0; E.ASKED.loc
 zero();
 let positions = 0;
 for (let i = 0; i < fens.length; i++) {
-  const sa = A.fromFen(fens[i]), sb = B.fromFen(fens[i]);
+  const sa = A.fromFen(fens[i], LOOSE), sb = B.fromFen(fens[i], LOOSE);
   if (sa.error) continue;
   positions++;
   let a = A.proveBoth(sa.position).map(proof).join('|'), b = B.proveBoth(sb.position).map(proof).join('|');
@@ -77,13 +78,13 @@ const askedPositions = asked();
 const askedGames = [{ material: 0, lock: 0 }, { material: 0, lock: 0 }];
 function flagsOf(E, seq) {
   const fl = new E.Flags(), sum = askedGames[E === A ? 0 : 1], m = E.ASKED.material, l = E.ASKED.lock;
-  seq.forEach((fen, ply) => fl.update(E.fromFen(fen).position, ply));
+  seq.forEach((fen, ply) => fl.update(E.fromFen(fen, LOOSE).position, ply));
   sum.material += E.ASKED.material - m; sum.lock += E.ASKED.lock - l;
   return fl.whiteDownAt + ',' + fl.blackDownAt;
 }
 let games = 0, plies = 0, down = 0;
 const play = (start, choose, max) => {
-  const g = new A.Game(A.fromFen(start).position), seq = [A.toFen(g.position)];
+  const g = new A.Game(A.fromFen(start, LOOSE).position), seq = [A.toFen(g.position)];
   for (let k = 0; k < max; k++) {
     const moves = g.legalMoves();
     if (!moves.length) break;
@@ -100,7 +101,7 @@ const compare = seq => {
   if (a !== b) problem('flags ' + a + ' against ' + b + ' in ' + seq.join(' | '));
 };
 for (const fen of fens) {                       // replies to every check
-  const s = A.fromFen(fen);
+  const s = A.fromFen(fen, LOOSE);
   if (s.error || !A.inCheck(s.position)) continue;
   for (const m of A.legalMoves(s.position)) {
     const first = A.makeMove(s.position, new A.Position(s.position.castlingFiles), m.from, m.to);
@@ -118,12 +119,13 @@ const W = process.env.NO_WASM ? null
   : require('../mateless-wasm.js').instantiate(fs.readFileSync(path.join(__dirname, '..', 'mateless.wasm')));
 let takebacks = 0;
 const rewound = (E, before, k, after) => {         // before: plies 0..j; then back to k; after: plies k+1..
-  const fl = new E.Flags(), pos = f => E === W ? f : E.fromFen(f).position;
+  const fl = new E.Flags(), made = [];
+  const pos = f => { const p = E.fromFen(f, LOOSE).position; if (E === W) made.push(p); return p; };
   before.forEach((fen, ply) => fl.update(pos(fen), ply));
   fl.rewind(k);
   after.forEach((fen, i) => fl.update(pos(fen), k + 1 + i));
   const r = fl.whiteDownAt + ',' + fl.blackDownAt;
-  if (E === W) fl.free();
+  if (E === W) { fl.free(); made.forEach(p => p.free()); }
   return r;
 };
 const takeback = (before, k, after) => {
@@ -137,7 +139,7 @@ const takeback = (before, k, after) => {
 };
 const epOf = fen => fen.split(' ')[3] !== '-';
 for (const fen of fens) {                       // one move taken back, every other one played
-  const s = A.fromFen(fen);
+  const s = A.fromFen(fen, LOOSE);
   if (s.error || !(A.inCheck(s.position) || epOf(fen))) continue;
   const moves = A.legalMoves(s.position);
   if (moves.length < 2) continue;
@@ -149,7 +151,7 @@ seed = 5;
 for (let i = 0; i < GAMES / 2; i++) {           // games, a rewind to a ply of interest
   const before = play(fens[rand(fens.length)], ms => ms[rand(ms.length)], 60);
   if (before.length < 3) continue;
-  const at = before.map((f, k) => k).filter(k => k < before.length - 1 && (epOf(before[k]) || A.inCheck(A.fromFen(before[k]).position)));
+  const at = before.map((f, k) => k).filter(k => k < before.length - 1 && (epOf(before[k]) || A.inCheck(A.fromFen(before[k], LOOSE).position)));
   const k = at.length ? at[rand(at.length)] : rand(before.length - 1);
   takeback(before, k, play(before[k], ms => ms[rand(ms.length)], 12).slice(1));
 }

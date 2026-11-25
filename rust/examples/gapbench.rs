@@ -18,7 +18,7 @@ fn main() {
     for f in &args[4..] {
         let v: Vec<(mateless::Position, u8)> = lines(f).iter().filter_map(|l| {
             let mut it = l.split('\t'); let fen = it.next()?; let z = if it.next()? == "w" { mateless::WHITE } else { mateless::BLACK };
-            Some((mateless::from_fen(fen).ok()?, z)) }).collect();
+            Some((mateless::from_fen_with(fen, false).ok()?.pos, z)) }).collect();
         let n = v.len();
         let name = f.rsplit('/').next().unwrap().trim_start_matches("cat_").trim_end_matches(".tsv");
         let locks = v.iter().filter(|(p, z)| mateless::lock_test(p, *z)).count();

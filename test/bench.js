@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* Loads several engine files into one process and alternates them position by position, so
    that both see the same machine conditions. Prints CPU-time knps per engine. */
 const fs = require('fs');
@@ -8,7 +9,7 @@ const engines = files.map(f => require(f));
 const fens = [];
 for (const f of ['positions.txt', 'lichess.txt']) for (const l of fs.readFileSync((process.env.CHASOLVER || require('path').join(__dirname, '../../chasolver/tests')) + '/' + f, 'utf8').split('\n')) if (/^(WB|W-|-B|--) /.test(l)) fens.push(l.slice(3));
 const sample = fens.filter((_, i) => i % every === 0);
-const pos = engines.map(L => sample.map(f => L.fromFen(f)).map(s => (s.error ? null : s.position)));
+const pos = engines.map(L => sample.map(f => L.fromFen(f, LOOSE)).map(s => (s.error ? null : s.position)));
 const time = engines.map(() => 0), nodes = engines.map(() => 0);
 for (let rep = 0; rep < 2; rep++)
   for (let i = 0; i < sample.length; i++) {

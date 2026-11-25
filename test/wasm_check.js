@@ -2,11 +2,14 @@
 /* mateless.wasm (through mateless-wasm.js) against mateless.js: the same answers, field by field,
    node counts included.
      positions  chasolver's positions.txt and lichess.txt (CHASOLVER), and DATA's last positions
-                when DATA is given (the chasolver-data CSV): the FEN error, the material test and
+                when DATA is given (the chasolver-data CSV): the strict FEN reading (its error or
+                what it put right), then on the position read without the reachability checks
+                (composed positions included) the material test and
                 the lock detector for both sides, cannotMate2 for each set of sides, both proofs
                 (every field), the dead-position test; every 64th also at 9 plies / 2,000 nodes,
                 every 512th perft 3;
-     games      games played from those positions, a move chosen by a seeded rule: after every ply
+     games      games played from those positions (those the strict reading lets in: the wasm
+                engine is fed their FENs), a move chosen by a seeded rule: after every ply
                 the two flags (Flags.update in both engines, the wasm one fed the FEN; a Game would
                 not update them on the position that ends the game, these do).
    Under the rules a game ends at by itself (the second version):
@@ -19,6 +22,8 @@
                 150/5, 100/3, 100 alone and 3 alone: the flags after every ply, each update with
                 the game's history, given to the wasm engine as mateless.js's { keys, n } in one
                 game and as the list of FENs in the next.
+   FENS=<file> first compares the two FEN readers alone on every line of the file (a FEN per line):
+   strict and loose, the error or what was put right.
    Usage: node wasm_check.js [games] [plies] [rule games]   (default 2000 games of at most 120
           plies, 300 rule games of at most 160) */
 const fs = require('fs'), path = require('path');
@@ -35,10 +40,27 @@ for (const f of ['positions.txt', 'lichess.txt'])
 if (process.env.DATA)
   for (const l of fs.readFileSync(process.env.DATA, 'utf8').split('\n').slice(1)) if (l) fens.push(l.split(',')[12].trim());
 
+if (process.env.FENS) {
+  let n = 0;
+  const show = r => { if (r.position && r.position.free) r.position.free(); return r.error || r.fixed.join(); };
+  for (const fen of fs.readFileSync(process.env.FENS, 'utf8').split('\n')) {
+    if (!fen) continue;
+    for (const strict of [true, false]) {
+      const a = show(E.fromFen(fen, { strict })), b = show(W.fromFen(fen, { strict }));
+      if (a !== b) problem('FEN (strict ' + strict + ') ' + a + ' against ' + b + ': ' + fen);
+    }
+    n++;
+  }
+  console.log('FEN readers on', n, 'lines of', process.env.FENS);
+}
+
 const proof = p => [p.proven, p.staticProof, p.failure, p.foundBy, p.nodes, p.deep, p.ruled].join(',');
 let positions = 0, searched = 0;
 for (let i = 0; i < fens.length; i++) {
-  const fen = fens[i], a = E.fromFen(fen), b = W.fromFen(fen);
+  const fen = fens[i], sa = E.fromFen(fen), sb = W.fromFen(fen);   // the strict reading: error and what it put right
+  if ((sa.error || sa.fixed.join()) !== (sb.error || sb.fixed.join())) problem('FEN ' + (sa.error || sa.fixed) + ' against ' + (sb.error || sb.fixed) + ': ' + fen);
+  if (sb.position) sb.position.free();
+  const a = E.fromFen(fen, { strict: false }), b = W.fromFen(fen, { strict: false });   // the search on composed positions too
   if (a.error || b.error) { if (a.error !== b.error) problem('FEN error ' + a.error + ' against ' + b.error + ': ' + fen); continue; }
   const p = a.position, q = b.position;
   const mine = [], theirs = [];
@@ -102,9 +124,9 @@ const SETTINGS = [[150, 5], [100, 3], [100, 0], [0, 3]];
 let rulePositions = 0, ruled = 0;
 for (let i = 0; i < fens.length; i += 16) {
   const k = i >> 4, moveRule = k & 1 ? 100 : 150, repetition = [0, 3, 5][k % 3];
-  const fen = withClock(fens[i], moveRule - 1 - (k * 7) % 40), a = E.fromFen(fen);
+  const fen = withClock(fens[i], moveRule - 1 - (k * 7) % 40), a = E.fromFen(fen, { strict: false });
   if (a.error) continue;
-  const q = W.fromFen(fen).position, rules = { moveRule, repetition };
+  const q = W.fromFen(fen, { strict: false }).position, rules = { moveRule, repetition };
   const opts = k % 4 ? Object.assign({ maxPly: 6, budget: 100 }, rules) : rules, z = k & 2 ? E.BLACK : E.WHITE;
   const mine = [proof(E.proveCannotBeMated(a.position, z, opts)), ...E.proveBoth(a.position, opts).map(proof), E.isDeadPosition(a.position, rules)];
   const theirs = [proof(W.proveCannotBeMated(q, z, opts)), ...W.proveBoth(q, opts).map(proof), W.isDeadPosition(q, rules)];

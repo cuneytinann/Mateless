@@ -13,7 +13,7 @@ fn read(file: &str) -> Vec<Vec<Position>> {
         let l = l.ok()?;
         if l.is_empty() { return None; }
         let first = l.split('\t').next()?;
-        Some(first.split('|').filter_map(|f| from_fen(f).ok()).collect::<Vec<_>>())
+        Some(first.split('|').filter_map(|f| from_fen_with(f, false).ok().map(|r| r.pos)).collect::<Vec<_>>())
     }).filter(|g: &Vec<Position>| !g.is_empty()).collect()
 }
 

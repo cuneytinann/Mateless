@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* The single-file engine against its sources:
      1. mateless.js and mateless.mjs are what tools/build.js builds from src/ now;
      2. index.html, the whole site in one page, is what tools/build-site.js builds from site/ now,
@@ -64,7 +65,7 @@ const problem = m => { problems++; if (problems <= 20) console.log('PROBLEM', m)
       if (/^(WB|W-|-B|--) /.test(l)) fens.push(l.slice(3).trim());
   let positions = 0, plies = 0;
   const answer = (E, fen) => {
-    const p = E.fromFen(fen).position;
+    const p = E.fromFen(fen, LOOSE).position;
     const g = new E.Game(p), out = [JSON.stringify(E.proveBoth(p)), E.isDeadPosition(p), E.gameStatus(p)];
     for (let k = 0, st = g.status(); k < 40 && !st; k++) {   // a game from it, a move chosen by a fixed rule
       const moves = g.legalMoves(), mv = moves[(k * 7 + fen.length) % moves.length];
@@ -74,7 +75,7 @@ const problem = m => { problems++; if (problems <= 20) console.log('PROBLEM', m)
     return out;
   };
   for (let i = 0; i < fens.length; i += 16) {
-    if (A.fromFen(fens[i]).error) continue;
+    if (A.fromFen(fens[i], LOOSE).error) continue;
     const a = answer(A, fens[i]).join('|');
     positions++; plies += a.split('|').length - 3;
     for (const [where, B] of others.slice(0, 2)) if (answer(B, fens[i]).join('|') !== a) problem(where + ': another answer for ' + fens[i]);

@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* The game flags against chasolver's full analysis. Games are played move by move with the
    engine's Game, from chasolver's test positions and from the standard start, with random moves
    (mostly quiet ones, so that structures close). Every time a flag comes down ("this side can
@@ -41,7 +42,7 @@ function oracle(game, mater) {
   if (r.result === 'unwinnable') st.oracleUnwinnable++; else st.oracleUndetermined++;
 }
 for (let g = 0; g < GAMES; g++) {
-  const fen = g % 4 === 0 ? starts[0] : starts[1 + rand(starts.length - 1)], s = E.fromFen(fen);
+  const fen = g % 4 === 0 ? starts[0] : starts[1 + rand(starts.length - 1)], s = E.fromFen(fen, LOOSE);
   if (s.error) continue;
   const game = new E.Game(s.position); st.games++;
   let code = game.status();

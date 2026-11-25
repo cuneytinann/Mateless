@@ -106,7 +106,7 @@
   }
 
   function analyse(fen, flagged) {
-    const parsed = Mt.fromFen(fen.trim());
+    const parsed = Mt.fromFen(fen.trim(), { strict: false });   // the detector on composed positions too
     if (!parsed || parsed.error || !parsed.position)
       return { error: L('This FEN does not read', 'Bu FEN okunmuyor') + (parsed && parsed.error ? ' (' + parsed.error + ')' : '') +
         L('. Paste a full FEN: board, side to move, castling, en passant.', '. Tam bir FEN yapıştır: tahta, sıra, rok, geçerken alma.') };
@@ -131,7 +131,10 @@
         big(c.wBish) === lv.bishops.wBish && big(c.bBish) === lv.bishops.bBish;
     }
     const otherProved = V.trace(s, flagged === 'w' ? 'b' : 'w').proved;
-    return { s, t, agree, second, pcs: pieceArray(fen), otherProved, flagged };
+    const reach = Mt.fromFen(fen.trim()).error;   // no game reaches it: said, and the detector shown all the same
+    const note = reach ? L('No game reaches this position (' + reach + '); the detector is shown on it all the same.',
+                           'Hiçbir oyun bu konuma ulaşmaz (' + reach + '); dedektör yine de bu konumda gösteriliyor.') : '';
+    return { s, t, agree, second, pcs: pieceArray(fen), otherProved, flagged, note };
   }
 
   const frozenOf = (lv, s) => lv.frozen === 'white' ? s.wk : lv.frozen === 'black' ? s.bk : 0n;
@@ -213,7 +216,7 @@
     const a = analyse(fen, flagged);
     const err = $('fenerr');
     if (a.error) { err.textContent = a.error; err.classList.remove('hide'); st.a = null; return; }
-    err.classList.add('hide');
+    err.textContent = a.note; err.classList.toggle('hide', !a.note);
     st.a = a;
     const tried = a.t.levels.map((lv, i) => [lv, i]).filter(([lv]) => !lv.skipped);
     st.level = a.t.proved ? a.t.levels.indexOf(a.t.level) : (tried.length ? tried[tried.length - 1][1] : 0);

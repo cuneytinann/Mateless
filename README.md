@@ -292,7 +292,7 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: a dead positi
 './mateless.mjs'`, or `import Mateless from './mateless.mjs'`). The source modules
 (`./src/index.js`) give the same answers but run ~10–30% slower in V8.
 
-**WebAssembly.** The Rust port compiled to `mateless.wasm` (224 KB, 72 KB gzipped), with
+**WebAssembly.** The Rust port compiled to `mateless.wasm` (245 KB, 80 KB gzipped), with
 `mateless-wasm.js` as its dependency-free bridge: the whole ladder (static tests, Domino, both
 proofs, a game's flags, perft) and, on request, the rules a game ends at by itself, with
 `mateless.js`'s answers to the node count. Proofs run ~2.5–4× faster than in JS, a game's flags
@@ -327,6 +327,39 @@ import Mateless = require('./mateless');      // or: import { fromFen, proveBoth
 const r = Mateless.fromFen('8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92');
 if (r.error === undefined) Mateless.proveCannotBeMated(r.position, Mateless.BLACK);   // Proof
 ```
+
+**Reading a FEN.** `fromFen` (`src/fen.js`) is the outer layer every position from outside comes
+in through; the ladder never calls it, and a position reached by legal moves from one it let in
+needs no second look. It returns `{ position, halfmoveGiven, fullmove, fixed, fen }` or
+`{ error, detail }`, and refuses a position no game of chess or Chess960 can reach, by the known
+necessary conditions:
+
+| error | the position |
+|---|---|
+| `syntax`, `kings`, `pawnrank` | not a FEN; not one king a side; a pawn on the first or last rank |
+| `oppcheck` | the side not to move is in check (two kings side by side are this too) |
+| `pawns`, `pieces` | more than 8 pawns, or more than 16 men, a side |
+| `promo` | more men than the starting set (one queen, two rooks, two knights, one bishop on each colour: a bishop never changes colour) than missing pawns could have become |
+| `captures` | pawns off their files: each from a file of its own, they need more captures than the other side has men missing |
+| `checks` | no last move of the other side gives the checks: made back, every move (a move, a capture, a promotion, an en passant capture, castling) leaves the side to move in check, or needs a man that is not there (a captured man comes back only if its side has fewer than 16, a promotion is made back only if the mover has fewer than 8 pawns). So three checks, every double check no single move gives (two knights, two men on one line through the king, a discovered check whose line the moved man never stood on, two rooks without a capturing promotion), a pawn checking from its starting rank, a piece that came from nowhere |
+
+What can be read only one way is put right instead, and named in `fixed`: castling rights the
+board does not allow (`castling`); an en passant square no two-square advance left: the wrong
+rank, the squares not empty, a halfmove clock above 0, or a check the advance cannot give
+(`en passant`); a halfmove clock above 0 where only a capture or a pawn move can have given the
+check (`halfmove`, set to 0); a move number below what the halfmove clock needs (`fullmove`).
+`fen` is the FEN with these put right. These are necessary conditions only: a position that
+passes them all may still be unreachable (that takes a retrograde analysis further back).
+`fromFen(fen, { strict: false })` keeps only `syntax`, `kings`, `pawnrank` and `oppcheck`, for
+composed positions and test sets.
+
+No legal position is refused or changed: every position of python-chess's random games, standard
+and Chess960, check-heavy, with every double check, castling, en passant and promotion check they
+offer, in both forms of the en passant field (`test/fen_check.js`; 2.17 million FENs in longer
+runs); and every random board python-chess finds invalid is refused. The Rust port (`from_fen`,
+`from_fen_with`) and `mateless.wasm` (`W.fromFen(fen, { strict })`) read the same, on 2.27
+million FENs. On the page, the positions box writes a FEN as the engine put it right once the box
+is left.
 
 **scalachess (Lichess)** has its own repository,
 [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess), with patch sets on
@@ -425,6 +458,7 @@ the board.
 | `src/domino.js` | **rung 3:** the Domino search (6 plies / 100 nodes) | legal moves piece by piece in a fixed order, made and taken back in place, "is there a legal move?", an exact code of a position |
 | `src/ladder.js` | **the ladder:** when each rung is asked, the second tier (rung 4), the proofs for one position, a game's two flags (`Flags`) | the halfmove clock and the en passant square |
 | `src/board.js` | a reference board: bitboards, magic bitboards, legal moves, FEN, Chess960 | — |
+| `src/fen.js` | **the outer layer:** reading a FEN into a position some game can reach (`fromFen`): what it puts right, what it refuses | the board's FEN reader and attack test |
 | `src/game.js` | a reference game: result codes, repetitions, the 75-move rule, fivefold repetition, `Game` | — |
 | `src/index.js` | the public API | |
 
@@ -435,7 +469,7 @@ same layers (`rust/src/board.rs`, `material.rs`, `lock.rs`, `domino.rs`, `ladder
 ## Files
 
 ```
-src/                 the source: board, material, lock, domino, ladder, game, index (ES modules)
+src/                 the source: board, fen, material, lock, domino, ladder, game, index (ES modules)
 mateless.js          the engine, one file (built from src/ by tools/build.js; never edited by hand)
 mateless.mjs         the same file as an ES module (also from tools/build.js)
 mateless.d.ts        TypeScript types
@@ -465,6 +499,7 @@ with `CHASOLVER=<chasolver>/tests`):
 node smoke.js                                    # perft
 node perft_cpw.js 5                              # the six Chess Programming Wiki positions
 python3 perft_python.py | node perft960.js -     # Chess960 moves = python-chess's (every start, ~780,000 positions)
+python3 fen_python.py | node fen_check.js -      # fromFen: python-chess's legal games read as they are, its invalid boards refused
 node classify.js 6 100 1                         # against chasolver's labels: FALSE DRAWS must be 0
 node game_flags_check.js 1 3000 200              # every flag that comes down, against chasolver's full solver
 node twosided_check.js <files>                   # both sides in one pass = each side alone, every field

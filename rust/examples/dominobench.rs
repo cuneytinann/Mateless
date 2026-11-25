@@ -9,7 +9,7 @@ fn main() {
     let rounds: usize = args.get(2).and_then(|r| r.parse().ok()).unwrap_or(7);
     let v: Vec<(mateless::Position, u8)> = BufReader::new(std::fs::File::open(&args[1]).unwrap()).lines().filter_map(|l| {
         let l = l.ok()?; let mut it = l.split('\t'); let fen = it.next()?; let w = it.next()? == "w";
-        Some((mateless::from_fen(fen).ok()?, if w { mateless::BLACK } else { mateless::WHITE })) }).collect();
+        Some((mateless::from_fen_with(fen, false).ok()?.pos, if w { mateless::BLACK } else { mateless::WHITE })) }).collect();
     let mut s = mateless::Domino::new();
     let (mut proven, mut nodes) = (0u64, 0i64);
     for (p, z) in &v { let r = mateless::prove_cannot_be_mated(&mut s, p, *z, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET); if r.proven { proven += 1; } nodes += r.nodes; }

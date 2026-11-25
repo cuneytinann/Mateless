@@ -5,6 +5,9 @@
 //!   mateless games <file> [rule] [rep]    per line (a game: FENs joined by |): the plies at which the flags came down;
 //!                                         with a move rule (150, 100) and a repetition rule (5, 3), the flags of a game
 //!                                         that ends at them, each update given the game's history
+//!   mateless fen <file>                   per FEN (a line, its first tab field, a labelled line or a game's FENs
+//!                                         joined by |): the strict reading and the loose one, each as the error or
+//!                                         the fixed bits (1 castling, 2 en passant, 4 move number, 8 halfmove clock) and the FEN
 //!   mateless rules <file>                 per line "<fen>\t<w|b flagged>\t<rule>\t<rep>\t<ply>\t<budget>": the proof
 //!                                         under the rules, both proofs at once, and the dead-position test
 //! The JavaScript side of the comparison is test/rust_compare.js, which prints the same lines.
@@ -20,6 +23,10 @@ const CPW: [(&str, [u64; 6]); 6] = [
     ("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", [46, 2079, 89890, 3894594, 164075551, 0]),
 ];
 
+/// Composed positions (chasolver's labelled lines, the rules lines) are read without the checks of
+/// reachability, so the search is compared on all of them.
+fn loose(fen: &str) -> Result<Position, &'static str> { from_fen_with(fen, false).map(|r| r.pos) }
+
 fn failure(f: Failure) -> &'static str {
     match f { Failure::None => "-", Failure::Mate => "mate", Failure::Horizon => "horizon", Failure::Budget => "budget" }
 }
@@ -34,7 +41,7 @@ fn main() {
             let depth: usize = args.get(2).and_then(|d| d.parse().ok()).unwrap_or(5);
             let mut all = true;
             for (fen, counts) in CPW.iter() {
-                let pos = from_fen(fen).expect("fen");
+                let pos = loose(fen).expect("fen");   // position 4 is composed: no game reaches it
                 for d in 1..=depth.min(6) {
                     if counts[d - 1] == 0 { continue; }
                     let t = std::time::Instant::now();
@@ -71,7 +78,7 @@ fn main() {
             for (i, line) in f.lines().enumerate() {
                 let line = line.unwrap();
                 if line.len() < 4 || !matches!(&line[..3], "WB " | "W- " | "-B " | "-- ") { continue; }
-                let pos = match from_fen(line[3..].trim()) { Ok(p) => p, Err(e) => { writeln!(out, "{}\tfen-error\t{}", i, e).unwrap(); continue; } };
+                let pos = match loose(line[3..].trim()) { Ok(p) => p, Err(e) => { writeln!(out, "{}\tfen-error\t{}", i, e).unwrap(); continue; } };
                 // Both flags in one pass (prove_both): the same lines as prove_cannot_be_mated for each.
                 let both = prove_both(&mut search, &pos, DOMINO_PLY, DOMINO_BUDGET);
                 for (flagged, p) in [(WHITE, both[0]), (BLACK, both[1])] {
@@ -105,7 +112,7 @@ fn main() {
                 let line = line.unwrap();
                 let c: Vec<&str> = line.split('\t').collect();
                 if c.len() < 6 { continue; }
-                let pos = match from_fen(c[0]) { Ok(p) => p, Err(e) => { writeln!(out, "{}\tfen-error\t{}", i, e).unwrap(); continue; } };
+                let pos = match loose(c[0]) { Ok(p) => p, Err(e) => { writeln!(out, "{}\tfen-error\t{}", i, e).unwrap(); continue; } };
                 let flagged = if c[1] == "w" { WHITE } else { BLACK };
                 let rules = Rules { move_rule: c[2].parse().unwrap(), repetition: c[3].parse().unwrap(), history: &[] };
                 let (ply, budget): (u32, i64) = (c[4].parse().unwrap(), c[5].parse().unwrap());
@@ -116,6 +123,21 @@ fn main() {
                 writeln!(out, "{}\t{}\t{}\t{}\t{}", i, f(&p), f(&both[0]), f(&both[1]), dead as u8).unwrap();
             }
         }
-        _ => eprintln!("usage: mateless perft [depth] | mateless layers <csv> | mateless labels <file> | mateless games <file> [rule] [rep] | mateless rules <file>"),
+        Some("fen") => {
+            let f = BufReader::new(std::fs::File::open(&args[2]).expect("file"));
+            for (i, line) in f.lines().enumerate() {
+                let line = line.unwrap();
+                let body = if line.len() > 3 && matches!(&line[..3], "WB " | "W- " | "-B " | "-- ") { &line[3..] } else { line.split('\t').next().unwrap() };
+                for fen in body.trim().split('|') {
+                    if fen.is_empty() { continue; }
+                    let show = |r: Result<FenRead, &'static str>| match r {
+                        Ok(r) => format!("{}\t{}", r.fixed, to_fen(&r.pos, r.fullmove)),
+                        Err(e) => e.to_string(),
+                    };
+                    writeln!(out, "{}\t{}\t{}", i, show(from_fen_with(fen, true)), show(from_fen_with(fen, false))).unwrap();
+                }
+            }
+        }
+        _ => eprintln!("usage: mateless perft [depth] | mateless layers <csv> | mateless labels <file> | mateless games <file> [rule] [rep] | mateless rules <file> | mateless fen <file>"),
     }
 }

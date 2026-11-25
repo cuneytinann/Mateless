@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* The lock detector's proof obligation, checked position by position.
    A lock certificate is the fixed point of one level: pawn cones, fixed pawns, king and bishop
    reaches, frozen king. The reasoning behind it is an inductive invariant: in EVERY
@@ -140,7 +141,7 @@ function certify(rootPos, S, flagged) {
 
 let done = 0, closed = 0, states = 0, bad = []; const t0 = Date.now();
 for (let i = +(process.env.OFFSET || 0); i < rows.length; i += EVERY) {
-  const [fen, w] = rows[i]; const s = E.fromFen(fen); if (s.error) continue;
+  const [fen, w] = rows[i]; const s = E.fromFen(fen, LOOSE); if (s.error) continue;
   const flagged = w === 'w' ? BLACK : WHITE;
   const S = I.lockSets(s.position, flagged); if (!S) continue;      // only lock certificates
   const r = certify(s.position, S, flagged);

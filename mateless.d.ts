@@ -129,13 +129,26 @@ declare namespace Mateless {
     promotion: boolean;
   }
 
-  type FenError = 'syntax' | 'kings' | 'pawns' | 'castling' | 'en passant';
+  /** Why a FEN was refused. syntax: not a FEN; kings: not one king a side; pawnrank: a pawn on the
+      first or last rank; oppcheck: the side not to move is in check. With strict (the default) also
+      the positions no game can reach: pawns (more than 8 a side), pieces (more than 16 men a side),
+      promo (more men than the starting set than missing pawns could have become, bishops by the
+      colour of their squares), captures (pawns off their files need more captures than the enemy
+      men missing), checks (no last move of the other side gives the checks on the side to move). */
+  type FenError = 'syntax' | 'kings' | 'pawnrank' | 'oppcheck' | 'pawns' | 'pieces' | 'promo' | 'captures' | 'checks';
+  /** What the reader put right instead of refusing: castling rights the board does not allow, an en
+      passant square no two-square advance (or, strict, no last move) left, a halfmove clock above 0
+      where (strict) only a capture or a pawn move can have given the checks, a move number below
+      what the halfmove clock needs. */
+  type FenFix = 'castling' | 'en passant' | 'halfmove' | 'fullmove';
   type FenResult =
-    | { position: Position; halfmoveGiven: boolean; error?: undefined }
-    | { error: FenError; position?: undefined; halfmoveGiven?: undefined };
+    | { position: Position; halfmoveGiven: boolean; fullmove: number; fixed: FenFix[]; fen: string; error?: undefined; detail?: undefined }
+    | { error: FenError; detail: (string | number)[]; position?: undefined; halfmoveGiven?: undefined; fullmove?: undefined; fixed?: undefined; fen?: undefined };
 
-  /** Reads a FEN (KQkq or Shredder-FEN castling). Returns { position, halfmoveGiven } or { error }. */
-  function fromFen(fen: string): FenResult;
+  /** Reads a FEN (KQkq or Shredder-FEN castling) into a position some game of chess or Chess960 can
+      reach: { position, halfmoveGiven, fullmove, fixed, fen } (fen: the FEN with what was put right)
+      or { error, detail }. strict: false keeps only syntax, kings, pawnrank and oppcheck. */
+  function fromFen(fen: string, options?: { strict?: boolean }): FenResult;
   function toFen(pos: Position, fullmove?: number): string;
   /** The castling field: KQkq for the standard skeleton, Shredder file letters otherwise; '-' without rights. */
   function castlingField(pos: Position): string;
@@ -412,6 +425,10 @@ declare namespace Mateless {
   }
 
   const _internal: {
+    /** fromFen's first step: the FEN as it is written (syntax, kings, pawnrank; what it put right), no reachability checks and no oppcheck; epDeclared: the en passant square written and kept (-1: none), even where no capture onto it is legal. */
+    readonly readFen: (fen: string) =>
+      | { position: Position; halfmoveGiven: boolean; fullmove: number; fullmoveRead: number; fixed: FenFix[]; epDeclared: number; error?: undefined }
+      | { error: 'syntax' | 'kings' | 'pawnrank'; detail: (string | number)[]; position?: undefined };
     /** Writes the legal moves (from | to << 6 | flags << 12) into out[base…] and returns their number. */
     readonly generateLegalMoves: (pos: Position, out: Int32Array, base: number, ctx?: MoveContext) => number;
     /** Plays a generated move in place; promotion is used only by a promoting move. */

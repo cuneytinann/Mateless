@@ -13,12 +13,24 @@
                                  positions since the last capture or pawn move, from the FENs)
      rules <file>                lines "<fen>\t<w|b flagged>\t<rule>\t<rep>\t<ply>\t<budget>": the
                                  proof under the rules, both proofs at once and the dead-position test
+   The labelled lines and the rules lines are read with { strict: false }, so the search is compared
+   on composed positions too; `fen <file>` compares the two readers themselves: per FEN (a line, its
+   first tab field, a labelled line or a game's FENs joined by |) the strict reading and the loose
+   one, each as the error or the fixed bits (1 castling, 2 en passant, 4 move number, 8 halfmove clock) and the FEN.
    (env ENGINE, default ../mateless.js) */
 const fs = require('fs'), path = require('path');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js'));
 const [mode, file] = process.argv.slice(2);
 const out = [];
-if (mode === 'layers') {
+const LOOSE = { strict: false };   // composed positions (labelled lines, rules lines): the search on all of them
+const FIXED = { castling: 1, 'en passant': 2, fullmove: 4, halfmove: 8 };
+if (mode === 'fen') {   // per FEN: the strict reading and the loose one (the error, or the fixed bits and the FEN)
+  const show = r => (r.error ? r.error : [r.fixed.reduce((a, f) => a | FIXED[f], 0), r.fen].join('\t'));
+  fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+    const body = /^(WB|W-|-B|--) /.test(line) && line.length > 3 ? line.slice(3) : line.split('\t')[0];
+    for (const fen of body.trim().split('|')) if (fen) out.push([i, show(E.fromFen(fen)), show(E.fromFen(fen, LOOSE))].join('\t'));
+  });
+} else if (mode === 'layers') {
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i]) continue;
@@ -32,7 +44,7 @@ if (mode === 'layers') {
 } else if (mode === 'labels') {
   fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
     if (!/^(WB|W-|-B|--) /.test(line)) return;
-    const s = E.fromFen(line.slice(3).trim());
+    const s = E.fromFen(line.slice(3).trim(), LOOSE);
     if (s.error) { out.push([i, 'fen-error', s.error].join('\t')); return; }
     const both = E.proveBoth(s.position);   // both flags in one pass: the same lines as proveCannotBeMated for each
     for (const [z, r] of [[E.WHITE, both[0]], [E.BLACK, both[1]]])
@@ -57,7 +69,7 @@ if (mode === 'layers') {
   fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
     const c = line.split('\t');
     if (c.length < 6) return;
-    const s = E.fromFen(c[0]);
+    const s = E.fromFen(c[0], LOOSE);
     if (s.error) { out.push([i, 'fen-error', s.error].join('\t')); return; }
     const rules = { moveRule: +c[2], repetition: +c[3] }, opts = Object.assign({ maxPly: +c[4], budget: +c[5] }, rules);
     const p = E.proveCannotBeMated(s.position, c[1] === 'w' ? E.WHITE : E.BLACK, opts), both = E.proveBoth(s.position, opts);
@@ -71,5 +83,5 @@ if (mode === 'layers') {
     for (let k = 1; k < fens.length; k++) { g.position = E.fromFen(fens[k]).position; g.ply = k; g.updateFlags(); }
     out.push([g.whiteDownAt, g.blackDownAt].join('\t'));
   }
-} else { console.log('usage: node rust_compare.js layers <csv> | labels <file> | games <file> [rule rep] | rules <file>'); process.exit(1); }
+} else { console.log('usage: node rust_compare.js layers <csv> | labels <file> | games <file> [rule rep] | rules <file> | fen <file>'); process.exit(1); }
 process.stdout.write(out.join('\n') + '\n');

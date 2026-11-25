@@ -681,72 +681,118 @@ pub(crate) fn hash_key(k: &Key) -> u64 {
 
 // ─── 12. FEN ─────────────────────────────────────────────────────────────────────────────
 
-/// Reads a FEN, as fromFen in mateless.js: castling as KQkq (X-FEN) or Shredder file letters,
-/// each right read against the board; the en passant square kept only when a legal capture exists.
-pub fn from_fen(fen: &str) -> Result<Position, &'static str> {
+/// What read_fen put right instead of refusing (FenRead::fixed): a castling right the board does
+/// not allow, an en passant square no two-square advance left, a move number below what the
+/// halfmove clock needs; and from_fen (fen.rs), strict, a halfmove clock above 0 where only a
+/// capture or a pawn move can have given the checks.
+pub const FIXED_CASTLING: u8 = 1;
+pub const FIXED_EN_PASSANT: u8 = 2;
+pub const FIXED_FULLMOVE: u8 = 4;
+pub const FIXED_HALFMOVE: u8 = 8;
+
+/// A FEN as read_fen reads it: the position, whether the halfmove clock was given, the move number
+/// (put right) and as written (1 if absent), what was put right (FIXED_*), and the en passant square that remains (NO_SQUARE:
+/// none; the position keeps it as its en passant square only when a legal capture exists).
+pub struct FenRead { pub pos: Position, pub halfmove_given: bool, pub fullmove: u64, pub fullmove_read: u64, pub fixed: u8, pub ep_declared: i32 }
+
+/// Reads a FEN as it is written, as readFen in mateless.js: the first step of from_fen (fen.rs),
+/// which then refuses a position no game can reach. Errors: "syntax", "kings" (not one king a
+/// side), "pawnrank" (a pawn on the first or last rank). Castling as KQkq (X-FEN) or Shredder
+/// file letters, each right read against the board; a right the board does not allow, or one off
+/// the files of the skeleton the others set, is dropped. The en passant square is kept only behind
+/// a pawn of the side not to move that has just advanced two squares, with a halfmove clock of 0.
+pub fn read_fen(fen: &str) -> Result<FenRead, &'static str> {
     tables();
     let fields: Vec<&str> = fen.split_whitespace().collect();
-    if fields.len() < 2 { return Err("syntax"); }
+    if fields.len() < 2 || fields[0].is_empty() { return Err("syntax"); }
+    let rows: Vec<&str> = fields[0].split('/').collect();
+    if rows.len() != 8 { return Err("syntax"); }
     let mut pieces = [0u8; 64];
-    let (mut rank, mut file) = (7i32, 0i32);
     let (mut wk, mut bk) = (0, 0);
-    for ch in fields[0].chars() {
-        if ch == '/' { rank -= 1; file = 0; continue; }
-        if ('1'..='8').contains(&ch) { file += ch as i32 - '0' as i32; continue; }
-        let ty = match ch.to_ascii_lowercase() { 'p' => PAWN, 'k' => KING, 'q' => QUEEN, 'n' => KNIGHT, 'r' => ROOK, 'b' => BISHOP, _ => 0 };
-        if ty == 0 || rank < 0 || file > 7 { return Err("syntax"); }
-        let piece = ty | if ch.is_ascii_uppercase() { WHITE } else { BLACK };
-        if piece == WHITE | KING { wk += 1; } else if piece == BLACK | KING { bk += 1; }
-        pieces[(8 * rank + file) as usize] = piece;
-        file += 1;
+    for (r, row) in rows.iter().enumerate() {
+        let rank = 7 - r as i32;
+        let mut file = 0i32;
+        for ch in row.chars() {
+            if ('1'..='8').contains(&ch) { file += ch as i32 - '0' as i32; if file > 8 { return Err("syntax"); } continue; }
+            let ty = match ch.to_ascii_lowercase() { 'p' => PAWN, 'k' => KING, 'q' => QUEEN, 'n' => KNIGHT, 'r' => ROOK, 'b' => BISHOP, _ => 0 };
+            if ty == 0 || file > 7 { return Err("syntax"); }
+            let piece = ty | if ch.is_ascii_uppercase() { WHITE } else { BLACK };
+            if piece == WHITE | KING { wk += 1; } else if piece == BLACK | KING { bk += 1; }
+            pieces[(8 * rank + file) as usize] = piece;
+            file += 1;
+        }
+        if file != 8 { return Err("syntax"); }
+    }
+    if fields[1] != "w" && fields[1] != "b" { return Err("syntax"); }
+    let castling_field = fields.get(2).copied().unwrap_or("-");
+    let ep_field = fields.get(3).copied().unwrap_or("-");
+    if castling_field != "-" && !castling_field.chars().all(|c| "KQkq".contains(c) || ('A'..='H').contains(&c) || ('a'..='h').contains(&c)) {
+        return Err("syntax");
+    }
+    if ep_field != "-" {
+        let e = ep_field.as_bytes();
+        if e.len() != 2 || !(b'a'..=b'h').contains(&e[0]) || !(b'1'..=b'8').contains(&e[1]) { return Err("syntax"); }
+    }
+    for i in 4..6 {
+        if let Some(f) = fields.get(i) { if *f != "-" && (f.is_empty() || !f.bytes().all(|b| b.is_ascii_digit())) { return Err("syntax"); } }
     }
     if wk != 1 || bk != 1 { return Err("kings"); }
-    for f in 0..8 { if pieces[f] & 7 == PAWN || pieces[56 + f] & 7 == PAWN { return Err("pawns"); } }
+    for f in 0..8 { if pieces[f] & 7 == PAWN || pieces[56 + f] & 7 == PAWN { return Err("pawnrank"); } }
+    let mut fixed = 0u8;
     let mut skeleton = [0u8; 8];
     let mut castling = 0u8;
-    for ch in fields.get(2).copied().unwrap_or("-").chars() {
-        if ch == '-' { continue; }
-        let up = ch.to_ascii_uppercase();
-        let white = ch == up;
-        let base = if white { 0 } else { 56 };
-        let king_piece = if white { WHITE | KING } else { BLACK | KING };
-        let king = pieces.iter().position(|&p| p == king_piece).unwrap() as i32 - base as i32;
-        let rook = if white { WHITE | ROOK } else { BLACK | ROOK };
-        if !(0..=7).contains(&king) { continue; }
-        if up != 'K' && up != 'Q' && !('A'..='H').contains(&up) { return Err("castling"); }
-        let mut rook_file = -1i32;
-        if up == 'K' { for f in (king + 1..8).rev() { if pieces[(base + f) as usize] == rook { rook_file = f; break; } } }
-        else if up == 'Q' { for f in 0..king { if pieces[(base + f) as usize] == rook { rook_file = f; break; } } }
-        else { let f = up as i32 - 'A' as i32; if f != king && pieces[(base + f) as usize] == rook { rook_file = f; } }
-        if rook_file < 0 { continue; }
-        let digit = if rook_file > king { 1 } else { 2 };
-        let (k, r) = (king as usize, rook_file as usize);
-        if (skeleton[k] != 0 && skeleton[k] != 3) || (skeleton[r] != 0 && skeleton[r] != digit) { return Err("castling"); }
-        skeleton[k] = 3;
-        skeleton[r] = digit;
-        castling |= digit << if white { 0 } else { 2 };
+    if castling_field != "-" {
+        for ch in castling_field.chars() {
+            let up = ch.to_ascii_uppercase();
+            let white = ch == up;
+            let base = if white { 0 } else { 56 };
+            let king_piece = if white { WHITE | KING } else { BLACK | KING };
+            let king = pieces.iter().position(|&p| p == king_piece).unwrap() as i32 - base as i32;
+            let rook = if white { WHITE | ROOK } else { BLACK | ROOK };
+            let mut rook_file = -1i32;
+            if (0..=7).contains(&king) {
+                if up == 'K' { for f in (king + 1..8).rev() { if pieces[(base + f) as usize] == rook { rook_file = f; break; } } }
+                else if up == 'Q' { for f in 0..king { if pieces[(base + f) as usize] == rook { rook_file = f; break; } } }
+                else { let f = up as i32 - 'A' as i32; if f != king && pieces[(base + f) as usize] == rook { rook_file = f; } }
+            }
+            if rook_file < 0 { fixed |= FIXED_CASTLING; continue; }              // its king or its rook is not there
+            let digit = if rook_file > king { 1 } else { 2 };
+            let bit = digit << if white { 0 } else { 2 };
+            let (k, r) = (king as usize, rook_file as usize);
+            if castling & bit != 0 && skeleton[r] == digit { continue; }       // the same right written twice
+            if castling & bit != 0 || (skeleton[k] != 0 && skeleton[k] != 3) || (skeleton[r] != 0 && skeleton[r] != digit)
+                || skeleton.iter().enumerate().any(|(f, &d)| (d == 3 && f != k) || (d == digit && f != r)) { fixed |= FIXED_CASTLING; continue; }
+            skeleton[k] = 3;
+            skeleton[r] = digit;
+            castling |= bit;
+        }
     }
-    for d in [1, 2, 3] { if skeleton.iter().filter(|&&x| x == d).count() > 1 { return Err("castling"); } }
     let rights = if castling != 0 { rights_from_skeleton(&skeleton) } else { rights_from_skeleton(&STANDARD_SKELETON) };
     let mut pos = Position::empty(rights);
     for sq in 0..64 { if pieces[sq] != 0 { pos.put(sq, pieces[sq]); } }
-    pos.side = match fields[1] { "w" => WHITE, "b" => BLACK, _ => return Err("syntax") };
+    pos.side = if fields[1] == "w" { WHITE } else { BLACK };
     pos.castling = castling;
-    let ep = fields.get(3).copied().unwrap_or("-");
-    if ep != "-" {
-        let e = ep.as_bytes();
-        if e.len() != 2 || !(b'a'..=b'h').contains(&e[0]) || !(b'1'..=b'8').contains(&e[1]) { return Err("en passant"); }
+    let halfmove_given = matches!(fields.get(4), Some(c) if *c != "-");
+    if halfmove_given { pos.halfmove = fields[4].parse().unwrap_or(u32::MAX); }
+    let mut ep_declared = NO_SQUARE;
+    if ep_field != "-" {
+        let e = ep_field.as_bytes();
         let sq = (8 * (e[1] - b'1') + (e[0] - b'a')) as i32;
-        let behind = if pos.side == WHITE { sq - 8 } else { sq + 8 };
-        if (sq >> 3) != if pos.side == WHITE { 5 } else { 2 } || pos.board[sq as usize] != 0
-            || pos.board[behind as usize] != ((pos.side ^ WHITE) | PAWN) { return Err("en passant"); }
-        if can_capture_en_passant(&pos, sq as usize) { pos.ep = sq; }
+        let dir = if pos.side == WHITE { 8 } else { -8 };
+        let (pawn_sq, start_sq) = ((sq - dir) as usize, (sq + dir) as usize);
+        if (sq >> 3) == if pos.side == WHITE { 5 } else { 2 } && pos.board[sq as usize] == 0 && pos.board[start_sq] == 0
+            && pos.board[pawn_sq] == ((pos.side ^ WHITE) | PAWN) && pos.halfmove == 0 {
+            ep_declared = sq;
+            if can_capture_en_passant(&pos, sq as usize) { pos.ep = sq; }
+        } else { fixed |= FIXED_EN_PASSANT; }
     }
-    match fields.get(4) {
-        None | Some(&"-") => {}
-        Some(c) => { if !c.bytes().all(|b| b.is_ascii_digit()) || c.is_empty() { return Err("syntax"); } pos.halfmove = c.parse().unwrap_or(0); }
-    }
-    Ok(pos)
+    let given = matches!(fields.get(5), Some(c) if *c != "-");
+    let fullmove_read: u64 = if given { fields[5].parse().unwrap_or(u64::MAX) } else { 1 };
+    let mut fullmove = fullmove_read;
+    let played = pos.halfmove as i64 - if pos.side == BLACK { 1 } else { 0 };
+    let least = 1.max(if played <= 0 { 0 } else { (played + 1) / 2 } + 1) as u64;
+    if fullmove < least { if given { fixed |= FIXED_FULLMOVE; } fullmove = least; }
+    Ok(FenRead { pos, halfmove_given, fullmove, fullmove_read, fixed, ep_declared })
 }
 
 /// The board field of a FEN (for messages and tests).
@@ -764,4 +810,29 @@ pub fn placement(pos: &Position) -> String {
         if rank > 0 { s.push('/'); }
     }
     s
+}
+
+/// The castling field: KQkq for the standard skeleton, Shredder file letters otherwise (castlingField).
+pub fn castling_field(pos: &Position) -> String {
+    let c = pos.castling;
+    let mut s = String::new();
+    if pos.rights_at[..8] == STANDARD_SKELETON {
+        for (bit, ch) in [(1, 'K'), (2, 'Q'), (4, 'k'), (8, 'q')] { if c & bit != 0 { s.push(ch); } }
+    } else {
+        let file = |d: u8| pos.rights_at[..8].iter().position(|&x| x == d).map_or('-', |f| (b'A' + f as u8) as char);
+        let (king_rook, queen_rook) = (file(1), file(2));
+        if c & 1 != 0 { s.push(king_rook); }
+        if c & 2 != 0 { s.push(queen_rook); }
+        if c & 4 != 0 { s.push(king_rook.to_ascii_lowercase()); }
+        if c & 8 != 0 { s.push(queen_rook.to_ascii_lowercase()); }
+    }
+    if s.is_empty() { s.push('-'); }
+    s
+}
+
+/// The FEN of a position with the given move number (toFen in mateless.js).
+pub fn to_fen(pos: &Position, fullmove: u64) -> String {
+    let ep = if pos.ep == NO_SQUARE { "-".to_string() }
+             else { format!("{}{}", (b'a' + (pos.ep & 7) as u8) as char, (pos.ep >> 3) + 1) };
+    format!("{} {} {} {} {} {}", placement(pos), if pos.side == WHITE { 'w' } else { 'b' }, castling_field(pos), ep, pos.halfmove, fullmove)
 }

@@ -15,7 +15,7 @@ fn main() {
         for line in BufReader::new(std::fs::File::open(&f).unwrap()).lines() {
             let line = line.unwrap();
             let Some(fen) = fen_of(&line) else { continue };
-            let Ok(mut pos) = mateless::from_fen(&fen) else { continue };
+            let Ok(mut pos) = mateless::from_fen_with(&fen, false).map(|r| r.pos) else { continue };
             for ply in 0..24 {
                 for flagged in [mateless::WHITE, mateless::BLACK] {
                     let (a, b) = (mateless::lock_test(&pos, flagged), mateless::lock_test_reference(&pos, flagged));

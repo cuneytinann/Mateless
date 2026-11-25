@@ -25,3 +25,5 @@ lock/**/*.ppu
 lock/**/*.cm[iox]
 lock/**/__pycache__/
 lock/**/nimcache/
+# What test/lock_layers.js writes: the positions no layer proves
+test/unproven.txt

@@ -13,11 +13,12 @@ Mateless bir kütüphane (JavaScript, Rust, WebAssembly; bağımlılık yok) ve 
 **Sağlam ama eksik**: ispatı olmadan hiçbir zaman beraberlik demiyor; ispatlayamadığını
 platformun kuralına (süresi biten kaybeder) ve oyundan sonra tam bir çözücüye bırakıyor.
 
-Tek kütüphanede, yan yana iki sürüm var. **İlk sürüm** hızlı katman, Lichess'e önerilen:
-[`lock/`](lock/) klasöründeki ve scalachess yamasındaki kilit dedektörü ve kısa bir arama. **İkinci
-sürüm** daha çok şey gören kurallar ekliyor: önü açık piyon çiftleri, kutulu at, kale ve vezir, ve
-aramanın ikinci kademesi. O da tam değil; kapsamı daha geniş, hedefi tamlık. Her kuralı yalnızca
-kendi durumu tahtadayken çalışıyor, geri kalan her pozisyon ilk sürümün kodundan geçiyor
+Tek kütüphanede, yan yana iki sürüm var. **Hızlı** sürüm (ilki) Lichess'e önerilen katman:
+[`lock/`](lock/) klasöründeki ve scalachess yamasındaki kilit dedektörü ve kısa bir arama. **Tam**
+sürüm (ikincisi) daha çok şey gören kurallar ekliyor: önü açık piyon çiftleri, kutulu at, kale ve
+vezir, aramanın ikinci kademesi ve istenirse hamle ve tekrar kuralları, hamle sınırına yakınken
+saatle sınırlı bir aramayla. O da tam değil; adı hedefini söylüyor. Her kuralı yalnızca kendi
+durumu tahtadayken çalışıyor, geri kalan her pozisyon hızlı sürümün kodundan geçiyor
 ([ikinci sürüm](#ikinci-surum)).
 
 **[Site](https://cuneytinann.github.io/Mateless/)** · [English](README.md) ·
@@ -476,10 +477,10 @@ Kasım kuralları ve ikiz filler Rust ve WebAssembly derlemelerinde de var: `rus
 
 ## İkinci sürüm
 
-İlk sürüm hızlı katman: sağlam, küçük ve bir oyun sunucusunda her hamleden sonra çalışmak için
-yapıldı; Lichess verisinin %99,98'ini karşılıyor. İkinci sürüm aynı kütüphanede onun yanında
-duruyor. O da tam değil ve öyle olduğunu söylemiyor: kapsamı daha geniş, hedefi tamlık, yeni
-kurallar eklendikçe büyümeye devam ediyor. Pratikte en çok meraklıları ve araştırmayı
+Hızlı sürüm (ilki) bir oyun sunucusu için yapılan katman: sağlam, küçük ve her hamleden sonra
+çalışmak için yapıldı; Lichess verisinin %99,98'ini karşılıyor. Tam sürüm (ikincisi) aynı
+kütüphanede onun yanında duruyor. O da tam değil ve öyle olduğunu söylemiyor: "tam" hedefinin adı,
+yeni kurallar eklendikçe büyümeye devam ediyor. Pratikte en çok meraklıları ve araştırmayı
 ilgilendiriyor; bu yüzden aceleye getirilmiyor: her kural yalnızca bilindiğinde ve ölçüldüğünde
 giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 
@@ -506,19 +507,41 @@ ya da `3` ile (tekrarlar için oyunun geçmişiyle: `history: game.repetitionHis
 - arama hattı, yarım hamle sayacı sınıra ulaşmış ve legal hamlesi olan bir pozisyonda berabere biter (o hamlede gelen
   mat yine sayılır); oyunun kökten önce N − 1 kez gördüğü bir pozisyonda da;
 - kurallı arama yalnızca kuralsız aramalar başarısız olunca ve bir kuralın bir hattı bitirebildiği yerde koşar: sayaç
-  hamle sınırına aramanın ply'ı kadar yakınsa ya da geçmişte N − 1 kez görülmüş bir pozisyon varsa. Yani kuralsız her
-  ispat aynı düğümlerle duruyor; kurallar kapalıyken (varsayılan) cevaplar düğüm düğüm öncekiyle aynı;
-- ply tavanı iki kademenin derin olanı, bütçesi hamle sınırına yakınken en az 200.000 düğüm (`DOMINO_RULE_BUDGET`);
+  hamle sınırına 40 yarım hamle kadar yakınsa (`REGION_REACH`: iki taraf için 20'şer hamle; aramanın ply'ı daha çoksa
+  o kadar) ya da geçmişte N − 1 kez görülmüş bir pozisyon varsa. Yani kuralsız her ispat aynı düğümlerle duruyor;
+  kurallar kapalıyken (varsayılan) cevaplar düğüm düğüm öncekiyle aynı;
+- hamle sınırına yakınken bu, **saat araması** (`src/clock.js`): ply tavanıyla değil saatin kendisiyle kapanan bir arama.
+  Alış ve piyon hamlesi olmadan varılan pozisyonlarda (orada piyonlar yerinden kıpırdamaz), saatin bir hattı
+  götürebildiği yere kadar yürür; bir pozisyonda mata ya da bir çıkışa (saati sıfırlayan bir alış ya da piyon hamlesi)
+  kalan yarım hamlelerin alt sınırı kalan yarım hamleleri aşınca orayı keser. Mat için: savunan şahın zamanında
+  varabileceği her kare için, mat edecek tarafın orada şah çekip kaçışları kapatacak en az hamlesi (her taş tek bir
+  kareden tutar, engel yalnızca piyonlar). Çıkış için: bir piyon hamlesine, bir taşın bir piyona varıp onu almasına ya
+  da bir taşla buluşup onu almasına kalan yarım hamleler; ardından mat edecek tarafın mat malzemesi kalmayan alışlar
+  sayılmaz. Bir çıkışı kuralsız aramalar, çağıranın sınırlarıyla yargılar: tarafın ondan sonra hiç mat edilemeyeceğini
+  ispatlayamazlarsa cevap "mat edebilir". Bütçesi en az 200.000 düğüm (`DOMINO_RULE_BUDGET`), çıkışların aramaları
+  dahil. Yalnızca bir tekrar pozisyonu varsa Domino araması onunla koşar, ilk kademenin sınırlarıyla (kuralsız izin
+  verildiyse ikincisininkiyle);
 - kurallı bir `Game` kurallarda biter: 75 hamle ve beşli tekrar kodlarını koruyor (4, 5); 50 hamle 13, üçlü tekrar 14.
 
 Sağlam, ama eksiksizliği yalnızca bu sınırlar içinde. Kurallı bir ispat o kurallarda biten bir oyun için geçerli
-(beşlininki üçlüde, 75 hamleninki 50'de de; tersi değil). Yine de bir ispatı kaçırabilir: sayaç sınıra aramanın
-ply'ından uzaksa ya da ispat daha çok düğüm istiyorsa cevap "mat edebilir" kalır, güvenli tarafta. Şah ve kaleye karşı
-şah (`7k/8/8/8/8/8/8/K5R1 w`, en kısa yardımlı mat 11 yarım hamle), 50 hamle kuralı: sayaç 89'dayken Beyaz zamanında mat
-edebilir, 90'da edemez. Varsayılan sınırlarla cevap 89'a kadar ve 92'den itibaren doğru; 90'da kural 10 yarım hamle
-uzakta, aramanın 9'unun ötesinde, 91'de ispat 331.592 düğüm istiyor. 20 ply ve bir milyon düğümle her sayaçta doğru.
-Bu motorun türediği motorun sayaçlı aramasıyla, o aramanın bitiremediği yerlerde statik testin kapattığı her yaprakta
-chasolver'la ve kurallara göre oynanan oyunlarla denetlendi: yanlış beraberlik yok.
+(beşlininki üçlüde, 75 hamleninki 50'de de; tersi değil). Yine de bir ispatı kaçırabilir: sayaç sınıra erişiminden
+uzaksa, bir çıkıştan sonraki pozisyon kuralsız aramaların ispatlayabildiğinden fazlasını istiyorsa ya da ispat daha
+çok düğüm istiyorsa cevap "mat edebilir" kalır, güvenli tarafta. Şah ve kaleye karşı şah (`7k/8/8/8/8/8/8/K5R1 w`, en
+kısa yardımlı mat 11 yarım hamle), 50 hamle kuralı: sayaç 89'dayken Beyaz zamanında mat edebilir, 90'da edemez;
+varsayılan sınırlarla cevap her sayaçta doğru, 90'dan itibaren 6 düğümde (ondan önceki, kurallı Domino araması 90'da
+yanılıyordu, kural 10 yarım hamle uzakta, 9'unun ötesindeydi; 91'de 331.592 düğüm istiyordu). Üç ile beş taşlı
+oyun sonlarının (KQK, KRK, KBBK, KBNK, KRRK, KRKB, KRKN, KQKN, KQKR, KBNKN, iki taraftan biri mat ediyor) 12.962
+durumunda, her biri kural uzaklığının (bir mata ya da chasolver'ın tam analizinin kazanılabilir dediği bir pozisyona
+götüren bir alışa ya da piyon hamlesine en az yarım hamle; böyle bir hamle olmadan varılan her pozisyonun kesin
+aramasından) çevresinde bir sayaçla bir pozisyon ve bir kural, zamanında mat edilemeyen 6.978 durumun 6.966'sını
+(%99,8) ispatlıyor ve edilebilenlerden hiçbirini ispatlamıyor, hakem sayfasının sınırlarıyla (4 ply, 8 düğüm);
+kurallı Domino araması 5.976'sını (%85,6) 20 kat düğümle ispatlıyordu. chasolver'ın pozisyonlarından 400 piyonlu oyun
+sonundan çıkan 2.628 durumda 1.028'in 1.018'ini (Domino araması: 1.014), piyonlarının hepsi piyonlara karşı kilitli
+650 pozisyondan çıkan 5.382 durumda 2.798'in 2.670'ini (2.270) ispatlıyor; hiçbiri yanlış değil.
+Yukarıdaki durumlarda o kesin aramayla; chasolver'ın pozisyonlarında kurallara yakın ve onlardan 38 yarım hamleye
+kadar uzak sayaçlarda kuralların verdiği her ispatta bu motorun türediği motorun sayaçlı aramasıyla (33.454 ispat:
+hiçbirinde mat bulmadı); kurallara göre oynanan oyunlarla da (hamle kurallarıyla 6.888, tekrar kurallarıyla 13.776,
+inen her bayrak oyunun sonuna kadar izlendi) denetlendi: yanlış beraberlik yok.
 
 İkiz filler, mat edecek taraf öbür renkte şah çekebildiğinde önem kazanıyor: chasolver türünden
 bestelenmiş bir pozisyonda siyahın a7 ve b8'deki iki koyu fili a8'deki şahın iki kaçışını birden

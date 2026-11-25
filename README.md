@@ -13,13 +13,13 @@ Mateless is a library (JavaScript, Rust, WebAssembly; no dependencies) and an ar
 It is **sound but incomplete**: it never declares a draw without a proof, and what it cannot
 prove it leaves to the platform's rule (the flag loses) and to a complete solver after the game.
 
-It comes in two versions, side by side in one library. The **first version** is the fast layer,
-the one proposed for Lichess: the lock detector of [`lock/`](lock/) and of the scalachess patch,
-and a short search. The **second version** adds rules that see more: open pawn pairs, boxed
-knights, rooks and queens, and a second tier of the search. It is not complete either; it is
-wider, with completeness as its goal, and each of its rules runs only when its own situation is on
-the board, so every other position goes through the first version's code
-([the second version](#the-second-version)).
+It comes in two versions, side by side in one library. The **fast** version (the first) is the
+layer proposed for Lichess: the lock detector of [`lock/`](lock/) and of the scalachess patch, and
+a short search. The **full** version (the second) adds rules that see more: open pawn pairs, boxed
+knights, rooks and queens, a second tier of the search, and, on request, the move and repetition
+rules, with a search bounded by the clock near the move rule. It is not complete either; its name
+is its goal, and each of its rules runs only when its own situation is on the board, so every
+other position goes through the fast version's code ([the second version](#the-second-version)).
 
 **[The site](https://cuneytinann.github.io/Mateless/)** · [Türkçe](README.tr.md) ·
 [Design](docs/DESIGN.md) · [Results](docs/RESULTS.md) ·
@@ -478,10 +478,10 @@ The November rules and twin bishops are in the Rust and WebAssembly builds too: 
 
 ## The second version
 
-The first version is the fast layer: sound, small, and meant to run on a game server after every
-move; it covers 99.98% of the Lichess data. The second version stands beside it in the same
-library. It is not complete either, and does not claim to be: it is wider in scope, with
-completeness as its goal, and it keeps growing as rules are added. In practice it matters mostly to
+The fast version (the first) is the layer for a game server: sound, small, and meant to run after
+every move; it covers 99.98% of the Lichess data. The full version (the second) stands beside it
+in the same library. It is not complete either, and does not claim to be: "full" names its goal,
+completeness, and it keeps growing as rules are added. In practice it matters mostly to
 the curious and to research, so it is not rushed: each rule comes in only when it is known and
 measured, and only where its own situation is on the board.
 
@@ -510,25 +510,48 @@ repetitions, the game's history: `history: game.repetitionHistory()`), `proveCan
   has a legal move (a mate on that very move still counts), and at a position the game has already
   had N − 1 times before;
 - the search under the rules runs only after the searches without them have failed, and only where
-  a rule can end a line: the clock within the search's plies of the move rule, or a position of the
-  history that has occurred N − 1 times. So every proof without the rules stands, with the same
-  nodes, and with the rules off (the default) the answers are those of before, node for node;
-- its ply ceiling is the deeper of the two tiers', its budget at least 200,000 nodes
-  (`DOMINO_RULE_BUDGET`) near the move rule;
+  a rule can end a line: the clock within 40 plies of the move rule (`REGION_REACH`: 20 moves of
+  each side, or the search's plies if they are more), or a position of the history that has
+  occurred N − 1 times. So every proof without the rules stands, with the same nodes, and with the
+  rules off (the default) the answers are those of before, node for node;
+- near the move rule it is the **clock search** (`src/clock.js`), a search closed by the clock
+  rather than by a ply ceiling. It walks the positions reachable without a capture or a pawn move,
+  where the pawns stand still, as far as the clock lets a line go, and cuts a position when a lower
+  bound on the plies to a mate or to an exit (a capture or a pawn move, which puts the clock back)
+  is above the plies left. For a mate: for each square the defending king can reach in time, the
+  mater's fewest moves to check it there and close its flights, each piece covering from one
+  square, the pawns the only obstacles. For an exit: the plies to a pawn move, to a piece reaching
+  a pawn or meeting a piece to take it, leaving out captures after which the mater has no mating
+  material. An exit is judged by the searches without the rule, with the caller's limits: where
+  they do not prove the side can never be mated after it, the answer is "may mate". Its budget is
+  at least 200,000 nodes (`DOMINO_RULE_BUDGET`), the exits' searches included. With only a
+  repetition position, the Domino search runs with it, the first tier's limits (the second's where
+  it was allowed without the rules);
 - a `Game` under the rules ends at them: the 75-move rule and fivefold repetition keep their codes
   (4, 5); the 50-move rule is 13 and threefold repetition 14.
 
 It is sound, and complete only within those limits. A proof under the rules holds for a game that
 ends at them (fivefold's holds under threefold, the 75-move rule's under the 50-move rule, not the
-other way round). It can still miss one: where the clock is further from the rule than the search's
-plies, or where the proof needs more nodes, the answer stays "may mate", on the safe side. King and
-rook against king (`7k/8/8/8/8/8/8/K5R1 w`, a helpmate of 11 plies at the shortest) under the
-50-move rule: White can mate in time with the clock at 89, not at 90. With the default limits the
-answer is right up to 89 and from 92; at 90 the rule is 10 plies away, beyond the 9 of the search,
-and at 91 the proof takes 331,592 nodes. With 20 plies and a million nodes it is right at every
-clock. Checked against the clocked search of the engine this one grew from, with chasolver on every
-leaf a static test closed where that search ran out, and on games played to the rules: no false
-draw.
+other way round). It can still miss one: where the clock is further from the rule than its reach,
+where the position after an exit needs more than the searches without the rule prove, or where the
+proof needs more nodes, the answer stays "may mate", on the safe side. King and rook against king
+(`7k/8/8/8/8/8/8/K5R1 w`, a helpmate of 11 plies at the shortest) under the 50-move rule: White can
+mate in time with the clock at 89, not at 90, and with the default limits the answer is right at
+every clock, from 90 on in 6 nodes (the Domino search under the rule, before it, was wrong at 90,
+10 plies away, beyond its 9, and needed 331,592 nodes at 91). On 12,962 cases of endings with
+three to five men (KQK, KRK, KBBK, KBNK, KRRK, KRKB, KRKN, KQKN, KQKR, KBNKN, either side mating),
+each a position with a rule and a clock around its rule distance (the fewest plies to a mate, or
+to a capture or a pawn move into a position chasolver's full analysis calls winnable, from an
+exact search of every position reachable without one), it proves 6,966 of the 6,978 that cannot be
+mated in time (99.8%) and none that can, with the arbiter page's limits (4 plies, 8 nodes); the
+Domino search under the rule proved 5,976 (85.6%), with 20 times the nodes. On 2,628 such cases
+from 400 endings with pawns of chasolver's positions it proves 1,018 of 1,028 (the Domino search:
+1,014), and on 5,382 from 650 positions whose pawns are all locked against pawns, 2,670 of 2,798
+(2,270); none wrong. Checked against that exact search on the cases above; against the clocked
+search of the engine this one grew from on every proof the rules give for chasolver's positions at
+clocks near the rules and up to 38 plies from them (33,454 proofs: it found a mate in none); and on
+games played to the rules (6,888 under the move rules, 13,776 under the repetition rules, every flag
+that came down watched to the end): no false draw.
 
 Twin bishops matter where the mater can check on the other colour: in a composed position of
 chasolver's kind, Black's two dark bishops on a7 and b8 hold both flights of a king on a8 while

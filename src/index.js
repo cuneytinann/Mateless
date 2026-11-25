@@ -19,6 +19,7 @@
  *   material.js   rung 1: the material test
  *   lock.js       rung 2: the lock detector, and the two static tests together
  *   domino.js     rung 3: the Domino search
+ *   clock.js      the search under a move rule, bounded by the clock (the second version)
  *   ladder.js     when each rung is asked (rung 4, the second tier, too), and the two flags a game keeps
  * Around it, so that it runs on its own:
  *   board.js      a reference board: bitboards, magic bitboards, legal moves, FEN (standard
@@ -34,8 +35,8 @@
  * By default no rule of the move counters (50 or 75 moves, repetitions) takes part in a proof: those
  * rules only cut lines short, so leaving them out can cost a proof but never make a false one. On
  * request (moveRule 150 or 100) the second version searches again, under the 75- or the 50-move
- * rule, the sides it leaves unproven where the rule can end a line (ladder.js); a game under such a
- * rule ends at it (game.js).
+ * rule, the sides it leaves unproven where the rule can end a line (clock.js, ladder.js); a game
+ * under such a rule ends at it (game.js).
  *
  * Notes on porting. The engine keeps module state that every call shares: the lock detector's
  * census and the sets its mating net reads (lock.js), the shared move-generation context
@@ -58,6 +59,7 @@ import { BISHOP, BLACK, castlingField, CastlingFiles, chess960Arrangement, color
 import { materialCannotMate, materialTest } from './material.js';
 import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2, materStuck } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, Domino, PositionSet } from './domino.js';
+import { ClockSearch, REGION_REACH } from './clock.js';
 import { Flags, isDeadPosition, proveBoth, proveCannotBeMated } from './ladder.js';
 import { flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
 
@@ -78,4 +80,5 @@ export {
 // internals exposed for tests
 export const _internal = Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
                                          lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
-                                         FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS });
+                                         FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS,
+                                         ClockSearch, REGION_REACH });

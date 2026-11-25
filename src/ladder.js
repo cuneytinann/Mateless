@@ -7,8 +7,8 @@
      4. the Domino search's second tier, 9 plies and 10,000 nodes, where the first fails in a
         way a deeper search can mend (the second version, below)
      5. under a move rule (moveRule 150 or 100) or a repetition rule (repetition 5 or 3, with the
-        game's history), the second version, below: the searches again, with the rules ending
-        lines, where they can end one
+        game's history), the second version, below: a search with the rules ending lines, where
+        they can end one (the clock search, clock.js, near the move rule)
    This layer puts them together: for one position (proveCannotBeMated, proveBoth, isDeadPosition)
    and for a game played move by move (Flags). What a proof means for the result of a game is the
    game layer's business (game.js); here a side is only proven unable to mate, or not.
@@ -21,11 +21,14 @@ import { BISHOP, BLACK, fail, firstSquare, hashKey, KEY_WORDS, keysEqual, KING, 
 import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, pawnCheck, staticTests2, TEST_LOCK,
          TESTS_BOTH } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_RULE_BUDGET, Domino, PositionSet } from './domino.js';
+import { ClockSearch, REGION_REACH } from './clock.js';
 
 /* The flagged side is the one to be proven unable to be mated: "White can never mate" is the
    proof with Black flagged. The search is shared by every call (see the notes on porting in
    index.js). */
 const sharedSearch = new Domino();
+/* The search under a move rule (clock.js), shared the same way. */
+const sharedClock = new ClockSearch();
 
 /* ─── The second tier (the second version) ───────────────────────────────────────────────
 
@@ -96,16 +99,20 @@ function secondTier(pos, open, fw, fb) {
    pawn move (FIDE 9.6.2: the halfmove clock at 150), and on some platforms already at 50 (100).
    Then a mate that would come later can never come, and a side that could mate only after it
    cannot mate at all. With a moveRule (0, the default: none) the ladder takes that into account:
-   a side the searches above leave unproven is searched again under the rule (Domino.run's
-   moveRule), once, with the deeper of the two tiers' ply ceilings and a budget of at least
-   DOMINO_RULE_BUDGET (200,000) nodes, but only where the rule can end a line within those plies:
-   halfmove clock + plies ≥ moveRule. Elsewhere the search under the rule is the search without
-   it, at a higher cost. The clock is its gate, and a game comes that close to the rule rarely (in
-   chasolver's 201,060 Lichess rows, one flag fell with the clock above 99, none above 139); there
-   the rule cuts every line within a few plies, but the tree is wide. King and queen against king
-   (k7/3Q4/8/8/8/8/8/K7 w, a helpmate of 9 plies at the shortest) under the 50-move rule: with the
-   clock at 92 the proof that no mate comes in time takes 160,185 nodes, at 95 20,951, at 96
-   2,574; with 10,000 nodes the answer between 92 and 95 fell to the safe side. A search that
+   a side the searches above leave unproven is searched again under the rule, once, by the clock
+   search (clock.js): the positions reachable without a capture or a pawn move, as far as the
+   clock lets a line go, cut by a lower bound on the plies to a mate or to an exit. An exit (a
+   capture or a pawn move, which puts the clock back to 0) is judged by the searches above,
+   without the rule, with the caller's limits. It runs where the rule can end a line within
+   REGION_REACH (40) plies, or within the deeper of the two tiers' ply ceilings if that is more,
+   with a budget of at least DOMINO_RULE_BUDGET (200,000) nodes, which pays for the exits'
+   searches too. Further from the rule a mate in time is all but certain, and the search would
+   only find one. A game comes that close to the rule rarely (in chasolver's 201,060 Lichess rows,
+   one flag fell with the clock above 99, none above 139). King and queen against king
+   (k7/3Q4/8/8/8/8/8/K7 w, a helpmate of 9 plies at the shortest) under the 50-move rule: up to
+   the clock at 91 a mate comes in time, from 92 on none can, and the clock search proves it in
+   58 nodes (the Domino search under the rule, with a ply ceiling for its horizon,
+   needed 160,185 at 92, and with 10,000 nodes fell to the safe side up to 95). A search that
    finds a mate under the rule has found one before the rule ends the game: no search follows
    it.
 
@@ -120,14 +127,15 @@ function secondTier(pos, open, fw, fb) {
    the fifth time (FIDE 9.6.1), and on some platforms already for the third. With a repetition (0,
    the default: none) and the game's history (the positions before the root since the last capture
    or pawn move), the positions the game has already had repetition − 1 times end a line, drawn,
-   wherever the search meets them (Domino.run's repeat). That only matters with a history: a
-   position of the line that comes back is covered by the search's memory already. In a cage that
-   is what proves it; but where the only move leads, a few plies on, into a position the game has
-   had four times, only the rule ends the line. The searches under the rules run when the move
-   rule can end a line within their plies, or when there is such a position: the first tier's
-   limits always, the second tier's where the move rule is that close or the second tier was
-   allowed without the rules, with its budget. Same as the move rule, a proof under a repetition rule holds for a
-   game that ends at it, and fivefold's holds under threefold too. */
+   wherever the search meets them (the clock search's repeat, and Domino.run's). That only
+   matters with a history: a position of the line that comes back is covered by the search's
+   memory already. In a cage that is what proves it; but where the only move leads, a few plies
+   on, into a position the game has had four times, only the rule ends the line. The searches
+   under the rules run when the move rule can end a line within the clock search's reach (then
+   the clock search, with the repetition set too), or when there is such a position (then the
+   Domino search with it: the first tier's limits, or the second tier's where it was allowed
+   without the rules, with its budget). Same as the move rule, a proof under a repetition rule
+   holds for a game that ends at it, and fivefold's holds under threefold too. */
 
 /** The positions of a history that occur there at least repetition − 1 times: there a line ends,
     the game drawn. history: { keys, n }, the codes (KEY_WORDS words each) of the game's positions
@@ -148,20 +156,39 @@ function repetitionSet(repetition, history) {
   return repeatSet.count ? repeatSet : null;
 }
 
-/** The Domino search again under the rules, once, for a side the searches without them left
-    unproven (failure: why the first tier failed): repeat is the repetition set or null. Its ply
-    ceiling is the deeper of the two tiers' (deepBudget 0: the first tier's). Where the move rule can
-    end a line within those plies, its budget is the larger of the tiers' and DOMINO_RULE_BUDGET;
-    with only a repetition set, the first tier's, or the second tier's where it was allowed without
-    the rules. Returns { r, nodes }, or null when no rule can end a line. */
+/** The searches again under the rules, once, for a side the searches without them left unproven
+    (failure: why the first tier failed): repeat is the repetition set or null. The ply ceiling is
+    the deeper of the two tiers' (deepBudget 0: the first tier's). Where the move rule can end a
+    line within REGION_REACH plies or that ceiling, the clock search, with a budget of the larger
+    of the tiers' and DOMINO_RULE_BUDGET; with only a repetition set, the Domino search with it, its
+    budget the first tier's, or the second tier's where it was allowed without the rules. Returns
+    { r, nodes }, or null when no rule can end a line. */
 function ruleSearch(pos, flagged, moveRule, repeat, failure, maxPly, budget, deepPly, deepBudget) {
   const ply = deepBudget > 0 ? Math.max(maxPly, deepPly) : maxPly;
-  const near = moveRule > 0 && pos.halfmove + ply >= moveRule;
+  const near = moveRule > 0 && pos.halfmove + Math.max(ply, REGION_REACH) >= moveRule;
   if (!near && !repeat) return null;
-  const nodes = near ? Math.max(budget, deepBudget, DOMINO_RULE_BUDGET)
-              : Math.max(budget, deepBudget > 0 && deepAllowed(pos, failure) ? deepBudget : 0);
-  const r = sharedSearch.run(pos, flagged, ply, nodes, { rootStatic: false, moveRule: near ? moveRule : 0, repeat });
+  if (near) {
+    const nodes = Math.max(budget, deepBudget, DOMINO_RULE_BUDGET);
+    const r = sharedClock.run(pos, flagged, moveRule, nodes, repeat,
+                              (p, f) => exitProof(p, f, maxPly, budget, deepPly, deepBudget));
+    return { r, nodes: nodes - r.budgetLeft };
+  }
+  const nodes = Math.max(budget, deepBudget > 0 && deepAllowed(pos, failure) ? deepBudget : 0);
+  const r = sharedSearch.run(pos, flagged, ply, nodes, { rootStatic: false, repeat });
   return { r, nodes: nodes - r.budgetLeft };
+}
+
+/** The ladder without the rules at an exit of the clock search (a position after a capture or a
+    pawn move): the static tests, the first tier, the second where it is allowed. Returns
+    { proven, nodes }. */
+function exitProof(pos, flagged, maxPly, budget, deepPly, deepBudget) {
+  if (cannotMate(pos, flagged)) return { proven: true, nodes: 0 };
+  let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft;
+  if (!r.proven && deepBudget > 0 && deepAllowed(pos, r.failure)) {
+    r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
+    nodes += deepBudget - r.budgetLeft;
+  }
+  return { proven: r.proven, nodes };
 }
 
 /** moveRule must be 0 (none), 100 or 150; repetition 0 (none), 3 or 5. */
@@ -355,7 +382,7 @@ export class Flags {
       if ((fw === 'budget' || fb === 'budget' || ((fw === 'horizon' || fb === 'horizon') && noKnightRookQueen(pos))) && (open & ~proven))
         proven |= secondTier(pos, open & ~proven, fw, fb);
       // Under the rules, the searches again with them, only where a rule can end a line.
-      const rule = this.moveRule, near = rule && pos.halfmove + DOMINO_DEEP_PLY >= rule;
+      const rule = this.moveRule, near = rule && pos.halfmove + Math.max(DOMINO_DEEP_PLY, REGION_REACH) >= rule;
       const repeat = (open & ~proven) && this.repetition ? repetitionSet(this.repetition, history) : null;
       if (near || repeat)
         for (let i = 0; i < 2; i++) {

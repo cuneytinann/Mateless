@@ -374,6 +374,15 @@ declare namespace Mateless {
     add2(k: Int32Array, at: number, h: number, live: number): FlaggedSides;
   }
 
+  /** The search under a move rule, bounded by the clock (the second version, src/clock.js): can `flagged`
+      be mated before the rule ends the game? Not re-entrant; the ladder keeps one. */
+  interface ClockSearch {
+    /** repeat: null, or the repetition set; exitDead: the ladder at a position after a capture or a pawn move.
+        failure 'horizon': an exit in time that exitDead does not prove dead. */
+    run(root: Position, flagged: Color, moveRule: number, budget: number, repeat: PositionSet | null,
+        exitDead: (pos: Position, flagged: Color) => { proven: boolean; nodes: number }): SearchResult & { ruled: boolean };
+  }
+
   /** A lock certificate (see lockSets in src/lock.js): squares as [lo, hi], a1 = bit 0 of lo. */
   interface LockSets {
     /** Every square each side's pawns may still reach. */
@@ -432,5 +441,9 @@ declare namespace Mateless {
     readonly FLAG_PROMO: 8;
     readonly MOVE_STRIDE: 256;
     readonly KEY_WORDS: 9;
+    /** The clock search (src/clock.js). */
+    readonly ClockSearch: new () => ClockSearch;
+    /** The clock search runs where the move rule can end a line within this many plies (or the ply ceiling): 40. */
+    readonly REGION_REACH: 40;
   };
 }

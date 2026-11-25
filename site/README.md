@@ -10,7 +10,7 @@ site.css                      the look every tab shares: colours, type, forms, b
 shell.html, shell.css         the bar (tabs, language, download) and the five tab containers
 shell.js                      the frame: which tab shows, the language, the address
 arbiter/                      the arbiter: arbiter.html, arbiter.css, arbiter.js
-second/                       mateless.js of the full version (the second-version branch, 9ea901b), for the arbiter
+second/                       mateless.js of the full version (the second-version branch, 3b45675), for the arbiter
 lock/                         the lock detector explained: lock.html, lock.css, lock.js, and
                               lockviz.js, a display copy of the detector (test/lockviz_check.js)
 rules/                        the rules (FIDE 5.2.2, 6.9, 5.1.2): rules.html, rules.css

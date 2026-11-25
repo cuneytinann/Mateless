@@ -726,8 +726,8 @@ html[lang="en"] .tab [lang="tr"],html[lang="tr"] .tab [lang="en"]{display:none!i
           <p class="hint" data-i="ruleNote"></p>
         </div>
         <div class="engrow">
-          <label><span data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="4" min="1" max="1500" step="1" inputmode="numeric"></label>
-          <label><span data-i="lblBud">node budget</span> <input type="number" id="bud" value="8" min="1" max="1000000000" step="1" inputmode="numeric"></label>
+          <label><span data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="60" min="1" max="1500" step="1" inputmode="numeric"></label>
+          <label><span data-i="lblBud">node budget</span> <input type="number" id="bud" value="10000" min="1" max="1000000000" step="1" inputmode="numeric"></label>
         </div>
         <p class="hint" id="limnote"></p>
       </div>
@@ -7082,7 +7082,8 @@ return Object.freeze({
  * (5.2.2), flag fall (6.9) and resignation (5.1.2).
  *
  * After every move Mateless climbs a ladder for each side: the material test, the lock detector,
- * then a short helpmate search of 6 plies and 100 nodes (the Domino search). A side proven unable
+ * then a helpmate search (the Domino search: 6 plies and 100 nodes in the first version, 60 plies and
+ * 10,000 nodes in the second, by default; the caller may give others). A side proven unable
  * to mate keeps that flag for the rest of the game; a flag fall is judged from the flags, with
  * nothing to compute. It never declares a draw where a mate is possible: it acts only on a proof,
  * and what it cannot prove it leaves to a complete solver.
@@ -7090,8 +7091,8 @@ return Object.freeze({
  * Two versions in one: the first is the fast layer (the lock detector of lock/ and of the
  * scalachess patch); the second adds rules that see more, each run only when its own situation is
  * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and a
- * second tier of the Domino search (9 plies, 10,000 nodes) where the first fails in a way a deeper
- * search can mend. Not complete either: wider, with completeness as its goal.
+ * deeper Domino search by default. Every search runs with the limits it is given, nothing beyond
+ * them. Not complete either: wider, with completeness as its goal.
  *
  * The source is in layers, one ES module each (src/); tools/build.js joins them into mateless.js,
  * one dependency-free file. Mateless itself, what this library adds:
@@ -7099,7 +7100,7 @@ return Object.freeze({
  *   lock.js       rung 2: the lock detector, and the two static tests together
  *   domino.js     rung 3: the Domino search
  *   clock.js      the search under a move rule, bounded by the clock (the second version)
- *   ladder.js     when each rung is asked (rung 4, the second tier, too), and the two flags a game keeps
+ *   ladder.js     when each rung is asked, and the two flags a game keeps
  * Around it, so that it runs on its own:
  *   board.js      a reference board: bitboards, magic bitboards, legal moves, FEN (standard
  *                 techniques; a platform may keep its own board)
@@ -10000,25 +10001,18 @@ class PositionSet {
    rule (after a capture or a pawn move and one ply later) they do too. At the root they are asked
    unless the caller has settled them already (rootStatic: false, see ladder.js).
 
-   The ply ceiling and node budget default to 6 and 100 (DOMINO_PLY, DOMINO_BUDGET). With them
-   the ladder proves 201,024 of chasolver's 201,060 wrongly decided Lichess timeouts (201,054 with
-   the second tier, ladder.js); a proof takes 1 node at the median, at most 8 nodes in 99% of the
-   rows, and a ceiling above 6 plies at this budget proves no more rows (the second tier raises
-   both). In an open position the first line runs to the ceiling and fails there,
-   after about as many nodes as plies. The budget pays for every move played, each promotion
-   separately.
+   The ply ceiling and node budget default to 60 and 10,000 in this version (DOMINO_PLY,
+   DOMINO_BUDGET; the first version's are 6 and 100). With them the ladder proves 204,483 of the
+   204,484 rows of chasolver's list of 19 November 2026 (the first version: 204,448); a proof takes
+   1 node at the median, at most 8 nodes in 99% of the rows. In an open position the first line
+   runs to the ceiling and fails there, after about as many nodes as plies. The budget pays for
+   every move played, each promotion separately.
 
    Moves are generated lazily, one piece at a time, in the generator's order (from a1, b1, …
    to h8): a node plays the first piece's moves before it works out the second piece's, and so
    on. Most searches that fail, fail on their first line, and then the other moves of the nodes
    on that line are never generated. */
-const DOMINO_PLY = 6, DOMINO_BUDGET = 100;
-/** The second tier (the second version, see ladder.js): 9 plies, 10,000 nodes. */
-const DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 10000;
-/** The search under a move rule (the second version, see ladder.js): at least 200,000 nodes. Near the
-    rule its tree is closed by the rule itself, a tree a few plies deep but wide: with a queen, every
-    one of its moves. */
-const DOMINO_RULE_BUDGET = 200000;
+const DOMINO_PLY = 60, DOMINO_BUDGET = 10000;
 
 /** The static tests the move of a piece of type `type` to `to` (with `flags`) from `pos` can
     change (testsAfter in lock.js); checked: the side to move is in a pawn's check. */
@@ -10296,10 +10290,6 @@ class Domino {
 
 /** No bound: more plies than any rule allows. */
 const CLOCK_INF = 1000;
-/** The search under a move rule runs where the rule can end a line within this many plies (or the
-    caller's ply ceiling, if higher): 20 moves of each side. Further from the rule, a mate in
-    time is all but certain, and the search would only find one. */
-const REGION_REACH = 40;
 
 const KNIGHT_STEPS_FR = [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]];
 const KING_STEPS_FR = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
@@ -10868,12 +10858,12 @@ class ClockSearch {
    The rungs answer one question for one side, "can it never be mated?":
      1. the material test   (material.js)
      2. the lock detector   (lock.js)
-     3. the Domino search   (domino.js), 6 plies and 100 nodes
-     4. the Domino search's second tier, 9 plies and 10,000 nodes, where the first fails in a
-        way a deeper search can mend (the second version, below)
-     5. under a move rule (moveRule 150 or 100) or a repetition rule (repetition 5 or 3, with the
+     3. the Domino search   (domino.js), 60 plies and 10,000 nodes by default
+     4. under a move rule (moveRule 150 or 100) or a repetition rule (repetition 5 or 3, with the
         game's history), the second version, below: a search with the rules ending lines, where
-        they can end one (the clock search, clock.js, near the move rule)
+        they can end one (the clock search, clock.js, near the move rule), with the same limits
+   Every search runs with the limits it is given (the caller's, or the defaults): nothing is
+   searched beyond them.
    This layer puts them together: for one position (proveCannotBeMated, proveBoth, isDeadPosition)
    and for a game played move by move (Flags). What a proof means for the result of a game is the
    game layer's business (game.js); here a side is only proven unable to mate, or not.
@@ -10888,69 +10878,6 @@ const sharedSearch = new Domino();
 /* The search under a move rule (clock.js), shared the same way. */
 const sharedClock = new ClockSearch();
 
-/* ─── The second tier (the second version) ───────────────────────────────────────────────
-
-   Where the first search fails without finding a mate, a deeper one can still prove the side: a
-   king that must take a last queen or rook, and then a pawn ending that runs into stalemate or a
-   lock, can take more than 6 plies or 100 nodes. Of chasolver's 201,060 Lichess rows the first
-   tier leaves 36 unproven; 9 plies and 10,000 nodes prove 26 of them.
-
-   It runs only where it can pay. A search that found a mate has proven nothing can be proven. And
-   in the positions of real games the first search almost always fails on its horizon, at its first
-   line, where the deeper one fails on its horizon as well, after about 9 nodes. So the second tier
-   is asked only
-     – after a failure on the budget: every line ended within 6 plies, but there were more than
-       100 nodes of them (rare: 21 of chasolver's 131,000 winnable Lichess positions); or
-     – after a failure on the horizon, on a board with no knight, rook or queen, where a king has no
-       square to step to: every square next to it holds one of its own men, is attacked by an enemy
-       pawn or is next to the enemy king (a king shut in by pawns, as in a cage).
-   The 26 rows are of these kinds, 19 and 7. In 1,000 games played from chasolver's Lichess
-   positions the first search failed on its horizon 14,755 times on such boards, and a king was shut
-   in at 6 of them: a middlegame and an open ending never reach the second tier.
-
-   Like the first tier it proves only what it proves: a failure of the second tier is no claim
-   that a mate exists, and when it does not run, nothing is lost but a proof. */
-
-/** Has some king no square to step to, counting as closed its own pawns and bishops, the squares
-    the enemy pawns attack and those next to the enemy king? (Asked only with no knight, rook or
-    queen on the board.) */
-function kingShutIn(pos) {
-  const lo = pos.lo, hi = pos.hi;
-  const wpL = lo[WHITE | PAWN], wpH = hi[WHITE | PAWN], bpL = lo[BLACK | PAWN], bpH = hi[BLACK | PAWN];
-  const wkL = lo[WHITE | KING], wkH = hi[WHITE | KING], bkL = lo[BLACK | KING], bkH = hi[BLACK | KING];
-  let i = 2 * firstSquare(wkL, wkH);
-  if (!((KING_STEPS[i] & ~(wpL | lo[WHITE | BISHOP] | sideways(southLo(bpL, bpH)) | zoneLo(bkL, bkH))) |
-        (KING_STEPS[i + 1] & ~(wpH | hi[WHITE | BISHOP] | sideways(southHi(bpH)) | zoneHi(bkL, bkH))))) return true;
-  i = 2 * firstSquare(bkL, bkH);
-  return !((KING_STEPS[i] & ~(bpL | lo[BLACK | BISHOP] | sideways(northLo(wpL)) | zoneLo(wkL, wkH))) |
-           (KING_STEPS[i + 1] & ~(bpH | hi[BLACK | BISHOP] | sideways(northHi(wpL, wpH)) | zoneHi(wkL, wkH))));
-}
-
-/** Does the second tier run after a first search that failed for `failure` in `pos`? */
-function deepAllowed(pos, failure) {
-  if (failure === 'budget') return true;
-  return failure === 'horizon' && noKnightRookQueen(pos) && kingShutIn(pos);
-}
-
-/** No knight, rook or queen on the board? */
-function noKnightRookQueen(pos) {
-  const lo = pos.lo, hi = pos.hi;
-  return !(lo[WHITE | KNIGHT] | hi[WHITE | KNIGHT] | lo[BLACK | KNIGHT] | hi[BLACK | KNIGHT] |
-           lo[WHITE | ROOK] | hi[WHITE | ROOK] | lo[BLACK | ROOK] | hi[BLACK | ROOK] |
-           lo[WHITE | QUEEN] | hi[WHITE | QUEEN] | lo[BLACK | QUEEN] | hi[BLACK | QUEEN]);
-}
-
-/** The second tier in a game (Flags.update): of the sides in `open`, whose first searches failed for
-    fw (White flagged) and fb, those it is allowed for and proves, both in one walk. */
-function secondTier(pos, open, fw, fb) {
-  let deep = 0;
-  if ((open & FLAGGED_WHITE) && deepAllowed(pos, fw)) deep |= FLAGGED_WHITE;
-  if ((open & FLAGGED_BLACK) && deepAllowed(pos, fb)) deep |= FLAGGED_BLACK;
-  if (!deep) return 0;
-  const d = sharedSearch.run2(pos, deep, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, { rootStatic: false });
-  return (d[0].proven ? FLAGGED_WHITE : 0) | (d[1].proven ? FLAGGED_BLACK : 0);
-}
-
 /* ─── The move rule (the second version) ─────────────────────────────────────────────────
 
    A game ends by itself, drawn, once 75 moves of each side have passed with no capture and no
@@ -10961,18 +10888,17 @@ function secondTier(pos, open, fw, fb) {
    search (clock.js): the positions reachable without a capture or a pawn move, as far as the
    clock lets a line go, cut by a lower bound on the plies to a mate or to an exit. An exit (a
    capture or a pawn move, which puts the clock back to 0) is judged by the searches above,
-   without the rule, with the caller's limits. It runs where the rule can end a line within
-   REGION_REACH (40) plies, or within the deeper of the two tiers' ply ceilings if that is more,
-   with a budget of at least DOMINO_RULE_BUDGET (200,000) nodes, which pays for the exits'
-   searches too. Further from the rule a mate in time is all but certain, and the search would
-   only find one. A game comes that close to the rule rarely (in chasolver's 201,060 Lichess rows,
-   one flag fell with the clock above 99, none above 139). King and queen against king
-   (k7/3Q4/8/8/8/8/8/K7 w, a helpmate of 9 plies at the shortest) under the 50-move rule: up to
-   the clock at 91 a mate comes in time, from 92 on none can, and the clock search proves it in
-   58 nodes (the Domino search under the rule, with a ply ceiling for its horizon,
-   needed 160,185 at 92, and with 10,000 nodes fell to the safe side up to 95). A search that
-   finds a mate under the rule has found one before the rule ends the game: no search follows
-   it.
+   without the rule, with the caller's limits. It runs where the rule can end a line within the
+   ply ceiling (maxPly: 60 by default), with the node budget (10,000 by default) of its own, which
+   pays for the exits' searches too: the same limits as the search before it, no other. Further
+   from the rule than the ceiling it does not run (a mate in time is all but certain there, and
+   the search would only find one). A game comes that close to the rule rarely (in chasolver's
+   201,060 Lichess rows, one flag fell with the clock above 99, none above 139). King and queen
+   against king (k7/3Q4/8/8/8/8/8/K7 w, a helpmate of 9 plies at the shortest) under the 50-move
+   rule: up to the clock at 91 a mate comes in time, from 92 on none can, and the clock search
+   proves it in 58 nodes (the Domino search under the rule, with a ply ceiling for its horizon,
+   needed 160,185 at 92). A search that finds a mate under the rule has found one before the rule
+   ends the game: no search follows it.
 
    Since it runs only after the searches without the rule have failed, every proof they make
    stands, with the same nodes; the rule can only add proofs, never take one away. A proof under
@@ -10989,10 +10915,9 @@ function secondTier(pos, open, fw, fb) {
    matters with a history: a position of the line that comes back is covered by the search's
    memory already. In a cage that is what proves it; but where the only move leads, a few plies
    on, into a position the game has had four times, only the rule ends the line. The searches
-   under the rules run when the move rule can end a line within the clock search's reach (then
-   the clock search, with the repetition set too), or when there is such a position (then the
-   Domino search with it: the first tier's limits, or the second tier's where it was allowed
-   without the rules, with its budget). Same as the move rule, a proof under a repetition rule
+   under the rules run when the move rule can end a line within the ply ceiling (then the clock
+   search, with the repetition set too), or when there is such a position (then the Domino search
+   with it, with the same limits). Same as the move rule, a proof under a repetition rule
    holds for a game that ends at it, and fivefold's holds under threefold too. */
 
 /** The positions of a history that occur there at least repetition − 1 times: there a line ends,
@@ -11014,39 +10939,26 @@ function repetitionSet(repetition, history) {
   return repeatSet.count ? repeatSet : null;
 }
 
-/** The searches again under the rules, once, for a side the searches without them left unproven
-    (failure: why the first tier failed): repeat is the repetition set or null. The ply ceiling is
-    the deeper of the two tiers' (deepBudget 0: the first tier's). Where the move rule can end a
-    line within REGION_REACH plies or that ceiling, the clock search, with a budget of the larger
-    of the tiers' and DOMINO_RULE_BUDGET; with only a repetition set, the Domino search with it, its
-    budget the first tier's, or the second tier's where it was allowed without the rules. Returns
+/** The searches again under the rules, once, for a side the searches without them left unproven:
+    repeat is the repetition set or null. Where the move rule can end a line within the ply ceiling,
+    the clock search; with only a repetition set, the Domino search with it. Both with the limits
+    given (maxPly, budget): the budget is this search's own, and pays for the exits too. Returns
     { r, nodes }, or null when no rule can end a line. */
-function ruleSearch(pos, flagged, moveRule, repeat, failure, maxPly, budget, deepPly, deepBudget) {
-  const ply = deepBudget > 0 ? Math.max(maxPly, deepPly) : maxPly;
-  const near = moveRule > 0 && pos.halfmove + Math.max(ply, REGION_REACH) >= moveRule;
+function ruleSearch(pos, flagged, moveRule, repeat, maxPly, budget) {
+  const near = moveRule > 0 && pos.halfmove + maxPly >= moveRule;
   if (!near && !repeat) return null;
-  if (near) {
-    const nodes = Math.max(budget, deepBudget, DOMINO_RULE_BUDGET);
-    const r = sharedClock.run(pos, flagged, moveRule, nodes, repeat,
-                              (p, f) => exitProof(p, f, maxPly, budget, deepPly, deepBudget));
-    return { r, nodes: nodes - r.budgetLeft };
-  }
-  const nodes = Math.max(budget, deepBudget > 0 && deepAllowed(pos, failure) ? deepBudget : 0);
-  const r = sharedSearch.run(pos, flagged, ply, nodes, { rootStatic: false, repeat });
-  return { r, nodes: nodes - r.budgetLeft };
+  const r = near ? sharedClock.run(pos, flagged, moveRule, budget, repeat, (p, f) => exitProof(p, f, maxPly, budget))
+                 : sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false, repeat });
+  return { r, nodes: budget - r.budgetLeft };
 }
 
 /** The ladder without the rules at an exit of the clock search (a position after a capture or a
-    pawn move): the static tests, the first tier, the second where it is allowed. Returns
+    pawn move): the static tests, then the Domino search with the caller's limits. Returns
     { proven, nodes }. */
-function exitProof(pos, flagged, maxPly, budget, deepPly, deepBudget) {
+function exitProof(pos, flagged, maxPly, budget) {
   if (cannotMate(pos, flagged)) return { proven: true, nodes: 0 };
-  let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft;
-  if (!r.proven && deepBudget > 0 && deepAllowed(pos, r.failure)) {
-    r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
-    nodes += deepBudget - r.budgetLeft;
-  }
-  return { proven: r.proven, nodes };
+  const r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false });
+  return { proven: r.proven, nodes: budget - r.budgetLeft };
 }
 
 /** moveRule must be 0 (none), 100 or 150; repetition 0 (none), 3 or 5. */
@@ -11058,77 +10970,60 @@ function checkRepetition(repetition) {
 }
 
 /** Can `flagged` never be mated? The static tests at the root, then the Domino search (by
-    default 6 plies, 100 nodes) and, where it allows, its second tier (9 plies, 10,000 nodes;
-    deepBudget 0: none) and, with a moveRule or a repetition (and the game's history: { keys, n },
-    see repetitionSet), the searches under the rules (see above). Returns
-    { proven, staticProof, failure, foundBy, nodes, deep, ruled }: staticProof says the static
-    tests proved it at the root; failure is 'mate', 'horizon' or 'budget' when nothing was proven
-    ('mate' with foundBy 'search': the search played a line that mates, under the rule when it
-    ran: then a mate before the rule ends the game); nodes counts the moves the searches played;
-    deep says the second tier ran; ruled says the searches under the rule ran, and the answer is
-    theirs. */
+    default 60 plies, 10,000 nodes) and, with a moveRule or a repetition (and the game's history:
+    { keys, n }, see repetitionSet), the searches under the rules (see above), with the same
+    limits. Returns { proven, staticProof, failure, foundBy, nodes, ruled }: staticProof says the
+    static tests proved it at the root; failure is 'mate', 'horizon' or 'budget' when nothing was
+    proven ('mate' with foundBy 'search': the search played a line that mates, under the rule when
+    it ran: then a mate before the rule ends the game); nodes counts the moves the searches
+    played; ruled says the searches under the rule ran, and the answer is theirs. */
 function proveCannotBeMated(pos, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                                   deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET,
                                                    moveRule = 0, repetition = 0, history = null } = {}) {
   checkMoveRule(moveRule); checkRepetition(repetition);
-  if (cannotMate(pos, flagged)) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false, ruled: false };
-  let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft, deep = false;
-  const firstFailure = r.failure;
-  if (!r.proven && deepBudget > 0 && deepAllowed(pos, r.failure)) {
-    r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
-    nodes += deepBudget - r.budgetLeft; deep = true;
-  }
+  if (cannotMate(pos, flagged)) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, ruled: false };
+  let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft;
   let ruled = false;
   if (!r.proven && (moveRule > 0 || repetition > 0)) {
-    const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), firstFailure, maxPly, budget, deepPly, deepBudget);
+    const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), maxPly, budget);
     if (u) { r = u.r; nodes += u.nodes; ruled = true; }
   }
-  return { proven: r.proven, staticProof: false, failure: r.failure, foundBy: r.failure === 'mate' ? 'search' : null, nodes, deep, ruled };
+  return { proven: r.proven, staticProof: false, failure: r.failure, foundBy: r.failure === 'mate' ? 'search' : null, nodes, ruled };
 }
 
 /** proveCannotBeMated for both sides at once: one pass of the static tests, then one walk of the
-    search (Domino.run2) for the sides they leave open, and one more of the second tier for the
-    sides it is allowed for, then, with a moveRule or a repetition, the searches under the rules
-    for each side still open. Returns [White flagged, Black flagged], each the same proof as
-    proveCannotBeMated gives. */
-function proveBoth(pos, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                 deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
+    search (Domino.run2) for the sides they leave open, then, with a moveRule or a repetition, the
+    searches under the rules for each side still open. Returns [White flagged, Black flagged],
+    each the same proof as proveCannotBeMated gives. */
+function proveBoth(pos, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, moveRule = 0,
                                  repetition = 0, history = null } = {}) {
   checkMoveRule(moveRule); checkRepetition(repetition);
   const both = FLAGGED_WHITE | FLAGGED_BLACK, st = cannotMate2(pos, both);
   const r = st !== both ? sharedSearch.run2(pos, both & ~st, maxPly, budget, { rootStatic: false }) : null;
-  let deepAsk = 0;
-  if (r && deepBudget > 0) for (let i = 0; i < 2; i++)
-    if (!((st >> i) & 1) && !r[i].proven && deepAllowed(pos, r[i].failure)) deepAsk |= 1 << i;
-  const d = deepAsk ? sharedSearch.run2(pos, deepAsk, deepPly, deepBudget, { rootStatic: false }) : null;
   const proof = i => {
-    if ((st >> i) & 1) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false, ruled: false };
-    const first = budget - r[i].budgetLeft, deep = ((deepAsk >> i) & 1) === 1;
-    let x = deep ? d[i] : r[i], nodes = deep ? first + deepBudget - d[i].budgetLeft : first, ruled = false;
+    if ((st >> i) & 1) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, ruled: false };
+    let x = r[i], nodes = budget - r[i].budgetLeft, ruled = false;
     if (!x.proven && (moveRule > 0 || repetition > 0)) {
-      const u = ruleSearch(pos, i ? BLACK : WHITE, moveRule, repetitionSet(repetition, history), r[i].failure, maxPly, budget, deepPly, deepBudget);
+      const u = ruleSearch(pos, i ? BLACK : WHITE, moveRule, repetitionSet(repetition, history), maxPly, budget);
       if (u) { x = u.r; nodes += u.nodes; ruled = true; }
     }
     return { proven: x.proven, staticProof: false, failure: x.failure, foundBy: x.failure === 'mate' ? 'search' : null,
-             nodes, deep, ruled };
+             nodes, ruled };
   };
   return [proof(0), proof(1)];
 }
 
-/** One side's searches for isDeadPosition: the first tier, then the second where it allows, then,
-    with rules, both again under them. */
+/** One side's searches for isDeadPosition, with the default limits: the Domino search, then, with
+    rules, the search under them. */
 function searchProves(pos, flagged, moveRule, repetition, history) {
   const r = sharedSearch.run(pos, flagged, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
   if (r.proven) return true;
-  const deep = deepAllowed(pos, r.failure);
-  if (deep && sharedSearch.run(pos, flagged, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, { rootStatic: false }).proven) return true;
   if (!moveRule && !repetition) return false;
-  const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), r.failure, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET);
+  const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), DOMINO_PLY, DOMINO_BUDGET);
   return !!u && u.r.proven;
 }
 
 /** Is the position dead (FIDE 5.2.2)? For each side, the static tests, then the Domino search
-    and its second tier; both sides must be proven unable to mate. A single position, with no game
+    (the default limits); both sides must be proven unable to mate. A single position, with no game
     around it. The static tests run for both sides in one pass (cannotMate2); the searches run one
     side at a time, Black flagged first: the first that fails already answers no, and one search
     costs less than the shared walk of two (run2 pays off only when both answers are needed:
@@ -11150,20 +11045,17 @@ function isDeadPosition(pos, { moveRule = 0, repetition = 0, history = null } = 
                                lapsed) or out of a pawn's check; neither while an en passant
                                square is set; both, whatever the last move was, the first time
                                a game's flags are brought up to date;
-     3. the Domino search      after every move;
-     4. its second tier        after a failure of the Domino search on its budget, or on its
-                               horizon with no knight, rook or queen on the board and a king
-                               shut in (see above);
-     5. under the rules        (new Flags({ moveRule, repetition }), the history given to update)
+     3. the Domino search      after every move (the default limits: 60 plies, 10,000 nodes);
+     4. under the rules        (new Flags({ moveRule, repetition }), the history given to update)
                                the searches again, with the rules, for a side still open, where a
-                               rule can end a line (see above).
+                               rule can end a line (see above), with the same limits.
    Only those moves change what the static tests look at (testsAfter in lock.js), so the flags
    remember of the ply before only whether an en passant square stood and the side to move was in
    a pawn's check. A platform that leaves plies out gets the clock rule (both tests whenever the
    halfmove clock is at most 1), which needs no memory of the ply before. Both sides are examined
    after every move, until their flags are down, in one pass: the parts of the static tests that
    do not depend on the side are computed once, and the two Domino searches share one walk
-   (Domino.run2), with the answers each side would get alone; so do the two second tiers.
+   (Domino.run2), with the answers each side would get alone.
 
    A flag that is down stays down: every later position is reached from this one by legal moves,
    so no series of moves from it can mate where none from here could. Its side is never examined
@@ -11172,8 +11064,9 @@ function isDeadPosition(pos, { moveRule = 0, repetition = 0, history = null } = 
    opponent's flag: down, a draw; up, a win for the opponent. Nothing is computed at that moment.
 
    A flag left up is no claim that a mate exists: the ladder found no proof within its limits.
-   On chasolver's 201,060 Lichess rows that leaves 6 positions (the first version: 36), for a
-   complete solver (and a rating refund) after the game.
+   On chasolver's list of 19 November 2026 (204,484 Lichess rows) that leaves 1 position (the first
+   version, with its 6 plies and 100 nodes: 36), for a complete solver (and a rating refund) after
+   the game.
 
    A platform that lets moves be taken back calls rewind(ply) with the ply the game is back at:
    the flags that came down after it go up again, and the next update is for the ply after it.
@@ -11234,19 +11127,14 @@ class Flags {
       const r = sharedSearch.run2(pos, open & ~proven, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
       if (r[0].proven) proven |= FLAGGED_WHITE;
       if (r[1].proven) proven |= FLAGGED_BLACK;
-      // The second tier: only after a failure on the budget, or on the horizon with no knight, rook
-      // or queen on the board (in a game, almost never: one look at the piece sets).
-      const fw = r[0].failure, fb = r[1].failure;
-      if ((fw === 'budget' || fb === 'budget' || ((fw === 'horizon' || fb === 'horizon') && noKnightRookQueen(pos))) && (open & ~proven))
-        proven |= secondTier(pos, open & ~proven, fw, fb);
       // Under the rules, the searches again with them, only where a rule can end a line.
-      const rule = this.moveRule, near = rule && pos.halfmove + Math.max(DOMINO_DEEP_PLY, REGION_REACH) >= rule;
+      const rule = this.moveRule, near = rule && pos.halfmove + DOMINO_PLY >= rule;
       const repeat = (open & ~proven) && this.repetition ? repetitionSet(this.repetition, history) : null;
       if (near || repeat)
         for (let i = 0; i < 2; i++) {
           const bit = i ? FLAGGED_BLACK : FLAGGED_WHITE;
           if (!(open & ~proven & bit)) continue;
-          const u = ruleSearch(pos, i ? BLACK : WHITE, rule, repeat, i ? fb : fw, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET);
+          const u = ruleSearch(pos, i ? BLACK : WHITE, rule, repeat, DOMINO_PLY, DOMINO_BUDGET);
           if (u && u.r.proven) proven |= bit;
         }
     }
@@ -11333,10 +11221,9 @@ function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = 
     single position with no game around it: a draw if the ladder proves that the
     opponent can never mate, otherwise a win for the opponent. In a game, Game.flagVerdict reads
     the flags instead. */
-function flagVerdict(pos, side, { resigned = false, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
+function flagVerdict(pos, side, { resigned = false, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, moveRule = 0,
                                          repetition = 0, history = null } = {}) {
-  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget, moveRule, repetition, history }).proven, resigned);
+  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, moveRule, repetition, history }).proven, resigned);
 }
 
 function verdictCode(side, draw, resigned) {
@@ -11442,12 +11329,12 @@ return Object.freeze({
   isAttacked, inCheck, makeMove, legalMoves, hasLegalMove, perft, positionKey,
   // the arbiter
   materialCannotMate, lockCannotMate, cannotMate, FLAGGED_WHITE, FLAGGED_BLACK, cannotMate2,
-  DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
+  DOMINO_PLY, DOMINO_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
   // internals exposed for tests
   _internal: Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
                              lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
                              FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS,
-                             ClockSearch, REGION_REACH, readFen }),
+                             ClockSearch, readFen }),
 });
 });
 </script>
@@ -13853,7 +13740,7 @@ function judge(fen, ply, bud, forced, hist) {
   if (LOCKONLY) {
     const t1 = performance.now(), lk = E.lockCannotMate(pos, flagged), ms1 = performance.now() - t1;
     return { side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
-             draw: lk, dead: lk && E.lockCannotMate(pos, other), reason: lk ? 'lock' : 'open', used: 0, deep: false, ms: ms1,
+             draw: lk, dead: lk && E.lockCannotMate(pos, other), reason: lk ? 'lock' : 'open', used: 0, ms: ms1,
              why: lk ? '' : 'nolock', castle: castleText(pos), lockOnly: true };
   }
   const t0 = performance.now();
@@ -13868,7 +13755,7 @@ function judge(fen, ply, bud, forced, hist) {
   const dead = proof.proven && E.proveCannotBeMated(pos, other, rules).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
-    draw: proof.proven, dead, reason, used: proof.nodes, deep: !!proof.deep, ruled: !!proof.ruled, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, ruled: !!proof.ruled, ms,
     why: proof.proven ? '' : proof.failure,
     castle: castleText(pos),
   };
@@ -13900,15 +13787,16 @@ function bothSides(fen, P, B) {
   }
   return out;
 }
-/* The figures of info3: chasolver's list of 2026-11-19 with the default limits (6 plies, 100 nodes). */
-var LIST_ROWS = 204484, LIST_OPEN = [36, 2];
+/* The figures of info3: chasolver's list of 2026-11-19, each version with its own default limits
+   (the fast one 6 plies and 100 nodes, the full one 60 plies and 10,000 nodes). */
+var LIST_ROWS = 204484, LIST_OPEN = [36, 1];
 
 var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
 var $ = function (id) { return document.getElementById(id) }, ROOT = document.getElementById('tab-arbiter');
 var ENGINE_FILE = 'mateless.js';
 /* Two versions, one engine each. 1: mateless.js, the fast layer, the rules proposed to Lichess; it is
    window.Mateless. 2: the second version (the second-version branch), which adds open pawn pairs and boxed
-   knights, rooks and queens to the lock detector and a second tier to the Domino search. Its engine is
+   knights, rooks and queens to the lock detector and searches deeper by default. Its engine is
    kept as text and run only the first time it is picked, so a reader who never picks it runs exactly
    the first; its wrapper sees a `module` and leaves window.Mateless alone. */
 /* the rules of the second version: the move rule, 150 (the 75-move rule) or 100 (the 50-move rule),
@@ -13922,8 +13810,7 @@ function engineOf(v) {
   if (!ENGINES[v]) { var m = { exports: {} }; new Function('module', 'exports', $(ENGINE_IDS[v]).textContent)(m, m.exports); ENGINES[v] = m.exports }
   return ENGINES[v] }
 var ENGINE_BYTES = new Blob([$('mateless-engine').textContent]).size;
-var LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET];     /* the game's own Domino search: plies, nodes */
-var DEEP = [0, 0];                                /* the second version's second tier: plies, nodes */
+var LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET];     /* the chosen version's own Domino search: plies, nodes */
 /* "lock detector only": the positions are judged by the chosen version's lock detector alone, to see
    which of them it catches; the games (PGN) keep the whole ladder */
 var LOCKONLY = false;
@@ -13969,12 +13856,12 @@ en: {
  lblPly: "ply ceiling",
  lblBud: "node budget",
  limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move; so does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for",
- limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move; where that fails without a mate, on its budget or on a board of kings, pawns and bishops, a second tier of {2} plies and {3} nodes. So does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for",
+ limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move, and with a move or repetition rule the search under it has the same limits; so does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for. Nothing is searched beyond the limits",
  lblVer: "version",
  ver1: "fast (the first version)",
  ver2: "full (the second version)",
  verNote1: "the rules proposed to Lichess: material, the lock detector of kings, pawns and bishops, the Domino search",
- verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); and a second tier to the Domino search; not complete either, and a little slower",
+ verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); its Domino search goes deeper by default (60 plies, 10,000 nodes); not complete either, and a little slower",
  verTag: " · full version",
  lblLockOnly: "lock detector only",
  lockOnlyNote: "positions are judged by the lock detector alone, no material test and no search; the games below still use the whole ladder",
@@ -14096,7 +13983,6 @@ en: {
  st2Ep: "No lock while an en passant square ({0}) stands.",
  st2Skip: "Not needed: material settled it.",
  st3Ok: "Followed every line until mate became impossible, {0} in all: {1} cannot mate. Draw by the Domino effect.",
- st3Deep: "The first search ({0} plies, {1} nodes) ended without a proof and without a mate, so the second tier ran: {2} plies, {3} nodes.",
  st3Mate: "Found a line in which {0} mates. Win on time, proven.",
  st3Hor: "A line reached the ply ceiling ({0}) without a proof. Nothing proven: the win for {1} stands by default.",
  st3Bud: "The node budget ({0}) ran out without a proof. Nothing proven: the win for {1} stands by default.",
@@ -14171,7 +14057,7 @@ en: {
  infoH: "What the two answers mean",
  info1: "If neither side can mate, the game can end in a draw at once. Nothing is lost by ending it (FIDE 5.2.2, dead position).",
  info2: "If one side can mate and the other cannot, the game goes on. But the side that can still mate does not lose even if its time runs out: the game must end in a draw (FIDE 6.9).",
- info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.9% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1}, the full version all but {2}, with the game’s own limits (6 plies, 100 nodes).",
+ info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.9% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1} with its default limits (6 plies, 100 nodes), the full version all but {2} with its own (60 plies, 10,000 nodes).",
  flagToMove: "{0}, the side to move",
  flagForced: "{0}, by “judge both flags”; {1} is to move",
  kMoves: "legal moves",
@@ -14197,6 +14083,7 @@ en: {
  nodesN: "{0} nodes",
  node1: "1 node",
  usedOf: "{0} of {1}",
+ limitsRule: "(the search under the rule: the same limits, a budget of its own)",
  kTime: "time",
  kStop: "search stopped by",
  rHorizon: "the ply ceiling",
@@ -14325,7 +14212,7 @@ en: {
  pk_moves: "Moves",
  secEngine: "The engine on this page",
  engineNote: "<code>mateless.js</code>, exactly as it runs here ({0} bytes): a reference board, the material test, the lock detector, the Domino search and a flag per side that a game keeps move by move. The same engine is in the repository, with its Rust port and WebAssembly build.",
- engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, a second tier of the Domino search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too.",
+ engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, a deeper Domino search by default (60 plies, 10,000 nodes), and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too.",
  foot: "Mateless never declares a draw without a proof: a position it cannot prove falls to the win and is left to a complete solver after the game. Its verdicts were checked against chasolver’s labels, and every flag that came down in thousands of games against chasolver’s full analysis, with no false draw. MIT License, © 2026 Cüneyt İnan. Source, Rust port and data: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess data: Miguel Ambrona’s <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a>.",
 },
 tr: {
@@ -14363,12 +14250,12 @@ tr: {
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
  limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için",
- limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bu arama mat bulmadan, bütçesiyle ya da yalnızca şah, piyon ve fil olan bir tahtada başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe. Bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için",
+ limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; hamle ya da tekrar kuralı seçiliyse kural altındaki arama da aynı sınırlarla. Bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için. Sınırların ötesinde hiçbir şey aranmaz",
  lblVer: "sürüm",
  ver1: "hızlı (ilk sürüm)",
  ver2: "tam (ikinci sürüm)",
  verNote1: "Lichess’e önerilen kurallar: materyal, şah, piyon ve fillerin kilit dedektörü, Domino araması",
- verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım), Domino aramasına da ikinci bir kademe ekler; o da tam değil ve biraz daha yavaş",
+ verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım) ekler; Domino araması varsayılan olarak daha derin (60 ply, 10.000 düğüm); o da tam değil ve biraz daha yavaş",
  verTag: " · tam sürüm",
  lblLockOnly: "yalnız kilit dedektörü",
  lockOnlyNote: "pozisyonlar yalnızca kilit dedektörüyle yargılanır, materyal testi ve arama yok; aşağıdaki oyunlar yine bütün merdiveni kullanır",
@@ -14490,7 +14377,6 @@ tr: {
  st2Ep: "Geçerken alma karesi ({0}) dururken kilit olmaz.",
  st2Skip: "Gerek yok: materyal çözdü.",
  st3Ok: "Her hat mat imkânsızlaşana dek izlendi, toplam {0}: {1} mat edemez. Domino etkisiyle berabere.",
- st3Deep: "İlk arama ({0} ply, {1} düğüm) ispatsız ve matsız bitti; ikinci kademe çalıştı: {2} ply, {3} düğüm.",
  st3Mate: "{0} tarafının mat ettiği bir hat bulundu. Süreden galibiyet, ispatlı.",
  st3Hor: "Bir hat ispat olmadan ply tavanına ({0}) ulaştı. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
  st3Bud: "Düğüm bütçesi ({0}) ispat olmadan tükendi. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
@@ -14565,7 +14451,7 @@ tr: {
  infoH: "İki cevap ne demek",
  info1: "İki taraf da mat edemiyorsa oyun hemen berabere bitebilir. Bitmesinde sakınca yok (FIDE 5.2.2, ölü pozisyon).",
  info2: "Bir taraf mat edebiliyor, öbürü edemiyorsa oyun sürer. Ama mat edebilen taraf süresi bitse de kaybetmez: oyun berabere bitmeli (FIDE 6.9).",
- info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,9’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm, {2} tanesi dışında hepsini tam sürüm ispatlıyor; oyunun kendi sınırlarıyla (6 ply, 100 düğüm).",
+ info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,9’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm kendi varsayılan sınırlarıyla (6 ply, 100 düğüm), {2} tanesi dışında hepsini tam sürüm kendi sınırlarıyla (60 ply, 10.000 düğüm) ispatlıyor.",
  flagToMove: "{0}, sırası gelen",
  flagForced: "{0}, “iki bayrağı da dene” ile; sıra {1} tarafında",
  kMoves: "legal hamle",
@@ -14591,6 +14477,7 @@ tr: {
  nodesN: "{0} düğüm",
  node1: "1 düğüm",
  usedOf: "{1} düğümün {0} tanesi",
+ limitsRule: "(kural altındaki arama: aynı sınırlar, kendi bütçesiyle)",
  kTime: "süre",
  kStop: "aramayı durduran",
  rHorizon: "ply tavanı",
@@ -14719,7 +14606,7 @@ tr: {
  pk_moves: "Hamleler",
  secEngine: "Bu sayfadaki motor",
  engineNote: "<code>mateless.js</code>, burada çalıştığı haliyle ({0} bayt): bir referans tahta, materyal testi, kilit dedektörü, Domino araması ve bir oyunun hamle hamle tuttuğu taraf başına bir bayrak. Aynı motor, Rust çevirisi ve WebAssembly derlemesiyle birlikte repoda.",
- engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında ikinci bir kademe ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor.",
+ engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, varsayılan olarak daha derin bir Domino araması (60 ply, 10.000 düğüm) ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor.",
  foot: "Mateless ispatı olmadan hiçbir zaman beraberlik demez: ispatlayamadığı pozisyon galibiyete düşer ve oyundan sonra tam bir çözücüye kalır. Hükümleri chasolver’ın etiketlerine, binlerce oyunda düşen her bayrak da chasolver’ın tam analizine karşı denetlendi; hiç yanlış beraberlik çıkmadı. MIT Lisansı, © 2026 Cüneyt İnan. Kaynak, Rust çevirisi ve veri: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess verisi: Miguel Ambrona’nın <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a> sayfası.",
 }};
 var lang = 'en';
@@ -14776,7 +14663,8 @@ var editor = function (f) { return 'https://lichess.org/editor/' + f.replace(/ /
 /* chasolver's page, asked whether the flagged side's opponent can mate */
 var askCha = function (f, side) { return '#chasolver?fen=' + encodeURIComponent(f) + '&side=' + (side ? 'black' : 'white') };
 /* the limits: whole numbers, the ply ceiling 1 to 1,500, the node budget 1 to 1,000,000,000 */
-var LIM = { ply: [1, 1500, 4], bud: [1, 1000000000, 8] };
+/* the limits' range and default; the default is the chosen version's (useVersion) */
+var LIM = { ply: [1, 1500, E.DOMINO_PLY], bud: [1, 1000000000, E.DOMINO_BUDGET] };
 function limitOf(id) { var L = LIM[id], v = Math.floor(+$(id).value); return v >= L[0] ? Math.min(v, L[1]) : v === v && $(id).value !== '' ? L[0] : L[2] }
 function ply() { return limitOf('ply') } function bud() { return limitOf('bud') }
 /* the engine's options for a proof: the second version's rules, and a game's history for the repetition rule */
@@ -15157,9 +15045,7 @@ function detailHTML(k) {
   else if (ins.lock) { s += stepRow('dec', T('s2n'), c2, F('st2Yes', op)); done = true }
   else s += stepRow('no', T('s2n'), c2, ep ? F('st2Ep', ep) : F('st2No', op));
   var c3 = 'Domino(' + who + ', ' + P + ', ' + num(B) + ')';
-  /* the second version's second tier, when it ran: its limits are the ones the last search reached */
-  var dp = r.deep ? DEEP[0] : P, db = r.deep ? DEEP[1] : B, dn = r.deep ? ' ' + F('st3Deep', P, num(B), DEEP[0], num(DEEP[1])) : '';
-  if (r.deep) c3 += ' → Domino(' + who + ', ' + DEEP[0] + ', ' + num(DEEP[1]) + ')';
+  var dp = P, db = B, dn = '';
   var rl = results.rule || 0, rn = '';
   if (r.ruled) { c3 += ' · moveRule ' + rl; rn = ' ' + F(r.draw ? 'st3Rule' : r.reason == 'mate' ? 'st3RuleMate' : 'st3RuleNo', rl / 2); dn += rn }
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
@@ -15193,10 +15079,10 @@ function detailHTML(k) {
      (r.fixed && r.fixed.length ? '<dt>' + T('kFixed') + '</dt><dd>' + r.fixed.map(function (f) { return T('fx_' + f.replace(' ', '')) }).join('; ') + '</dd>' : '') + '</dl>';
   /* the proof */
   h += '<h4>' + T('hRun') + '</h4><dl class="kv">' +
-     /* with the second tier, two searches: both limits, and the nodes of both against both budgets */
-     '<dt>' + T('kLimits') + '</dt><dd>' + (r.lockOnly ? T('lblLockOnly') : F('limits', P, num(B)) + (r.deep ? ' → ' + F('limits', DEEP[0], num(DEEP[1])) : '')) + '</dd>' +
+     /* under a rule, a second search with the same limits: its nodes count against a budget of its own */
+     '<dt>' + T('kLimits') + '</dt><dd>' + (r.lockOnly ? T('lblLockOnly') : F('limits', P, num(B)) + (r.ruled ? ' ' + T('limitsRule') : '')) + '</dd>' +
      '<dt>' + T('kRule') + '</dt><dd>' + (results.rule ? F('ruleVal', results.rule / 2, results.rule) : T('ruleNone')) + '</dd>' +
-     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(r.deep ? B + DEEP[1] : B)) + '</dd>' +
+     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(r.ruled ? 2 * B : B)) + '</dd>' +
      '<dt>' + T('kTime') + '</dt><dd>' + (r.warm === undefined ? (r.warm = warmTime(w, P, B)) : r.warm, us(r.warm)) + ' µs</dd>' +
      (r.why ? '<dt>' + T('kStop') + '</dt><dd>' + T({ horizon: 'rHorizon', budget: 'rBudget', mate: 'rMate', nolock: 'rNoLock' }[r.why]) + '</dd>' : '') + '</dl>';
   h += srcBlock(w, r) + '</div></div>';
@@ -15527,7 +15413,7 @@ $('pgnexp').onclick = function () { if (!PGN.res) return;
 
 /* ═══════════════════════════════ wiring ═══════════════════════════════ */
 function limNote() {
-  $('limnote').textContent = VER === 2 ? F('limNote2', LIMITS[0], num(LIMITS[1]), DEEP[0], num(DEEP[1])) : F('limNote', LIMITS[0], num(LIMITS[1]));
+  $('limnote').textContent = F(VER === 2 ? 'limNote2' : 'limNote', LIMITS[0], num(LIMITS[1]));
   $('vernote').textContent = T('verNote' + VER) + (LOCKONLY ? '; ' + T('lockOnlyNote') : '') }
 $('fold-engine').addEventListener('toggle', function () {
   if (this.open && !$('srcbox').textContent) $('srcbox').textContent = $(ENGINE_IDS[VER]).textContent.trim() });
@@ -15541,11 +15427,13 @@ $('lockonly').onchange = function () {
   applyI18n() };
 function useVersion(v) {
   VER = v; E = engineOf(VER);
-  DEEP = VER === 2 ? [E.DOMINO_DEEP_PLY, E.DOMINO_DEEP_BUDGET] : [0, 0];
+  LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET]; LIM.ply[2] = E.DOMINO_PLY; LIM.bud[2] = E.DOMINO_BUDGET;
   ENGINE_BYTES = new Blob([$(ENGINE_IDS[VER]).textContent]).size }
 $('ver').onchange = function () {
   if (busy || PGN.busy) { this.value = String(VER); return }
   useVersion(+this.value);
+  /* each version's own default limits in the boxes */
+  $('ply').value = LIM.ply[2]; $('bud').value = LIM.bud[2];
   if (!$('lb').classList.contains('hide')) lbClose();
   results = null; showResults(); say('');
   PGN.res = null; pgnRender();
@@ -15840,8 +15728,9 @@ Array.prototype.forEach.call(ROOT.querySelectorAll('input[name=mrule],input[name
 edLoad(ED_EXAMPLE);
 RULE = +(ROOT.querySelector('input[name=mrule]:checked') || { value: 150 }).value;
 REPN = +(ROOT.querySelector('input[name=mrep]:checked') || { value: 5 }).value;
-['ply', 'bud'].forEach(function (id) { $(id).value = limitOf(id) });
 if (+$('ver').value !== VER) useVersion(+$('ver').value);
+/* the chosen version's own default limits in the boxes (a reload may have kept other values) */
+$('ply').value = LIM.ply[2]; $('bud').value = LIM.bud[2];
 
 function applyI18n() {
   var els = ROOT.querySelectorAll('[data-i]'), i, el, k;

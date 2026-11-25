@@ -201,7 +201,9 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   olan (`second-version` dalı, aşağıda), seçilebilir bir hamle sınırı (75 ya da 50 hamle) ve tekrar kuralıyla
   (beşli ya da üçlü) ve Chess960'la (rok onun kurallarıyla, tahtanın rok sütunları bir başlangıç pozisyonunun
   numarasından, 0–959); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
-  hangi pozisyonları yakaladığını gösteriyor.
+  hangi pozisyonları yakaladığını gösteriyor. Her sürüm kendi varsayılan sınırlarıyla gelir, tahtanın
+  yanındaki motor ayarlarında: hızlı olan 6 ply ve 100 düğüm, tam olan 60 ply ve 10.000 düğüm;
+  gösterilen sınırların ötesinde hiçbir şey aranmaz.
 - **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
   kale, vezir ve ikiz filler neden dışarıda; sonra bitboard'larla piyonlar ve şahlar (alış varsa
   kilit yok; koniler; duvarlar, sabit piyonlar, şah erişimleri ve alım karelerinin sabit noktası;
@@ -479,14 +481,14 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 Bu sürüm, hızlı olanı, bir oyun sunucusu için yapılan katman: sağlam, küçük ve her hamleden sonra
 çalışmak için yapıldı. Yanında `second-version` dalında tam sürüm duruyor; hakem sayfası, seçilince
 onu çalıştırıyor. O da tam değil; "tam" hedefinin adı ve yeni kurallar eklendikçe büyüyor: önü açık
-piyon çiftleri, kutulu at, kale ve vezir, Domino aramasına ikinci kademe, ikiz filler, şah ve
-piyonlu bir oyunun pata gidiş yolları için dört kural (bu sürümün ispatlayamadığı 36 satırın 34'ünü
-ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da üçlü tekrar (JavaScript, Rust
-ve WebAssembly'de). Hamle sınırına yakınken matın zamanında gelip gelemeyeceğine, saatin kendisiyle
-sınırlı ve mata ya da bir alışa veya piyon hamlesine kalan yarım hamlelerin alt sınırıyla budanan
-bir arama karar veriyor: üç ile beş taşlı oyun sonlarında, kural uzaklıklarının çevresinde,
-zamanında mat edilemeyen durumların %99,8'ini ispatlıyor, edilebilenlerden hiçbirini değil (yerine
-geçtiği, ply tavanlı arama %85,6'sını ispatlıyordu). Bu sürüm Lichess verisinin %99,98'ini zaten
+piyon çiftleri, kutulu at, kale ve vezir, ikiz filler, şah ve piyonlu bir oyunun pata gidiş yolları
+için dört kural, varsayılan olarak daha derin bir Domino araması (60 ply, 10.000 düğüm; bu sürümün
+ispatlayamadığı 36 satırın 35'ini ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da
+üçlü tekrar (JavaScript, Rust ve WebAssembly'de). Hamle sınırına yakınken matın zamanında gelip
+gelemeyeceğine, saatin kendisiyle sınırlı ve mata ya da bir alışa veya piyon hamlesine kalan yarım
+hamlelerin alt sınırıyla budanan bir arama, ötekilerle aynı sınırlarla karar veriyor: üç ile beş
+taşlı oyun sonlarında, kural uzaklıklarının çevresinde, zamanında mat edilemeyen durumların
+%97,9'unu ispatlıyor, edilebilenlerden hiçbirini değil. Bu sürüm Lichess verisinin %99,98'ini zaten
 karşılıyor; bu yüzden tam sürüm pratikte en çok meraklıları ve araştırmayı ilgilendiriyor, aceleye
 getirilmiyor.
 

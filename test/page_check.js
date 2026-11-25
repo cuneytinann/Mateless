@@ -2,7 +2,9 @@
 /* Opens index.html, the whole site in one page, in headless Chromium and exercises every tab;
    fails on any console error, on a lock explorer that disagrees with mateless.js, or on a tab
    that does not answer:
-     arbiter    one position, a labelled batch, the detail dialog, the PGN replay, the engine source
+     arbiter    one position, a labelled batch, the detail dialog, a FEN the engine puts right
+                (the positions box and the board editor, when left) and one it refuses, the PGN
+                replay, the engine source
      chasolver  a position handed over by the arbiter's "Ask chasolver" link (#chasolver?fen=…)
      lock       every example, both sides, every level and pass of the explorer, in both languages;
                 the download of the detector alone (mateless-lock.zip) and its section
@@ -53,6 +55,28 @@ const fail = [];
   console.log('dialog:', await page.textContent('#lbpos'), await page.textContent('#lbbody .vword'));
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Escape');
+  // the FEN layer (fromFen): a FEN the engine puts right is written as it reads it once the box is
+  // left; a position no game reaches is refused in words, in the positions and on the board
+  const putRight = ['k7/8/8/8/8/8/8/K7 w KQ e3 9 1', 'W- 4k3/8/8/8/8/8/8/R3K2R w KQkq - 0 1', '5R2/R4k2/8/8/8/8/PPPPPPPP/7K b - - 0 1'];
+  await page.fill('#fen', putRight.join('\n'));
+  await page.focus('#fen'); await page.focus('#ply');
+  const box = await page.inputValue('#fen'), boxWant = ['k7/8/8/8/8/8/8/K7 w - - 9 6', 'W- 4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1', putRight[2]].join('\n');
+  if (box !== boxWant) fail.push('the positions box was not put right when left: ' + JSON.stringify(box));
+  await page.click('#go');
+  await page.waitForSelector('#out:not(.hide) #perfile tr', { timeout: 60000 });
+  const refused = await page.textContent('#out');
+  if (!/impossible check/.test(refused)) fail.push('the impossible double check is not counted as an impossible check');
+  for (const [fen, want] of [['k7/8/8/4pP2/8/8/8/K7 w - e6 3 2', 'k7/8/8/4pP2/8/8/8/K7 w - - 3 3'],
+                             ['k7/1P6/8/8/8/8/8/K7 b - - 9 2', 'k7/1P6/8/8/8/8/8/K7 b - - 0 2']]) {
+    await page.fill('#edFen', fen); await page.focus('#edClock');
+    const ed = await page.inputValue('#edFen');
+    if (ed !== want) fail.push('the board editor read ' + fen + ' as ' + ed + ', not ' + want);
+  }
+  await page.fill('#edFen', putRight[2]);
+  const edBad = await page.textContent('#edBad');
+  if (!/double check/.test(edBad)) fail.push('the board editor does not refuse the impossible double check in words: ' + edBad);
+  console.log('fen layer: positions box and board editor put right, refusals in words:', box === boxWant && /double check/.test(edBad));
+  await page.click('#edStart');
   // games
   await page.fill('#pgntext', [
     '[Event "fool"]\n[Result "0-1"]\n\n1. f3 e5 2. g4 Qh4# 0-1\n',
@@ -83,6 +107,8 @@ const fail = [];
     let n = 0, disagree = 0;
     for (const v of opts) {
       await page.selectOption('#exsel', v);
+      const er = await page.$eval('#fenerr', e => (e.classList.contains('hide') ? '' : e.textContent));
+      if (/does not read|okunmuyor/.test(er)) fail.push('the lock example ' + v + ' does not read: ' + er);
       for (const fl of ['w', 'b']) {
         await page.selectOption('#flsel', fl);
         const nl = await page.$$eval('#lvls button[data-lv]:not([disabled])', x => x.length);

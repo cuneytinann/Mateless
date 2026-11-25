@@ -93,6 +93,9 @@ import { fromFen, cannotMate, proveBoth, Game, Domino, Result, RESULT_NAMES, WHI
 const r = fromFen('8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92');
 if (r.error !== undefined) { const e: Mateless.FenError = r.error; throw new Error(e); }
 const pos: Mateless.Position = r.position;
+const fixed: Mateless.FenFix[] = r.fixed, normal: string = r.fen + r.fullmove;
+const loose = fromFen('8/8/8/8/8/8/1PPP4/K1k5 w - - 0 1', { strict: false });
+if (loose.error !== undefined) { const why: (string | number)[] = loose.detail; void why; }
 const side: Mateless.Color = pos.side;
 const a: boolean = cannotMate(pos, BLACK) && Mateless.lockCannotMate(pos, Mateless.BLACK);
 const both: Mateless.FlaggedSides = Mateless.cannotMate2(pos, FLAGGED_WHITE | FLAGGED_BLACK);
@@ -120,10 +123,15 @@ const fen: string = Mateless.toFen(copy, 1) + Mateless.squareName(Mateless.parse
 const files = new Mateless.CastlingFiles(Mateless.STANDARD_SKELETON);
 const n: number = Mateless.perft(pos, 2) + Mateless._internal.generateLegalMoves(pos, new Int32Array(Mateless._internal.MOVE_STRIDE), 0);
 try { Mateless.makeMove(pos, pos.clone(), 0, 63); } catch (e) { if (!(e instanceof Mateless.EngineError)) throw e; }
-void [side, a, both, nodes, failure, name, dead, after, down, never, verdict, one, pair, fen, files.isStandard, n];
+void [fixed, normal, side, a, both, nodes, failure, name, dead, after, down, never, verdict, one, pair, fen, files.isStandard, n];
 // The types must reject these:
 // @ts-expect-error a FEN result may be an error: position can be undefined
 cannotMate(fromFen('x').position, BLACK);
+// @ts-expect-error what was put right is castling, en passant, the halfmove clock or the move number
+const notAFix: Mateless.FenFix = 'clock';
+void notAFix;
+// @ts-expect-error strict is a boolean
+fromFen('x', { strict: 1 });
 // @ts-expect-error a colour is WHITE (8) or BLACK (0)
 cannotMate(pos, 1);
 // @ts-expect-error a promotion is QUEEN, ROOK, BISHOP or KNIGHT

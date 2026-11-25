@@ -264,7 +264,7 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: ölü pozisyo
 './mateless.mjs'` ya da `import Mateless from './mateless.mjs'`). Kaynak modüller
 (`./src/index.js`) aynı cevapları veriyor ama V8'de ~%10–30 yavaş.
 
-**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (84 KB); bağımlılıksız köprüsü
+**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (106 KB); bağımlılıksız köprüsü
 `mateless-wasm.js`. Merdivenin tamamını veriyor (statik testler, Domino, iki ispat, bir oyunun
 bayrakları, perft), `mateless.js` ile düğüm sayısına kadar aynı cevaplarla. İspatlar JS'ten ~2,5–4
 kat, bir oyunun bayrakları ply başına ~3,2 kat hızlı; yerel Rust bundan da ~1,5–1,9 kat hızlı.
@@ -293,6 +293,38 @@ import Mateless = require('./mateless');      // ya da: import { fromFen, proveB
 const r = Mateless.fromFen('8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92');
 if (r.error === undefined) Mateless.proveCannotBeMated(r.position, Mateless.BLACK);   // Proof
 ```
+
+**FEN okumak.** `fromFen` (`src/fen.js`), dışarıdan gelen her konumun girdiği dış katman; merdiven
+onu hiç çağırmaz, onun kabul ettiği bir konumdan yasal hamlelerle ulaşılan konuma ikinci kez
+bakmak gerekmez. `{ position, halfmoveGiven, fullmove, fixed, fen }` ya da `{ error, detail }`
+döndürür ve hiçbir satranç ya da Chess960 oyununun ulaşamayacağı konumu bilinen gerekli koşullarla
+reddeder:
+
+| hata | konum |
+|---|---|
+| `syntax`, `kings`, `pawnrank` | FEN değil; her tarafta tek şah yok; ilk ya da son yatayda piyon var |
+| `oppcheck` | sırası olmayan taraf şah altında (yan yana iki şah da bu sayılır) |
+| `pawns`, `pieces` | bir tarafta 8'den fazla piyon ya da 16'dan fazla taş |
+| `promo` | başlangıç takımından (bir vezir, iki kale, iki at, her renkte bir fil: fil rengini hiç değiştirmez) eksik piyonların terfiyle olabileceğinden fazla taş |
+| `captures` | kendi sütununda olmayan piyonlar: her biri ayrı bir sütundan gelmek için karşı tarafın eksik taşından fazla alma istiyor |
+| `checks` | şahları karşı tarafın hiçbir son hamlesi vermiyor: geri alınınca her hamle (hamle, alma, terfi, geçerken alma, rok) sırası gelen tarafı şah altında bırakıyor ya da tahtada olmayan bir taş istiyor (alınan taş ancak tarafının 16'dan az taşı varsa geri gelir, terfi ancak hamle yapanın 8'den az piyonu varsa geri alınır). Yani üçlü şah, tek hamlenin veremeyeceği her çifte şah (iki at, şahtan geçen tek hat üzerinde iki taş, hamle eden taşın hiç durmadığı bir hattan açılan şah, alarak terfi olmadan iki kale), başlangıç yatayından şah çeken piyon, hiçbir yerden gelemeyen taş |
+
+Tek bir okunuşu olan şey reddedilmek yerine düzeltilir ve `fixed`'de adı geçer: tahtanın izin
+vermediği rok hakları (`castling`); hiçbir iki kare ilerleyişin bırakmadığı geçerken alma karesi:
+yanlış yatay, boş olmayan kareler, 0'dan büyük yarım hamle sayacı ya da ilerleyişin veremeyeceği bir
+şah (`en passant`); şahı ancak bir alma ya da piyon hamlesi vermiş olabilecekken 0'dan büyük yarım
+hamle sayacı (`halfmove`, 0 yapılır); yarım hamle sayacının gerektirdiğinden küçük hamle numarası
+(`fullmove`). `fen`, bunlar düzeltilmiş FEN. Bunlar yalnızca gerekli koşullar: hepsinden geçen bir
+konuma da ulaşılamıyor olabilir (bu daha geriye giden bir retro analiz ister).
+`fromFen(fen, { strict: false })` yalnızca `syntax`, `kings`, `pawnrank` ve `oppcheck`'i tutar;
+bestelenmiş konumlar ve test kümeleri için.
+
+Hiçbir yasal konum reddedilmez ya da değişmez: python-chess'in rastgele oyunlarının, standart ve
+Chess960, şahı bol, sundukları her çifte şah, rok, geçerken alma ve terfi şahıyla, geçerken alma
+alanının iki biçiminde, her konumu (`test/fen_check.js`; uzun koşularda 2,17 milyon FEN); ve
+python-chess'in geçersiz bulduğu her rastgele tahta reddedilir. Rust portu (`from_fen`,
+`from_fen_with`) ve `mateless.wasm` (`W.fromFen(fen, { strict })`) 2,27 milyon FEN'de aynı okur.
+Sayfada konumlar kutusu ve tahta editörü, kutudan çıkılınca FEN'i motorun düzelttiği gibi yazar.
 
 **scalachess (Lichess)** için ayrı bir repo var:
 [mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess). scalachess 18.0.1'e yama
@@ -388,6 +420,7 @@ söylüyor.
 | `src/domino.js` | **3. basamak:** Domino araması (6 ply / 100 düğüm) | taş taş, sabit sırada legal hamleler, yerinde yapıp geri alma, "yasal hamle var mı?", pozisyonun birebir kodu |
 | `src/ladder.js` | **merdiven:** basamakların ne zaman sorulduğu, tek pozisyon için ispatlar, bir oyunun iki bayrağı (`Flags`) | yarım hamle sayacı ve en passant karesi |
 | `src/board.js` | referans tahta: bitboard, magic bitboard, legal hamleler, FEN, Chess960 | — |
+| `src/fen.js` | **dış katman:** FEN'i bir oyunun ulaşabileceği konum olarak okumak (`fromFen`): neyi düzelttiği, neyi reddettiği | tahtanın FEN okuyucusu ve saldırı testi |
 | `src/game.js` | referans oyun: sonuç kodları, tekrarlar, 75 hamle, beşli tekrar, `Game` | — |
 | `src/index.js` | genel API | |
 
@@ -398,7 +431,7 @@ katmanlardan oluşuyor (`rust/src/board.rs`, `material.rs`, `lock.rs`, `domino.r
 ## Dosyalar
 
 ```
-src/                 kaynak: board, material, lock, domino, ladder, game, index (ES modülleri)
+src/                 kaynak: board, fen, material, lock, domino, ladder, game, index (ES modülleri)
 mateless.js          motor, tek dosya (src/'den tools/build.js ile; elle düzenlenmez)
 mateless.mjs         aynı dosya, ES modülü olarak (o da tools/build.js'ten)
 mateless.d.ts        TypeScript tipleri
@@ -427,6 +460,7 @@ test dosyaları için `CHASOLVER=<chasolver>/tests`):
 node smoke.js                                    # perft
 node perft_cpw.js 5                              # Chess Programming Wiki'nin altı pozisyonu
 python3 perft_python.py | node perft960.js -     # Chess960 hamleleri = python-chess'inkiler (her başlangıç, ~780.000 pozisyon)
+python3 fen_python.py | node fen_check.js -      # fromFen: python-chess'in yasal oyunları olduğu gibi okunur, geçersiz tahtaları reddedilir
 node classify.js 6 100 1                         # chasolver etiketlerine karşı: FALSE DRAWS 0 olmalı
 node game_flags_check.js 1 3000 200              # düşen her bayrak, chasolver'ın tam çözücüsüne karşı
 node twosided_check.js <dosyalar>                # iki taraf tek geçişte = taraf taraf, her alanda

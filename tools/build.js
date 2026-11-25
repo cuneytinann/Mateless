@@ -16,7 +16,7 @@
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..'), src = path.join(root, 'src');
 const TARGETS = { umd: path.join(root, 'mateless.js'), esm: path.join(root, 'mateless.mjs') };
-const LAYERS = ['board.js', 'material.js', 'lock.js', 'domino.js', 'ladder.js', 'game.js'];
+const LAYERS = ['board.js', 'fen.js', 'material.js', 'lock.js', 'domino.js', 'ladder.js', 'game.js'];
 
 const IMPORT = /^import \{[^}]*\} from '\.\/[a-z]+\.js';\n/gm;
 const read = f => fs.readFileSync(path.join(src, f), 'utf8');

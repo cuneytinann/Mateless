@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* Writes lock/positions.tsv: the positions every version of the simple lock detector (lock/) is
    tested on, each labelled by mateless.js's lock detector for both sides.
      node tools/lock-positions.js            writes lock/positions.tsv (the same file every time)
@@ -61,10 +62,8 @@ function normal(p) {
   const fen = write(p);
   if (p.a.filter(c => c === 'K').length !== 1 || p.a.filter(c => c === 'k').length !== 1) return null;
   if (p.a.some((c, i) => (c === 'P' || c === 'p') && (i < 8 || i > 55))) return null;
-  const r = E.fromFen(fen);
-  if (r.error) return null;
-  const other = E.fromFen(write({ a: p.a, side: p.side === 'w' ? 'b' : 'w', ep: '-' }));
-  if (other.error || E.inCheck(other.position)) return null;   // the side not to move is in check
+  const r = E.fromFen(fen, LOOSE);   // refuses a position whose side not to move is in check, among others
+  if (r.error || r.fixed.length) return null;   // an en passant square a later mutation spoiled: not put right, left out
   return E.toFen(r.position);
 }
 
@@ -163,7 +162,7 @@ function randomPosition() {
 const out = new Map();   // fen -> label; a position once
 function add(fen) {
   if (!fen || out.has(fen)) return;
-  const pos = E.fromFen(fen).position;
+  const pos = E.fromFen(fen, LOOSE).position;
   out.set(fen, (E.lockCannotMate(pos, E.WHITE) ? '1' : '0') + '\t' + (E.lockCannotMate(pos, E.BLACK) ? '1' : '0'));
 }
 

@@ -10,7 +10,7 @@ const cases = [
 ];
 let total = 0, bad = 0;
 for (const [fen, want] of cases) {
-  const p = L.fromFen(fen).position;
+  const p = L.fromFen(fen, { strict: false }).position;   // position 4 is composed: no game reaches it
   want.forEach((n, d) => { const got = L.perft(p, d + 1); total += got; if (got !== n) { bad++; console.log('PERFT MISMATCH', fen, d + 1, n, got); } });
 }
 const ms = performance.now() - t0;

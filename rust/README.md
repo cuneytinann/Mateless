@@ -13,7 +13,12 @@ search owns its memory), so the library can be used from many threads, one `Domi
 The modules are the layers of the JavaScript sources (`src/`): `material` (rung 1, the material
 test), `lock` (rung 2, the lock detector and the two static tests together), `domino` (rung 3, the
 Domino search), `ladder` (`prove_cannot_be_mated`, `prove_both`, `Flags`), and under them `board`, a
-reference board (bitboards, magic bitboards, legal moves, FEN). Each module's `use` lines say what it
+reference board (bitboards, magic bitboards, legal moves, FEN as written: `read_fen`), and over
+them `fen`, the outer layer, as `src/fen.js`: `from_fen` reads a FEN into a position some game can
+reach, refusing the rest (`"oppcheck"`, `"pawns"`, `"pieces"`, `"promo"`, `"captures"`,
+`"checks"`, besides `"syntax"`, `"kings"`, `"pawnrank"`), and `from_fen_with(fen, strict)` gives
+the `FenRead` (position, move number, what was put right as `FIXED_*` bits; `strict: false` for
+composed positions). Each module's `use` lines say what it
 takes from the board. Every public item is also re-exported at the crate root (`mateless::Flags`).
 
 No dependencies. The dev-dependencies (`chasolver`, `chess`) are only for the examples that run
@@ -33,6 +38,8 @@ cargo build --release
 target/release/mateless perft 5                                   # the six CPW positions
 target/release/mateless layers chasolver-data.csv > rs.tsv        # per row: layer, nodes, failure
 node ../test/rust_compare.js layers chasolver-data.csv > js.tsv && cmp js.tsv rs.tsv
+target/release/mateless fen fens.txt > rs.tsv                    # the FEN readers: strict and loose, per FEN
+node ../test/rust_compare.js fen fens.txt > js.tsv && cmp js.tsv rs.tsv
 cargo run --release --example vs_chasolver -- positions.txt  # against chasolver's fast check
 BOTH=1 cargo run --release --example vs_chasolver -- positions.txt   # both sides: chasolver per colour, Mateless prove_both
 ```

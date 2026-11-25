@@ -6,6 +6,7 @@
 // the two proofs, and Domino.run2 with run (root tests asked or not; and on
 // every 64th position also at 9 plies / 2,000 nodes, where the two sides' trees part more often).
 const fs = require('fs'), path = require('path');
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js'));
 const I = E._internal, W = E.WHITE, B = E.BLACK, FW = E.FLAGGED_WHITE, FB = E.FLAGGED_BLACK;
 const bits = (w, b) => (w ? FW : 0) | (b ? FB : 0);
@@ -16,7 +17,7 @@ for (const file of process.argv.slice(2)) {
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line) continue;
     for (const fen of line.split('\t')[0].split('|')) {
-      const parsed = E.fromFen(fen);
+      const parsed = E.fromFen(fen, LOOSE);
       if (!parsed.position) continue;
       const pos = parsed.position;
       n++;

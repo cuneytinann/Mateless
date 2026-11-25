@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* chasolver's fast check against Mateless's static test, in one Node process, on the same positions.
      node fair_lock_bench.js <chasolver> <positions> [rounds]
    <positions>: lines "<fen>\t<w|b>", the second field being the side that should be unable to mate
@@ -19,7 +20,7 @@ const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map(l => l.split('
 const ROUNDS = +(roundsArg || 7), CHUNK = 64;
 const engines = [['chasolver fast', rows.map(([f, w]) => [C.B.boardFromFen(f), w === 'w' ? C.B.WHITE : C.B.BLACK]), x => C.W.isUnwinnableFast(x[0], x[1])]];
 for (const lf of engineFiles) { const E = require(path.resolve(lf));
-  engines.push(['Mateless[' + engines.length + '] ' + path.basename(lf), rows.map(([f, w]) => [E.fromFen(f).position, w === 'w' ? E.BLACK : E.WHITE]), x => E.cannotMate(x[0], x[1])]); }
+  engines.push(['Mateless[' + engines.length + '] ' + path.basename(lf), rows.map(([f, w]) => [E.fromFen(f, LOOSE).position, w === 'w' ? E.BLACK : E.WHITE]), x => E.cannotMate(x[0], x[1])]); }
 const proven = engines.map(([, inp, f]) => inp.reduce((n, x) => n + (f(x) ? 1 : 0), 0));
 for (let r = 0; r < 2; r++) for (const [, inp, f] of engines) for (const x of inp) f(x);   // warm-up
 const res = engines.map(() => []); let sink = 0;

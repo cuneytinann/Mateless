@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 /* The lock tab's display copy of the detector (site/lock/lockviz.js) against mateless.js: the
    verdict for both flagged sides, and on a proof the sets of the proving level (cones, fixed
    pawns, king reaches, bishop reaches, frozen king). Positions: the 52,050 Lichess locks, the
@@ -47,7 +48,7 @@ function mutate(fen) {
 const stats = { positions: 0, sides: 0, proved: 0, gated: 0, levelProofs: [0, 0, 0], leakKinds: {}, setChecks: 0 };
 const bad = [];
 function check(fen) {
-  const r = Mt.fromFen(fen);
+  const r = Mt.fromFen(fen, LOOSE);
   if (!r || r.error || !r.position) return;
   const pos = r.position;
   stats.positions++;

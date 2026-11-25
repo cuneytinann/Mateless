@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 // For every chasolver position and both flags: which layer first proves "the mater can never mate"?
 //   material  – materialCannotMate (static)
 //   lock      – lockCannotMate (static)
@@ -15,7 +16,7 @@ const fp = []; const unproven = [];
 const T = { lock: 0n, domino: 0n }; const N = { lock: 0, domino: 0 };
 const tm = (k, f) => { const t = process.hrtime.bigint(); const r = f(); T[k] += process.hrtime.bigint() - t; N[k]++; return r; };
 for (const [lab, fen, file] of rows) {
-  const s = E.fromFen(fen); if (s.error) { add('fen error ' + s.error); continue; }
+  const s = E.fromFen(fen, LOOSE); if (s.error) { add('fen error ' + s.error); continue; }
   const pos = s.position;
   for (const z of [E.WHITE, E.BLACK]) {
     const canMate = lab[z === E.WHITE ? 1 : 0] !== '-';

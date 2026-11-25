@@ -18,7 +18,8 @@ fn failure_code(f: Failure) -> i32 {
 
 /// FEN errors as negative handles: -1 syntax, -2 kings, -3 pawns, -4 castling, -5 en passant.
 fn fen_error_code(e: &str) -> i32 {
-    match e { "syntax" => -1, "kings" => -2, "pawns" => -3, "castling" => -4, "en passant" => -5, _ => -1 }
+    match e { "syntax" => -1, "kings" => -2, "pawnrank" => -3, "oppcheck" => -4, "pawns" => -5, "pieces" => -6,
+              "promo" => -7, "captures" => -8, "checks" => -9, _ => -1 }
 }
 
 /// A table of values with handles: the index of a slot; freed slots are reused, last freed first.
@@ -80,11 +81,16 @@ pub extern "C" fn input(len: u32) -> *mut u8 {
 pub extern "C" fn out() -> *const i32 { state().out.as_ptr() }
 
 /// Reads the FEN in the input buffer (its first `len` bytes): a handle (>= 0), or a FEN error (< 0).
+/// strict: 0 keeps only the syntax, the kings, the edge ranks and the side not to move out of
+/// check (from_fen_with). What was put right (FIXED_* bits) goes to out[0].
 #[no_mangle]
-pub extern "C" fn position_from_fen(len: u32) -> i32 {
+pub extern "C" fn position_from_fen(len: u32, strict: i32) -> i32 {
     let s = state();
     let text = match std::str::from_utf8(&s.input[..len as usize]) { Ok(t) => t, Err(_) => return -1 };
-    match from_fen(text) { Ok(p) => s.positions.add(p), Err(e) => fen_error_code(e) }
+    match from_fen_with(text, strict != 0) {
+        Ok(r) => { s.out[0] = r.fixed as i32; s.positions.add(r.pos) }
+        Err(e) => fen_error_code(e),
+    }
 }
 
 #[no_mangle]

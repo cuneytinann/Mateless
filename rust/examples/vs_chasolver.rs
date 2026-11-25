@@ -31,7 +31,7 @@ fn main() {
     let cha: Vec<(chess::Board, chess::Color)> = rows.iter()
         .map(|(f, w)| (chess::Board::from_str(f).expect("chess fen"), if *w { chess::Color::White } else { chess::Color::Black })).collect();
     let lx: Vec<(mateless::Position, u8)> = rows.iter()
-        .map(|(f, w)| (mateless::from_fen(f).expect("fen"), if *w { mateless::BLACK } else { mateless::WHITE })).collect();
+        .map(|(f, w)| (mateless::from_fen_with(f, false).expect("fen").pos, if *w { mateless::BLACK } else { mateless::WHITE })).collect();
     let lxr = &lx;
     let mut s1 = mateless::Domino::new();
     let mut s2 = mateless::Domino::new();

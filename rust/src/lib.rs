@@ -22,12 +22,14 @@
 //! MIT License.
 
 pub mod board;
+pub mod fen;
 pub mod material;
 pub mod lock;
 pub mod domino;
 pub mod ladder;
 
 pub use board::*;
+pub use fen::*;
 pub use material::*;
 pub use lock::*;
 pub use domino::*;

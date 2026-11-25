@@ -5,111 +5,17 @@
 let E = window.Mateless;
 if (!E) throw new Error('The Mateless engine did not load.');
 
-/* ═══════════════════════════════ FEN checks ═══════════════════════════════
-   Is this FEN a position that some game could have reached? Only necessary conditions are
-   tested: a line that fails one is certainly not a legal position; passing all of them does
-   not prove that it is (that takes retrograde analysis). Returns null, or {k: reason, a: [details]}.
-   Squares are numbered a1 = 0 … h8 = 63; upper case is White. */
-const fenProblem = (function () {
-  function fenProblem(str) {
-    var A = String(str).trim().split(/\s+/), sq = new Array(64), rows, r, f, i, x, ch, w;
-    if (A.length < 2) return { k: 'syntax', a: ['fields'] };
-    rows = A[0].split('/');
-    if (rows.length != 8) return { k: 'syntax', a: ['nranks', rows.length] };
-    for (r = 0; r < 8; r++) { w = 0;
-      for (i = 0; i < rows[r].length && w <= 8; i++) { ch = rows[r][i];
-        if (ch >= '1' && ch <= '8') { for (x = 0; x < +ch && w + x < 8; x++) sq[(7 - r) * 8 + w + x] = ''; w += +ch }
-        else if ('pnbrqkPNBRQK'.indexOf(ch) >= 0) { if (w < 8) sq[(7 - r) * 8 + w] = ch; w++ }
-        else return { k: 'syntax', a: ['char', ch] } }
-      if (w != 8 || i < rows[r].length) return { k: 'syntax', a: ['rankw', 8 - r] } }
-    if (A[1] != 'w' && A[1] != 'b') return { k: 'syntax', a: ['side', A[1]] };
-    var white = A[1] == 'w', ep = A[3] || '-';
-    if (ep != '-' && !/^[a-h][36]$/.test(ep)) return { k: 'syntax', a: ['epf', ep] };
-    for (i = 4; i < A.length && i < 6; i++) if (A[i] != '-' && !/^\d+$/.test(A[i])) return { k: 'syntax', a: ['num', A[i]] };
-    /* the halfmove clock cannot exceed the plies played since the start: 2×(fullmove − 1), plus one when Black is to move */
-    if (A.length > 5 && A[5] != '-' && A[5] < 1) return { k: 'syntax', a: ['full', A[5]] };
-    if (A.length > 5 && A[4] != '-' && A[5] != '-') { var hm = +A[4], pl = 2 * (A[5] - 1) + !white; if (hm > pl) return { k: 'clock', a: [hm, pl] } }
-
-    var cnt = {}; for (i = 0; i < 64; i++) if (sq[i]) cnt[sq[i]] = (cnt[sq[i]] || 0) + 1;
-    if ((cnt.K || 0) != 1 || (cnt.k || 0) != 1) return { k: 'kings', a: [cnt.K || 0, cnt.k || 0] };
-    for (i = 0; i < 64; i++) if ((sq[i] == 'P' || sq[i] == 'p') && (i < 8 || i > 55)) return { k: 'pawnrank', a: [sqName(i)] };
-
-    /* material: at most 8 pawns and 16 pieces a side, and every piece beyond the starting set
-       (one queen, two rooks, two knights, one bishop on each colour; bishops never change colour)
-       must be a promotion paid for by a missing pawn */
-    var sides = ['w', 'b'];
-    for (var s = 0; s < 2; s++) { var up = s == 0, c = function (L) { return cnt[up ? L.toUpperCase() : L] || 0 },
-        P = c('p'), tot = P + c('n') + c('b') + c('r') + c('q') + 1, bl = 0, bd = 0;
-      if (P > 8) return { k: 'pawns', a: [sides[s], P] };
-      if (tot > 16) return { k: 'pieces', a: [sides[s], tot] };
-      for (i = 0; i < 64; i++) if (sq[i] == (up ? 'B' : 'b')) { if (((i & 7) + (i >> 3)) & 1) bl++; else bd++ }
-      var extra = Math.max(0, c('q') - 1) + Math.max(0, c('r') - 2) + Math.max(0, c('n') - 2) + Math.max(0, bl - 1) + Math.max(0, bd - 1);
-      if (extra > 8 - P) return { k: 'promo', a: [sides[s], extra, 8 - P] } }
-
-    /* en passant: the square must sit behind a pawn that has just advanced two squares */
-    var e = -1;
-    if (ep != '-') { e = (ep.charCodeAt(0) - 97) + (+ep[1] - 1) * 8;
-      if (white ? (ep[1] != '6' || sq[e] || sq[e + 8] || sq[e - 8] != 'p') : (ep[1] != '3' || sq[e] || sq[e - 8] || sq[e + 8] != 'P')) return { k: 'ep' } }
-
-    /* the side not to move may not be in check */
-    var kw = sq.indexOf('K'), kb = sq.indexOf('k'), kt = white ? kw : kb, ko = white ? kb : kw;
-    if (attackers(sq, ko, white).length) return { k: 'oppcheck' };
-
-    /* checks on the side to move */
-    var chk = attackers(sq, kt, !white);
-    if (e >= 0) {
-      /* the last move was a two-square advance: it can give at most one check, and that check must
-         not have existed before the pawn moved */
-      if (chk.length > 1) return { k: 'epcheck' };
-      if (chk.length == 1) { var to = white ? e - 8 : e + 8, from = white ? e + 8 : e - 8;
-        if (chk[0].at != to) { var bef = sq.slice(); bef[from] = bef[to]; bef[to] = '';
-          if (attackers(bef, kt, !white).length) return { k: 'epcheck' } } } }
-    else if (chk.length > 2) return { k: 'check3' };
-    if (chk.length == 2) { var a = chk[0], b = chk[1];
-      if (!a.ray && !b.ray) return { k: 'checkleap' };
-      if (a.fam == b.fam) {
-        if (a.fam == 'D') return { k: 'checkdiag' };
-        if (a.fam == 'S' && !promoted(a, b) && !promoted(b, a)) return { k: 'checkstraight' } } }
-    return null;
-
-    /* two straight checks: X stands on the promotion rank and a pawn could have come to it by a
-       diagonal capture from a square on Y's ray, opening that ray */
-    function promoted(X, Y) {
-      var pr = white ? 0 : 7, or = white ? 1 : 6;            // the checking side is the side not to move
-      if ((X.at >> 3) != pr) return false;
-      for (var df = -1; df <= 1; df += 2) { var of = (X.at & 7) + df; if (of < 0 || of > 7) continue;
-        var o = or * 8 + of; if (sq[o]) continue;
-        if (between(o, kt, Y.at)) return true }
-      return false }
-  }
-  function sqName(i) { return 'abcdefgh'[i & 7] + ((i >> 3) + 1) }
-  function between(o, k, y) {
-    if ((k & 7) == (y & 7)) return (o & 7) == (k & 7) && (o >> 3) > Math.min(k >> 3, y >> 3) && (o >> 3) < Math.max(k >> 3, y >> 3);
-    if ((k >> 3) == (y >> 3)) return (o >> 3) == (k >> 3) && (o & 7) > Math.min(k & 7, y & 7) && (o & 7) < Math.max(k & 7, y & 7);
-    return false }
-  /* the pieces of one colour attacking a square: each with its family (N leap, D diagonal, S straight,
-     K king) and whether it attacks along a ray; a pawn's capture is the one-step diagonal */
-  function attackers(sq, to, byWhite) {
-    var out = [], tf = to & 7, tr = to >> 3, f, r, p, i, d;
-    function mine(p) { return p && (p == p.toUpperCase()) == byWhite }
-    function at(f, r) { return f >= 0 && f < 8 && r >= 0 && r < 8 ? r * 8 + f : -1 }
-    var N = [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]];
-    for (i = 0; i < 8; i++) { d = at(tf + N[i][0], tr + N[i][1]); if (d >= 0 && mine(sq[d]) && sq[d].toLowerCase() == 'n') out.push({ at: d, fam: 'N', ray: false }) }
-    for (i = -1; i <= 1; i += 2) { d = at(tf + i, byWhite ? tr - 1 : tr + 1); if (d >= 0 && mine(sq[d]) && sq[d].toLowerCase() == 'p') out.push({ at: d, fam: 'D', ray: false }) }
-    for (f = -1; f <= 1; f++) for (r = -1; r <= 1; r++) { if (!f && !r) continue; d = at(tf + f, tr + r); if (d >= 0 && mine(sq[d]) && sq[d].toLowerCase() == 'k') out.push({ at: d, fam: 'K', ray: false }) }
-    var R = [[1, 0, 'S'], [-1, 0, 'S'], [0, 1, 'S'], [0, -1, 'S'], [1, 1, 'D'], [1, -1, 'D'], [-1, 1, 'D'], [-1, -1, 'D']];
-    for (i = 0; i < 8; i++) { f = tf; r = tr;
-      for (;;) { f += R[i][0]; r += R[i][1]; d = at(f, r); if (d < 0) break; p = sq[d]; if (!p) continue;
-        if (mine(p)) { var t = p.toLowerCase(); if (t == 'q' || (R[i][2] == 'S' ? t == 'r' : t == 'b')) out.push({ at: d, fam: R[i][2], ray: true }) }
-        break } }
-    return out }
-  return fenProblem;
-})();
+/* A FEN is read by the engine's fromFen (src/fen.js, the outer layer): it refuses a position no
+   game of chess or Chess960 can reach (the known necessary conditions: kings, pawns on an edge
+   rank, the side not to move in check, material and promotions, the captures pawns off their
+   files need, checks no last move gives) and puts right what can be read only one way (castling
+   rights the board does not allow, an en passant square no last move left, the move counters). */
 
 /* ═══════════════════════════════ the verdict ═══════════════════════════════
    judge() answers for one FEN line what the arbiter answers when the flag of `side` falls, and
    records every test on the way. It returns null for a line that is not a valid FEN, and then
-   badReason says which condition it breaks.
+   badReason says which condition it breaks; a FEN the engine put right is judged as it was put
+   right (fixed: what was).
 
    draw    the flagged side's opponent can never mate; reason: the first rung that proves it:
              material   the material test (insufficient material),
@@ -121,11 +27,10 @@ const fenProblem = (function () {
            limits, so the win stands by default). */
 let badReason = null;
 function readFen(fen, allow960) {
-  badReason = fenProblem(fen);
-  if (badReason) return null;
   const setup = E.fromFen(fen);
-  if (setup.error) { badReason = setup.error === 'castling' ? { k: 'castle' } : { k: 'engine', a: [setup.error] }; return null; }
+  if (setup.error) { badReason = { k: setup.error, a: setup.detail || [] }; return null; }
   if (!(allow960 === undefined ? C960 : allow960) && !standardCastling(setup.position)) { badReason = { k: 'castle960' }; return null; }
+  badReason = null;
   return setup;
 }
 /* Castling as in standard chess: only the e-file for the king, the a- and h-files for the rooks
@@ -146,7 +51,7 @@ function judge(fen, ply, bud, forced, hist) {
   const moves = E.legalMoves(pos).length;
   if (LOCKONLY) {
     const t1 = performance.now(), lk = E.lockCannotMate(pos, flagged), ms1 = performance.now() - t1;
-    return { side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
+    return { side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
              draw: lk, dead: lk && E.lockCannotMate(pos, other), reason: lk ? 'lock' : 'open', used: 0, deep: false, ms: ms1,
              why: lk ? '' : 'nolock', castle: castleText(pos), lockOnly: true };
   }
@@ -161,7 +66,7 @@ function judge(fen, ply, bud, forced, hist) {
      side can still mate, for nothing: the verdict is the flagged side's. */
   const dead = proof.proven && E.proveCannotBeMated(pos, other, rules).proven;
   return {
-    side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves,
+    side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
     draw: proof.proven, dead, reason, used: proof.nodes, deep: !!proof.deep, ruled: !!proof.ruled, ms,
     why: proof.proven ? '' : proof.failure,
     castle: castleText(pos),
@@ -242,7 +147,7 @@ en: {
  sp3n: "99.98%",
  sp3t: "of the 195,287 Lichess games lost on time that should have been drawn, proven",
  hPos: "Positions",
- posHint: "One FEN per line. A line may start with a chasolver label (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) to give the expected answer; lines starting with <code>#</code> are skipped. Ctrl+Enter judges.",
+ posHint: "One FEN per line. A line may start with a chasolver label (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) to give the expected answer; lines starting with <code>#</code> are skipped. A FEN the engine puts right (castling rights the board does not allow, an en passant square no last move left, the move counters) is written as it reads it when you leave the box. Ctrl+Enter judges.",
  hFiles: "Files",
  dropBig: "Drop CSV or TXT files here, or click to choose",
  dropSmall: "CSV: the <code>fen</code> column is read, with <code>gameId</code> and <code>label</code> if present. TXT: chasolver’s format, <code>WB &lt;fen&gt;</code> per line. Each file becomes a set named after it.",
@@ -479,6 +384,11 @@ en: {
  noN: "0, assumed: the FEN does not give it",
  z75: "{0}; the 75-move rule has ended the game",
  kFull: "move number",
+ kFixed: "put right",
+ fx_castling: "castling rights the board does not allow were dropped",
+ fx_enpassant: "the en passant square was dropped: no two-square advance can have left it",
+ fx_halfmove: "the halfmove clock was set to 0: only a capture or a pawn move can have given the check",
+ fx_fullmove: "the move number was raised to what the halfmove clock needs",
  hRun: "The proof",
  kLimits: "limits",
  limits: "{0} plies, {1} nodes",
@@ -529,34 +439,27 @@ en: {
  sx_side: "side to move “{0}”; it must be w or b",
  sx_epf: "en passant field “{0}”",
  sx_num: "number field “{0}”",
- sx_full: "fullmove number “{0}”; it starts at 1",
- bad_clock: "the halfmove clock ({0}) is larger than the number of plies played so far ({1}).",
+ sx_castling: "castling field “{0}”",
  bad_kings: "each side must have exactly one king (White {0}, Black {1}).",
  bad_pawnrank: "a pawn stands on the first or last rank ({0}).",
  bad_pawns: "{0} has {1} pawns; at most 8 are possible.",
  bad_pieces: "{0} has {1} pieces; at most 16 are possible.",
  bad_promo: "{0} has {1} more pieces than the starting set of one queen, two rooks, two knights and one bishop on each colour; only promotions explain them, but only {2} of its pawns are missing.",
+ bad_captures: "{0}’s pawns stand off their files: each from a file of its own, they need at least {1} captures, but only {2} of the other side’s men are missing.",
  bad_oppcheck: "the side not to move is in check; two kings standing side by side count as this too.",
- bad_check3: "the king is in check from more than two pieces.",
- bad_checkleap: "neither of the two checking pieces attacks along a ray (knight or pawn); such a double check cannot be opened.",
- bad_checkdiag: "both checking pieces move diagonally; no move can produce such a double check.",
- bad_checkstraight: "both checking pieces move along ranks and files, and the geometry of a capturing promotion does not hold.",
- bad_ep: "the en passant square is inconsistent: there is no pawn in front of it that has just advanced two squares, or the squares behind it are not empty.",
- bad_epcheck: "the en passant square says the last move was a two-square pawn advance, but that move cannot explain the check.",
- bad_castle: "the castling field could not be read or contradicts itself.",
+ bad_checks1: "the check cannot have come from a last move: every move of the other side, made back, leaves the king in check or needs a man that is not there.",
+ bad_checks2: "no single last move of the other side gives this double check.",
+ bad_checks3: "{0} pieces give check at once; no single move gives more than two.",
  bad_castle960: "these castling rights need Chess960 (a king or a castling rook off its standard square): tick Chess960 in the engine settings.",
  lbl960: "Chess960",
  lbl960id: "start position",
  c960Note: "Castling by Chess960’s rules. The start position with this number (0–959; 518 is the standard one) gives the king’s and the rooks’ files to the board’s castling buttons and its Start button; a FEN brings its own (KQkq for the outermost rooks, or the rooks’ file letters). Unticked, castling is standard chess’s. The engines need nothing new: a rook may stay on the board in a lock only when its own pawns, knights, rooks or queens hold every square next to it, never its king, and such a rook can never castle (checked on every castling layout of Chess960); the fast version keeps no rook in a lock at all.",
- bad_engine: "the engine could not read it ({0}).",
  bk_syntax: "malformed",
- bk_clock: "move counters",
  bk_kings: "kings",
  bk_pawnrank: "pawn on an edge rank",
  bk_material: "material count",
  bk_oppcheck: "side not to move in check",
  bk_check: "impossible check",
- bk_ep: "en passant",
  bk_castle: "castling",
  white: "White",
  black: "Black",
@@ -638,7 +541,7 @@ tr: {
  sp3n: "%99,98",
  sp3t: "berabere bitmesi gerekirken süreden kaybedilmiş 195.287 Lichess oyununun ispatlanan payı",
  hPos: "Pozisyonlar",
- posHint: "Her satıra bir FEN. Satır, beklenen cevabı vermek için bir chasolver etiketiyle (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) başlayabilir; <code>#</code> ile başlayan satırlar atlanır. Ctrl+Enter hüküm verir.",
+ posHint: "Her satıra bir FEN. Satır, beklenen cevabı vermek için bir chasolver etiketiyle (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) başlayabilir; <code>#</code> ile başlayan satırlar atlanır. Motorun düzelttiği bir FEN (tahtanın izin vermediği rok hakları, hiçbir son hamlenin bırakmadığı geçerken alma karesi, sayaçlar) kutudan çıkınca motorun okuduğu gibi yazılır. Ctrl+Enter hüküm verir.",
  hFiles: "Dosyalar",
  dropBig: "CSV ya da TXT dosyalarını buraya bırak ya da seçmek için tıkla",
  dropSmall: "CSV: <code>fen</code> sütunu, varsa <code>gameId</code> ve <code>label</code> da okunur. TXT: chasolver biçimi, satır başına <code>WB &lt;fen&gt;</code>. Her dosya, adını taşıyan bir küme olur.",
@@ -875,6 +778,11 @@ tr: {
  noN: "0, varsayıldı: FEN’de yok",
  z75: "{0}; 75 hamle kuralı oyunu bitirmiş",
  kFull: "hamle numarası",
+ kFixed: "düzeltilen",
+ fx_castling: "tahtanın izin vermediği rok hakları silindi",
+ fx_enpassant: "geçerken alma karesi silindi: onu hiçbir iki kare ilerleyiş bırakmış olamaz",
+ fx_halfmove: "yarım hamle sayacı 0 yapıldı: şahı ancak bir alma ya da piyon hamlesi vermiş olabilir",
+ fx_fullmove: "hamle numarası yarım hamle sayacının gerektirdiği değere çıkarıldı",
  hRun: "İspat",
  kLimits: "sınırlar",
  limits: "{0} ply, {1} düğüm",
@@ -925,34 +833,27 @@ tr: {
  sx_side: "sıra alanı “{0}”; w ya da b olmalı",
  sx_epf: "geçerken alma alanı “{0}”",
  sx_num: "sayı alanı “{0}”",
- sx_full: "tam hamle numarası “{0}”; 1’den başlar",
- bad_clock: "yarım hamle sayacı ({0}) şimdiye kadar oynanmış yarım hamle sayısından ({1}) büyük.",
+ sx_castling: "rok alanı “{0}”",
  bad_kings: "her tarafta tam bir şah olmalı (Beyaz {0}, Siyah {1}).",
  bad_pawnrank: "ilk ya da son yatayda piyon var ({0}).",
  bad_pawns: "{0} tarafında {1} piyon var; en fazla 8 olabilir.",
  bad_pieces: "{0} tarafında {1} taş var; en fazla 16 olabilir.",
  bad_promo: "{0} tarafında başlangıç takımından (bir vezir, iki kale, iki at, her renkte bir fil) {1} fazla taş var; bunları ancak terfi açıklar, ama yalnızca {2} piyonu eksik.",
+ bad_captures: "{0} piyonları kendi sütunlarında değil: her biri ayrı bir sütundan gelmek için en az {1} alma gerekiyor, ama karşı taraftan yalnızca {2} taş eksik.",
  bad_oppcheck: "sırası olmayan taraf şah altında; yan yana duran iki şah da bu sayılır.",
- bad_check3: "şah ikiden fazla taştan tehdit ediliyor.",
- bad_checkleap: "şah çeken iki taşın hiçbiri ışın boyunca tehdit etmiyor (at ya da piyon); böyle bir çifte şah açılamaz.",
- bad_checkdiag: "şah çeken iki taş da çapraz gidiyor; böyle bir çifte şah hiçbir hamleyle oluşamaz.",
- bad_checkstraight: "şah çeken iki taş da düz gidiyor ve alarak terfi geometrisi tutmuyor.",
- bad_ep: "geçerken alma karesi tutarsız: önünde iki kare ilerlemiş bir piyon yok ya da arkasındaki kareler boş değil.",
- bad_epcheck: "geçerken alma karesi son hamlenin iki kare piyon ilerleyişi olduğunu söylüyor, ama şah bu hamleyle açıklanamıyor.",
- bad_castle: "rok alanı okunamadı ya da kendi içinde çelişiyor.",
+ bad_checks1: "bu şah son hamleden gelmiş olamaz: karşı tarafın her hamlesi geri alınınca şah yine tehdit altında kalıyor ya da hamle tahtada olmayan bir taşı istiyor.",
+ bad_checks2: "karşı tarafın tek bir son hamlesi bu çifte şahı veremez.",
+ bad_checks3: "aynı anda {0} taş şah çekiyor; tek bir hamle ikiden fazlasını veremez.",
  bad_castle960: "bu rok hakları Chess960 istiyor (bir şah ya da rok kalesi standart karesinde değil): motor ayarlarında Chess960’ı işaretle.",
  lbl960: "Chess960",
  lbl960id: "başlangıç pozisyonu",
  c960Note: "Rok Chess960’ın kurallarıyla. Bu numaralı başlangıç pozisyonu (0–959; 518 standart olanı) şahın ve kalelerin sütunlarını tahtanın rok düğmelerine ve Başlangıç düğmesine verir; bir FEN kendi sütunlarını getirir (en dıştaki kaleler için KQkq ya da kalelerin sütun harfleri). İşaretli değilken rok standart satrancınki. Motorlara yeni bir şey gerekmiyor: bir kale kilitte tahtada ancak yanındaki her kareyi kendi piyonu, atı, kalesi ya da veziri tutuyorsa kalabilir, şahı asla değil; böyle bir kale hiçbir zaman rok yapamaz (Chess960’ın bütün rok dizilişlerinde denendi). Hızlı sürüm kilitte hiç kale bırakmaz.",
- bad_engine: "motor bu FEN’i okuyamadı ({0}).",
  bk_syntax: "yazım",
- bk_clock: "sayaçlar",
  bk_kings: "şah sayısı",
  bk_pawnrank: "kenar yatayda piyon",
  bk_material: "materyal sayımı",
  bk_oppcheck: "sırası olmayan taraf şah altında",
  bk_check: "imkânsız şah",
- bk_ep: "geçerken alma",
  bk_castle: "rok",
  white: "Beyaz",
  black: "Siyah",
@@ -1031,19 +932,19 @@ function us(ms) { var u = ms * 1000; return u < 10 ? dec(u, 1) : num(Math.round(
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
 function pct(x, y) { return y ? dec(100 * x / y, 2) + '%' : '—' }
 function sideName(g) { return g ? T('white') : T('black') }
-/* the reason an invalid line was set aside, in words; p is what fenProblem or readFen returned */
+/* the reason an invalid line was set aside, in words; p is what readFen left in badReason: the
+   engine's error and its detail (fromFen), or castle960 */
 function badText(p) {
-  if (!p) return T('bad_castle');
+  if (!p) return F('bad_syntax', '');
   var a = p.a || [];
-  if (p.k == 'syntax') return F('bad_syntax', F('sx_' + a[0], a[1], a[2]));
-  if (p.k == 'pawns' || p.k == 'pieces' || p.k == 'promo') return F('bad_' + p.k, sideName(a[0] == 'w' ? 1 : 0), num(a[1]), num(a[2]));
-  if (p.k == 'kings' || p.k == 'pawnrank' || p.k == 'clock') return F('bad_' + p.k, num(a[0]), num(a[1]));
-  if (p.k == 'engine') return F('bad_engine', esc(a[0]));
+  if (p.k == 'syntax') return F('bad_syntax', F('sx_' + a[0], esc(a[1]), a[2]));
+  if (p.k == 'pawns' || p.k == 'pieces' || p.k == 'promo' || p.k == 'captures') return F('bad_' + p.k, sideName(a[0] == 'w' ? 1 : 0), num(a[1]), num(a[2]));
+  if (p.k == 'kings' || p.k == 'pawnrank') return F('bad_' + p.k, num(a[0]), num(a[1]));
+  if (p.k == 'checks') return a[0] > 2 ? F('bad_checks3', num(a[0])) : T(a[0] == 2 ? 'bad_checks2' : 'bad_checks1');
   return T('bad_' + p.k) }
 /* the short group a reason is counted under in the summary and on the cards */
 function bkOf(k) { return { syntax: 'bk_syntax', kings: 'bk_kings', pawnrank: 'bk_pawnrank', pawns: 'bk_material', pieces: 'bk_material',
-  promo: 'bk_material', clock: 'bk_clock', oppcheck: 'bk_oppcheck', check3: 'bk_check', checkleap: 'bk_check', checkdiag: 'bk_check',
-  checkstraight: 'bk_check', ep: 'bk_ep', epcheck: 'bk_ep', castle: 'bk_castle', castle960: 'bk_castle', engine: 'bk_syntax' }[k] || 'bk_syntax' }
+  promo: 'bk_material', captures: 'bk_material', oppcheck: 'bk_oppcheck', checks: 'bk_check', castle960: 'bk_castle' }[k] || 'bk_syntax' }
 
 /* ═══════════════════════════════ verdicts in words ═══════════════════════════════ */
 /* outcome: what the arbiter established, with no reference involved */
@@ -1200,6 +1101,16 @@ $('example').onclick = function () { if (busy) return; $('fen').value = EXAMPLE.
 function inputChanged() { renderFiles(); labBar(allRows()); refreshCount() }
 var pasteT = 0;
 $('fen').addEventListener('input', function () { clearTimeout(pasteT); pasteT = setTimeout(function () { labBar(allRows()); refreshCount() }, 150) });
+/* On leaving the box, a FEN the engine put right (castling rights the board does not allow, an en
+   passant square no last move left, the move counters) is written as the engine reads it. */
+$('fen').addEventListener('blur', function () {
+  var lines = this.value.split(/\r?\n/), changed = false, i, t, m, r;
+  for (i = 0; i < lines.length; i++) { t = lines[i].trim();
+    if (!t || t.charAt(0) == '#') continue;
+    m = t.match(/^(WB|W-|-B|--)([ \t]+)(\S.*)$/); r = E.fromFen(m ? m[3] : t);
+    if (r.error || !r.fixed.length) continue;
+    lines[i] = (m ? m[1] + m[2] : '') + r.fen; changed = true }
+  if (changed) { this.value = lines.join('\n'); inputChanged() } });
 $('fen').addEventListener('keydown', function (ev) { if (ev.key == 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); if (!$('go').disabled) go() } });
 ['rowA', 'rowB', 'bothdir'].forEach(function (id) { $(id).addEventListener('input', refreshCount); $(id).addEventListener('change', refreshCount) });
 var dropEl = $('drop'), fileEl = $('file');
@@ -1477,7 +1388,8 @@ function detailHTML(k) {
      '<dt>' + T('kCastle') + '</dt><dd>' + esc(r.castle) + '</dd>' +
      '<dt>' + T('kEp') + '</dt><dd>' + (ep ? F('epNote', '<code>' + ep + '</code>') : '—') + '</dd>' +
      '<dt>' + T('kClock') + '</dt><dd>' + (r.nGiven ? (n > 149 ? F('z75', n) : n) : T('noN')) + '</dd>' +
-     '<dt>' + T('kFull') + '</dt><dd>' + (A[5] && /^\d+$/.test(A[5]) ? A[5] : '—') + '</dd></dl>';
+     '<dt>' + T('kFull') + '</dt><dd>' + (A[5] && /^\d+$/.test(A[5]) || r.fixed && r.fixed.length ? r.full : '—') + '</dd>' +
+     (r.fixed && r.fixed.length ? '<dt>' + T('kFixed') + '</dt><dd>' + r.fixed.map(function (f) { return T('fx_' + f.replace(' ', '')) }).join('; ') + '</dd>' : '') + '</dl>';
   /* the proof */
   h += '<h4>' + T('hRun') + '</h4><dl class="kv">' +
      /* with the second tier, two searches: both limits, and the nodes of both against both budgets */
@@ -1572,7 +1484,7 @@ $('expBad').onclick = function () { exportWhere('false-draw.csv', function (w, r
 $('expInv').onclick = function () { if (!results) return;
   var o = ['set,gameId,label,reason,fen'], R = results.res, W = results.rows;
   for (var k = 0; k < R.length; k++) if (!R[k]) { var w = W[k], p = w.bad;
-    o.push([w.set, w.id, w.lab || '', p ? p.k + (p.a ? ':' + p.a.join(':') : '') : 'castle', w.fen].map(csvf).join(',')) }
+    o.push([w.set, w.id, w.lab || '', p ? p.k + (p.a && p.a.length ? ':' + p.a.join(':') : '') : 'syntax', w.fen].map(csvf).join(',')) }
   download(vname('invalid-fen.csv'), o.join('\n') + '\n') };
 
 /* ═══════════════════════════════ games (PGN): a test of its own ═══════════════════════════════
@@ -1908,10 +1820,16 @@ function edEpSquares() {
     if (s[at] !== p || s[w ? 40 + f : 16 + f] || s[w ? 48 + f : 8 + f]) continue;
     if ((f > 0 && s[at - 1] === q) || (f < 7 && s[at + 1] === q)) out.push('abcdefgh'.charAt(f) + (w ? '6' : '3')) }
   return out }
-/* Castling rights and an en passant square the board no longer allows are dropped. */
+/* Castling rights and an en passant square the board no longer allows are dropped. Then what the
+   engine puts right beyond the board (fromFen): an en passant square no last move can have left (a
+   halfmove clock above 0, a check the two-square advance cannot give), a halfmove clock above 0
+   where only a capture or a pawn move can have given the check, and the move number the clock needs. */
 function edFix() {
   ED.castle = 'KQkq'.split('').filter(function (c) { return ED.castle.indexOf(c) >= 0 && edCastleOk(c) }).join('');
   if (edEpSquares().indexOf(ED.ep) < 0) ED.ep = '-';
+  var r = E.fromFen(edFen());
+  if (!r.error && r.fixed.indexOf('en passant') >= 0) ED.ep = '-';
+  if (!r.error && r.fixed.indexOf('halfmove') >= 0) ED.clock = 0;
   /* the halfmove clock cannot exceed the plies played: the move number follows it */
   ED.full = Math.max(ED.full, Math.ceil((ED.clock - (ED.turn === 'b' ? 1 : 0)) / 2) + 1) }
 function edFen() {
@@ -2037,9 +1955,12 @@ $('edCastle').addEventListener('click', function (ev) {
   if (!edCastleOk(c)) return;
   ED.castle = ED.castle.indexOf(c) >= 0 ? ED.castle.replace(c, '') : ED.castle + c; edUpdate() });
 $('edEp').addEventListener('click', function (ev) {
-  var b = ev.target.closest('button[data-v]'); if (!b) return; ED.ep = b.getAttribute('data-v'); edUpdate() });
+  var b = ev.target.closest('button[data-v]'); if (!b) return; ED.ep = b.getAttribute('data-v');
+  if (ED.ep !== '-') ED.clock = 0;   /* a two-square advance starts the clock again */
+  edUpdate() });
 $('edClock').addEventListener('input', function () {
   var v = Math.floor(+this.value); ED.clock = v >= 0 && v <= 9999 ? v : 0; edFix(); edSide(); edJudge() });
+$('edClock').addEventListener('blur', function () { this.value = ED.clock; edSide() });
 $('edFen').addEventListener('input', function () {
   var ok = edLoad(this.value); this.classList.toggle('bad', !ok);
   if (ok) { edBoard(); edPal(); edSide(); edJudge() } });

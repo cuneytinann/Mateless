@@ -4,10 +4,11 @@
 //   node twosided_bench.js games <games> [rounds]       a game's flags, ply by ply (Game.updateFlags)
 // A line is "<fen>" followed by anything after a tab, or a game: FENs joined by "|".
 const fs = require('fs'), path = require('path');
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js'));
 const I = E._internal, W = E.WHITE, B = E.BLACK;
 const read = file => fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
-  .map(l => l.split('\t')[0].split('|').map(f => E.fromFen(f).position).filter(Boolean)).filter(g => g.length);
+  .map(l => l.split('\t')[0].split('|').map(f => E.fromFen(f, LOOSE).position).filter(Boolean)).filter(g => g.length);
 const median = v => v.slice().sort((a, b) => a - b)[v.length >> 1];
 const [mode, file] = process.argv.slice(2), rounds = +(process.argv[4] || 5);
 

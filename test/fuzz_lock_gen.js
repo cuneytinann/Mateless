@@ -1,4 +1,5 @@
 'use strict';
+const LOOSE = { strict: false };   // chasolver's positions include composed ones: read without the reachability checks
 // Generates positions the lock detector certifies (lockCannotMate true for some flagged side),
 // by mutating seeds and by building random locked pawn structures. Output: "<fen>\t<winner w|b>" lines,
 // winner = the mater whose mate the lock detector rules out. Usage: node fuzz_lock_gen.js <seed> <count> <out>
@@ -13,16 +14,16 @@ const parse = fen => { const [b, s] = fen.split(' '); const a = []; for (const r
 const ser = ({ a, side }) => { const rows = []; for (let r = 7; r >= 0; r--) { let s = '', e = 0; for (let f = 0; f < 8; f++) { const c = a[r * 8 + f]; if (c === '.') e++; else { if (e) s += e; e = 0; s += c; } } if (e) s += e; rows.push(s); } return rows.join('/') + ' ' + side + ' - - 0 1'; };
 
 function legalish(p) {
-  const fen = ser(p); const s = E.fromFen(fen); if (s.error) return null;
+  const fen = ser(p); const s = E.fromFen(fen, LOOSE); if (s.error) return null;
   // the side not to move must not be in check
-  const flip = E.fromFen(ser({ a: p.a, side: p.side === 'w' ? 'b' : 'w' })); if (flip.error || E.inCheck(flip.position)) return null;
+  const flip = E.fromFen(ser({ a: p.a, side: p.side === 'w' ? 'b' : 'w' }), LOOSE); if (flip.error || E.inCheck(flip.position)) return null;
   return s.position;
 }
 
 const seeds = [];
 for (const f of ['positions.txt', 'lichess.txt'])
   for (const l of fs.readFileSync((process.env.CHASOLVER || require('path').join(__dirname, '../../chasolver/tests')) + '/' + f, 'utf8').split('\n')) {
-    if (!/^(WB|W-|-B|--) /.test(l)) continue; const fen = l.slice(3).trim(); const s = E.fromFen(fen); if (s.error) continue;
+    if (!/^(WB|W-|-B|--) /.test(l)) continue; const fen = l.slice(3).trim(); const s = E.fromFen(fen, LOOSE); if (s.error) continue;
     if (E.lockCannotMate(s.position, E.WHITE) || E.lockCannotMate(s.position, E.BLACK) || l.startsWith('--')) seeds.push(fen);
   }
 

@@ -17,6 +17,9 @@
  * Around it, so that it runs on its own:
  *   board.js      a reference board: bitboards, magic bitboards, legal moves, FEN (standard
  *                 techniques; a platform may keep its own board)
+ *   fen.js        reading a FEN into a position some game can reach: it puts right what can be
+ *                 read only one way and refuses what no game reaches (the outer layer; the
+ *                 rungs never call it)
  *   game.js       a reference game: results, repetitions, the 75-move rule, fivefold repetition
  *
  * What Mateless needs from a board (each layer's imports say it exactly):
@@ -41,11 +44,12 @@
  */
 
 import { BISHOP, BLACK, castlingField, CastlingFiles, chess960Arrangement, colorOf, doMove,
-         enemyAttacks, EngineError, fileOf, FLAG_CASTLE, FLAG_DOUBLE, FLAG_EP, FLAG_PROMO, fromFen,
+         enemyAttacks, EngineError, fileOf, FLAG_CASTLE, FLAG_DOUBLE, FLAG_EP, FLAG_PROMO,
          generateLegalMoves, hashKey, hasLegalMove, inCheck, isAttacked, KEY_WORDS, KING, KNIGHT,
          legalMoves, makeMove, MOVE_STRIDE, NO_SQUARE, opponent, parseSquare, PAWN, perft,
-         PIECE_LETTERS, Position, positionKey, PROMOTION_ORDER, QUEEN, rankOf, ROOK,
+         PIECE_LETTERS, Position, positionKey, PROMOTION_ORDER, QUEEN, rankOf, readFen, ROOK,
          SHARED_CONTEXT, squareName, STANDARD_SKELETON, toFen, typeOf, undoMove, WHITE, writeKey } from './board.js';
+import { fromFen } from './fen.js';
 import { materialCannotMate, materialTest } from './material.js';
 import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2 } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_PLY, Domino, PositionSet } from './domino.js';
@@ -69,4 +73,4 @@ export {
 // internals exposed for tests
 export const _internal = Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
                                          lockTest, lockTest2, lockSets, SHARED_CONTEXT,
-                                         FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS });
+                                         FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS, readFen });

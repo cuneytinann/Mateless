@@ -12,7 +12,8 @@
  *
  * Positions: every function takes a FEN or a W.Position (W.fromFen(fen).position), which is
  * read once and kept in WebAssembly memory; a game played move by move should pass Positions or
- * FENs, as it has them. A Position and a Flags hold memory in the module: free() returns it, and
+ * FENs, as it has them. A FEN passed to a function is read as fromFen reads it by default (no
+ * position no game reaches); a composed one goes in as W.fromFen(fen, { strict: false }).position. A Position and a Flags hold memory in the module: free() returns it, and
  * a FinalizationRegistry returns it when they are collected.
  *
  * What it covers: the ladder (material test, lock detector, Domino search, both sides at once, a
@@ -30,7 +31,8 @@
 'use strict';
 
 const WHITE = 8, BLACK = 0, FLAGGED_WHITE = 1, FLAGGED_BLACK = 2, DOMINO_PLY = 6, DOMINO_BUDGET = 100;
-const FEN_ERRORS = ['', 'syntax', 'kings', 'pawns', 'castling', 'en passant'];
+const FEN_ERRORS = ['', 'syntax', 'kings', 'pawnrank', 'oppcheck', 'pawns', 'pieces', 'promo', 'captures', 'checks'];
+const FIXED = [[1, 'castling'], [2, 'en passant'], [8, 'halfmove'], [4, 'fullmove']];
 const FAILURES = [null, 'mate', 'horizon', 'budget'];
 
 /** Instantiates mateless.wasm (bytes or a compiled WebAssembly.Module) and returns its API. */
@@ -75,11 +77,14 @@ function instantiate(source) {
     }
   }
 
-  /** Reads a FEN: { position } or { error } ('syntax', 'kings', 'pawns', 'castling', 'en passant'),
-      as fromFen in mateless.js. */
-  function fromFen(fen) {
-    const h = x.position_from_fen(put(fen));
-    return h >= 0 ? { position: new Position(h) } : { error: FEN_ERRORS[-h] || 'syntax' };
+  /** Reads a FEN as fromFen in mateless.js: { position, fixed } (what was put right: 'castling',
+      'en passant', 'halfmove', 'fullmove') or { error } ('syntax', 'kings', 'pawnrank', 'oppcheck', 'pawns',
+      'pieces', 'promo', 'captures', 'checks'); strict: false keeps the first four only. */
+  function fromFen(fen, { strict = true } = {}) {
+    const h = x.position_from_fen(put(fen), strict ? 1 : 0);
+    if (h < 0) return { error: FEN_ERRORS[-h] || 'syntax' };
+    const bits = out()[0];
+    return { position: new Position(h), fixed: FIXED.filter(([b]) => bits & b).map(([, name]) => name) };
   }
 
   /* Runs fn on the handle of a Position, or of a FEN read for the call (and freed after it). */
@@ -88,7 +93,7 @@ function instantiate(source) {
       if (p.handle < 0) throw new Error('mateless-wasm: the position was freed');
       return fn(p.handle);
     }
-    const h = x.position_from_fen(put(p));
+    const h = x.position_from_fen(put(p), 1);
     if (h < 0) throw new Error('mateless-wasm: invalid FEN (' + (FEN_ERRORS[-h] || 'syntax') + '): ' + p);
     try { return fn(h); } finally { x.position_free(h); }
   }

@@ -1005,78 +1005,102 @@ export function positionKey(pos) {
 
 const FEN_PIECES = { p: PAWN, k: KING, q: QUEEN, n: KNIGHT, r: ROOK, b: BISHOP };
 
-/** Reads a FEN. Returns { position, halfmoveGiven } or { error }, error being one of 'syntax',
-    'kings', 'pawns' (a pawn on the first or last rank), 'castling' or 'en passant'. Only what the
-    engine needs to run safely is checked here; whether some game can reach the position is a
-    separate question (see the arbiter page's FEN checks).
+/** Reads a FEN as it is written: the first step of fromFen (fen.js), which then refuses a
+    position no game can reach. Returns { position, halfmoveGiven, fullmove, fullmoveRead, fixed,
+    epDeclared } (fullmoveRead: the move number as written, 1 if absent) or { error, detail }:
+    'syntax' (detail: what is malformed), 'kings' (not one king a side; detail: the counts) or
+    'pawnrank' (a pawn on the first or last rank; detail: its square).
 
-    Castling may be written as KQkq (the outermost rook on that side of the king, as in X-FEN)
-    or as Shredder-FEN file letters (HAha). Every right is read against the board: its king
-    must stand on its first rank and its rook on the same rank, otherwise the right is dropped.
-    The files found become the castling skeleton; both colours share it, so rights that place
-    the king or a rook on different files are refused. The en passant square is kept only when a
-    legal capture onto it exists. */
-export function fromFen(fen) {
-  const fields = String(fen).trim().split(/\s+/);
-  if (fields.length < 2) return { error: 'syntax' };
-  const pieces = new Uint8Array(64), placement = fields[0];
-  let rank = 7, file = 0, whiteKings = 0, blackKings = 0;
-  for (let i = 0; i < placement.length; i++) {
-    const ch = placement[i];
-    if (ch === '/') { rank--; file = 0; continue; }
-    if (ch >= '1' && ch <= '8') { file += +ch; continue; }
-    const type = FEN_PIECES[ch.toLowerCase()];
-    if (!type || rank < 0 || file > 7) return { error: 'syntax' };
-    const piece = type | (ch === ch.toUpperCase() ? WHITE : BLACK);
-    if (piece === (WHITE | KING)) whiteKings++; else if (piece === (BLACK | KING)) blackKings++;
-    pieces[8 * rank + file++] = piece;
+    What can be read only one way is put right instead of refused, and named in `fixed`:
+      castling     KQkq (the outermost rook on that side of the king, as in X-FEN) or Shredder-FEN
+                   file letters (HAha). Every right is read against the board: its king must stand
+                   on its first rank and its rook on the same rank; the files found become the
+                   castling skeleton, shared by both colours. A right the board does not allow, or
+                   one that would put a king or a rook on another file than the skeleton, is
+                   dropped.
+      en passant   kept only behind a pawn of the side not to move that has just advanced two
+                   squares (the square and the one the pawn left empty), and only with a halfmove
+                   clock of 0 (a two-square advance resets it); otherwise dropped. epDeclared is
+                   the square that remains (NO_SQUARE: none); the position keeps it as its en
+                   passant square only when a legal capture onto it exists.
+      fullmove     at least 1, and at least what the halfmove clock needs (the clock counts plies
+                   played: at most 2 × (fullmove − 1), plus one with Black to move). */
+export function readFen(fen) {
+  const fields = String(fen).trim().split(/\s+/), fixed = [];
+  if (fields.length < 2 || !fields[0]) return { error: 'syntax', detail: ['fields'] };
+  const rows = fields[0].split('/');
+  if (rows.length !== 8) return { error: 'syntax', detail: ['nranks', rows.length] };
+  const pieces = new Uint8Array(64);
+  let whiteKings = 0, blackKings = 0;
+  for (let r = 0; r < 8; r++) {
+    const rank = 7 - r;
+    let file = 0;
+    for (const ch of rows[r]) {
+      if (ch >= '1' && ch <= '8') { file += +ch; if (file > 8) return { error: 'syntax', detail: ['rankw', rank + 1] }; continue; }
+      const type = FEN_PIECES[ch.toLowerCase()];
+      if (!type) return { error: 'syntax', detail: ['char', ch] };
+      if (file > 7) return { error: 'syntax', detail: ['rankw', rank + 1] };
+      const piece = type | (ch === ch.toUpperCase() ? WHITE : BLACK);
+      if (piece === (WHITE | KING)) whiteKings++; else if (piece === (BLACK | KING)) blackKings++;
+      pieces[8 * rank + file++] = piece;
+    }
+    if (file !== 8) return { error: 'syntax', detail: ['rankw', rank + 1] };
   }
-  if (whiteKings !== 1 || blackKings !== 1) return { error: 'kings' };
-  for (let f = 0; f < 8; f++)
-    if ((pieces[f] & 7) === PAWN || (pieces[56 + f] & 7) === PAWN) return { error: 'pawns' };
+  if (fields[1] !== 'w' && fields[1] !== 'b') return { error: 'syntax', detail: ['side', fields[1]] };
+  const castlingField = fields[2] || '-', epField = fields[3] || '-';
+  if (castlingField !== '-' && !/^[KQkqA-Ha-h]+$/.test(castlingField)) return { error: 'syntax', detail: ['castling', castlingField] };
+  if (epField !== '-' && !/^[a-h][1-8]$/.test(epField)) return { error: 'syntax', detail: ['epf', epField] };
+  for (let i = 4; i < 6 && i < fields.length; i++)
+    if (fields[i] !== '-' && !/^\d+$/.test(fields[i])) return { error: 'syntax', detail: ['num', fields[i]] };
+  if (whiteKings !== 1 || blackKings !== 1) return { error: 'kings', detail: [whiteKings, blackKings] };
+  for (let f = 0; f < 8; f++) for (const sq of [f, 56 + f])
+    if ((pieces[sq] & 7) === PAWN) return { error: 'pawnrank', detail: [squareName(sq)] };
 
   // Castling rights and the skeleton they imply.
   const skeleton = [0, 0, 0, 0, 0, 0, 0, 0];
   let castling = 0;
-  for (const ch of fields[2] || '-') {
-    if (ch === '-') continue;
+  for (const ch of castlingField === '-' ? '' : castlingField) {
     const up = ch.toUpperCase(), white = ch === up, base = white ? 0 : 56;
     const king = pieces.indexOf(white ? WHITE | KING : BLACK | KING) - base;
     const rook = white ? WHITE | ROOK : BLACK | ROOK;
-    if (king < 0 || king > 7) continue;            // the king is not on its first rank: no right
-    if (up !== 'K' && up !== 'Q' && !(up >= 'A' && up <= 'H')) return { error: 'castling' };
     let rookFile = -1;
-    if (up === 'K') { for (let f = 7; f > king; f--) if (pieces[base + f] === rook) { rookFile = f; break; } }
-    else if (up === 'Q') { for (let f = 0; f < king; f++) if (pieces[base + f] === rook) { rookFile = f; break; } }
-    else { const f = up.charCodeAt(0) - 65; if (f !== king && pieces[base + f] === rook) rookFile = f; }
-    if (rookFile < 0) continue;
-    const digit = rookFile > king ? 1 : 2;
-    if ((skeleton[king] && skeleton[king] !== 3) || (skeleton[rookFile] && skeleton[rookFile] !== digit))
-      return { error: 'castling' };
+    if (king >= 0 && king <= 7) {
+      if (up === 'K') { for (let f = 7; f > king; f--) if (pieces[base + f] === rook) { rookFile = f; break; } }
+      else if (up === 'Q') { for (let f = 0; f < king; f++) if (pieces[base + f] === rook) { rookFile = f; break; } }
+      else { const f = up.charCodeAt(0) - 65; if (f !== king && pieces[base + f] === rook) rookFile = f; }
+    }
+    if (rookFile < 0) { fixed.push('castling'); continue; }          // its king or its rook is not there
+    const digit = rookFile > king ? 1 : 2, bit = digit << (white ? 0 : 2);
+    if ((castling & bit) && skeleton[rookFile] === digit) continue;  // the same right written twice
+    // a second rook for one side, or files the skeleton has already given to another king or rook
+    if ((castling & bit) || (skeleton[king] && skeleton[king] !== 3) || (skeleton[rookFile] && skeleton[rookFile] !== digit) ||
+        skeleton.some((d, f) => (d === 3 && f !== king) || (d === digit && f !== rookFile))) { fixed.push('castling'); continue; }
     skeleton[king] = 3;
     skeleton[rookFile] = digit;
-    castling |= digit << (white ? 0 : 2);
+    castling |= bit;
   }
-  for (const digit of [1, 2, 3])
-    if (skeleton.filter(d => d === digit).length > 1) return { error: 'castling' };
 
   const pos = new Position(castling ? new CastlingFiles(skeleton.join('')) : STANDARD_FILES);
   for (let sq = 0; sq < 64; sq++) if (pieces[sq]) pos.put(sq, pieces[sq]);
-  if (fields[1] !== 'w' && fields[1] !== 'b') return { error: 'syntax' };
   pos.side = fields[1] === 'w' ? WHITE : BLACK;
   pos.castling = castling;
-  const ep = fields[3] || '-';
-  if (ep !== '-') {
-    // The square must lie behind an enemy pawn that has just advanced two squares.
-    const sq = parseSquare(ep), behind = pos.side === WHITE ? sq - 8 : sq + 8;
-    if (sq === NO_SQUARE || rankOf(sq) !== (pos.side === WHITE ? 5 : 2) || pos.board[sq] ||
-        pos.board[behind] !== ((pos.side ^ WHITE) | PAWN)) return { error: 'en passant' };
-    if (canCaptureEnPassant(pos, sq)) pos.ep = sq;
+  const clock = fields[4], halfmoveGiven = clock !== undefined && clock !== '-';
+  pos.halfmove = halfmoveGiven ? +clock : 0;
+  let epDeclared = NO_SQUARE;
+  if (epField !== '-') {
+    // The square must lie behind an enemy pawn that has just advanced two squares from its start.
+    const sq = parseSquare(epField), dir = pos.side === WHITE ? 8 : -8, pawnSq = sq - dir, startSq = sq + dir;
+    if (rankOf(sq) === (pos.side === WHITE ? 5 : 2) && !pos.board[sq] && !pos.board[startSq] &&
+        pos.board[pawnSq] === ((pos.side ^ WHITE) | PAWN) && pos.halfmove === 0) {
+      epDeclared = sq;
+      if (canCaptureEnPassant(pos, sq)) pos.ep = sq;
+    } else fixed.push('en passant');
   }
-  const clock = fields[4];
-  if (clock !== undefined && clock !== '-' && !/^\d+$/.test(clock)) return { error: 'syntax' };
-  pos.halfmove = +clock || 0;
-  return { position: pos, halfmoveGiven: clock !== undefined && clock !== '-' };
+  const fullmoveRead = fields[5] !== undefined && fields[5] !== '-' ? +fields[5] : 1;
+  let fullmove = fullmoveRead;
+  const least = Math.max(1, Math.ceil((pos.halfmove - (pos.side === BLACK ? 1 : 0)) / 2) + 1);
+  if (fullmove < least) { if (fields[5] !== undefined && fields[5] !== '-') fixed.push('fullmove'); fullmove = least; }
+  return { position: pos, halfmoveGiven, fullmove, fullmoveRead, fixed: [...new Set(fixed)], epDeclared };
 }
 
 /** The castling field: KQkq for the standard skeleton, Shredder file letters otherwise. */

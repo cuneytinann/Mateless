@@ -464,6 +464,7 @@ with `CHASOLVER=<chasolver>/tests`):
 ```sh
 node smoke.js                                    # perft
 node perft_cpw.js 5                              # the six Chess Programming Wiki positions
+python3 perft_python.py | node perft960.js -     # Chess960 moves = python-chess's (every start, ~780,000 positions)
 node classify.js 6 100 1                         # against chasolver's labels: FALSE DRAWS must be 0
 node game_flags_check.js 1 3000 200              # every flag that comes down, against chasolver's full solver
 node twosided_check.js <files>                   # both sides in one pass = each side alone, every field

@@ -23,7 +23,7 @@ of chasolver's Lichess data where a test reads one. Run them from this folder.
 |---|---|
 | `smoke.js` | perft of five standard test positions |
 | `perft_cpw.js [engine.js] [maxDepth] [--only=N] [--divide] [--all]` | perft of the six Chess Programming Wiki positions; `perft_d5.bat`, `perft_d6.bat` run it on Windows at depth 5 or 6 |
-| `perft_python.py`, `perft960.js <cases.json>` | perft 3 of Chess960 positions, python-chess against the engine (`python3 perft_python.py > cases.json && node perft960.js cases.json`) |
+| `perft_python.py`, `perft960.js -` | Chess960 move generation, python-chess against the engine: perft 3 of all 960 starts and of 40 random middlegames, the legal moves of every position of 7,000 random Chess960 games (about 780,000 positions; 4,000 of the games keep their castling rights long, about 60,000 castling moves in all), and the WebAssembly build's perft (`python3 perft_python.py \| node perft960.js -`, about a minute; `pip install chess`) |
 | `classify.js <ply> <budget> <every>` | every verdict against chasolver's labels, by outcome and time; FALSE DRAWS must be 0 (with the engine's defaults: `6 100 1`). Positions no game can reach are set aside with the arbiter page's FEN checks (`index.html`) |
 | `lock_layers.js` | for chasolver's two files and both flags: the layer that first proves "cannot mate" (material, lock, Domino), and each layer's false positives |
 | `game_flags_check.js [seed] [games] [plies]` | games played move by move with `Game`, from chasolver's positions (or `DATA`'s); at every flag that comes down, chasolver's full analysis (its port, `../site/chasolver/engine.js`) must find no mate |

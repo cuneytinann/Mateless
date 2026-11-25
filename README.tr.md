@@ -426,6 +426,7 @@ test dosyaları için `CHASOLVER=<chasolver>/tests`):
 ```sh
 node smoke.js                                    # perft
 node perft_cpw.js 5                              # Chess Programming Wiki'nin altı pozisyonu
+python3 perft_python.py | node perft960.js -     # Chess960 hamleleri = python-chess'inkiler (her başlangıç, ~780.000 pozisyon)
 node classify.js 6 100 1                         # chasolver etiketlerine karşı: FALSE DRAWS 0 olmalı
 node game_flags_check.js 1 3000 200              # düşen her bayrak, chasolver'ın tam çözücüsüne karşı
 node twosided_check.js <dosyalar>                # iki taraf tek geçişte = taraf taraf, her alanda

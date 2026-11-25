@@ -290,7 +290,7 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: ölü pozisyo
 './mateless.mjs'` ya da `import Mateless from './mateless.mjs'`). Kaynak modüller
 (`./src/index.js`) aynı cevapları veriyor ama V8'de ~%10–30 yavaş.
 
-**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (221 KB, gzip ile 71 KB);
+**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (224 KB, gzip ile 72 KB);
 bağımlılıksız köprüsü `mateless-wasm.js`. Merdivenin tamamını (statik testler, Domino, iki ispat,
 bir oyunun bayrakları, perft) ve istenirse oyunun kendiliğinden bittiği kuralları veriyor,
 `mateless.js` ile düğüm sayısına kadar aynı cevaplarla. İspatlar JS'ten ~2,5–4 kat, bir oyunun

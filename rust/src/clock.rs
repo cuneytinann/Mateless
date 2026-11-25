@@ -55,7 +55,7 @@ struct Placement { n: u8, p: [u16; 16] }
 struct Region {
     is_pawn: [bool; 64], pawn_of: [u8; 64], pawn_att: [[bool; 64]; 2],
     dist: Vec<Vec<u8>>, att: Vec<Vec<u8>>,
-    targets: Vec<Vec<u8>>, king_may: [bool; 64], mater: u8,
+    targets: Vec<Vec<u8>>, king_list: Vec<u8>, by_distance: Vec<Option<Box<[u8]>>>, mater: u8,
     cover: Vec<Option<Box<[i16]>>>, front: Vec<Option<Box<[u32]>>>, block: Vec<Option<Box<[i16]>>>,
     take: Vec<i16>, meet: Vec<Option<Box<[i16]>>>, trap: Option<Box<[i16]>>,
 }
@@ -144,11 +144,11 @@ impl Region {
         att[7] = a;
         let mater_pawn_att = pawn_att[(mater >> 3) as usize];
         let mut targets = Vec::with_capacity(64);
-        let mut king_may = [false; 64];
+        let mut king_list = Vec::with_capacity(64);
         for k in 0..64usize {
             let mut t = vec![k as u8];
             if !is_pawn[k] && !mater_pawn_att[k] {
-                king_may[k] = true;
+                king_list.push(k as u8);
                 for &(df, dr) in &KING_STEPS {
                     let (f, r) = ((k & 7) as i32 + df, (k >> 3) as i32 + dr);
                     if !(0..8).contains(&f) || !(0..8).contains(&r) { continue; }
@@ -159,9 +159,24 @@ impl Region {
             }
             targets.push(t);
         }
-        Region { is_pawn, pawn_of, pawn_att, dist, att, targets, king_may, mater,
+        Region { is_pawn, pawn_of, pawn_att, dist, att, targets, king_list, by_distance: vec![None; 64], mater,
                  cover: vec![None; 8 * 4096], front: vec![None; 8 * 4096], block: vec![None; 8 * 4096],
                  take: vec![-1; 8 * 4096], meet: vec![None; 8 * 64], trap: None }
+    }
+
+    /// The squares the defending king may stand on, nearest to fk first (ties from a1), the
+    /// unreachable ones left out: mate_bound stops at the first that is too far. (kingOrder)
+    fn king_order(&mut self, fk: usize) {
+        let d = &self.dist[0];
+        let mut out: Vec<u8> = self.king_list.iter().copied().filter(|&k| d[fk * 64 + k as usize] != 255).collect();
+        // insertion sort by distance (the list is already from a1, and stays so within a distance)
+        for i in 1..out.len() {
+            let (x, dx) = (out[i], d[fk * 64 + out[i] as usize]);
+            let mut j = i;
+            while j > 0 && d[fk * 64 + out[j - 1] as usize] > dx { out[j] = out[j - 1]; j -= 1; }
+            out[j] = x;
+        }
+        self.by_distance[fk] = Some(out.into_boxed_slice());
     }
 
     /// One mating piece (type index t, on s) against the net on k: its cover costs and its front.
@@ -449,14 +464,19 @@ impl ClockSearch {
         he.min(self.mate_bound(rem))
     }
 
-    /// The pieces on the board. (scan)
+    /// The pieces on the board, all but the pawns, square by square from a1 (the bitboard's order).
+    /// (scan)
     fn scan(&mut self) {
         let mater = self.region.0;
         let (mut nm, mut nf, mut fk) = (0, 0, 0);
         self.np = [0, 0];
-        for s in 0..64 {
-            let p = self.pos.board[s]; if p == 0 { continue; }
-            let t = p & 7; if t == PAWN { continue; }
+        let bb = &self.pos.bb;
+        let mut w = (bb[WHITE as usize] | bb[0]) & !(bb[(WHITE | PAWN) as usize] | bb[PAWN as usize]);
+        while w != 0 {
+            let s = w.trailing_zeros() as usize;
+            w &= w - 1;
+            let p = self.pos.board[s];
+            let t = p & 7;
             let c = p & WHITE;
             let ci = (c >> 3) as usize;
             self.pieces[ci][self.np[ci]] = s; self.np[ci] += 1;
@@ -521,21 +541,26 @@ impl ClockSearch {
         if !mt.iter().any(|&t| t != 7) { return INF; }                    // a king alone gives no check
         let r = self.regions.get_mut(&self.region).unwrap();
         let kn = self.known.get_mut(&self.region).unwrap();
+        // plies_for(m, f) <= limit exactly when max(m, f + (1 with the mater to move), 1) <= most
         let mater_to_move = self.pos.side == r.mater;
-        let max_f = if mater_to_move { limit >> 1 } else { (limit + 1) >> 1 };
+        let most = if mater_to_move { (limit + 1) >> 1 } else { limit >> 1 };
+        let max_f = if mater_to_move { most - 1 } else { most };
         if kn.nets.len() >= 300_000 && !kn.nets.contains_key(&self.placement) { kn.nets.clear(); }
         let known = kn.nets.entry(self.placement).or_insert_with(|| Box::new([-1i16; 320]));
-        for k in 0..64usize {
-            if !r.king_may[k] { continue; }
+        if most < 1 { return INF; }
+        if r.by_distance[fk].is_none() { r.king_order(fk); }
+        let kings = r.by_distance[fk].take().unwrap();       // taken out while r is borrowed, put back below
+        let found = 'search: { for &k8 in kings.iter() {
+            let k = k8 as usize;
             let f_k = r.dist[0][fk * 64 + k] as i16;
-            if f_k > max_f { continue; }
+            if f_k > max_f { break; }                                    // the rest are as far or farther
             let mut check = known[k];
             if check == -1 {
                 check = INF;
                 for j in 0..nm { if mt[j] != 7 { let c = r.cover_of(mt[j], ms[j], k, 1); if c < check { check = c; } } }
                 known[k] = check;
             }
-            if plies_for(check, f_k, mater_to_move) > limit { continue; }
+            if check > most { continue; }
             let n = r.targets[k].len();
             let full = (1usize << n) - 1;
             if known[64 + k] == -1 {
@@ -548,12 +573,12 @@ impl ClockSearch {
                 known[64 + k] = a; known[192 + k] = b; known[256 + k] = c3;
             }
             let single = match nf { 0 => known[64 + k], 1 => known[192 + k], 2 => known[256 + k], _ => 0 };
-            if plies_for(check.max(single), f_k, mater_to_move) > limit { continue; }
+            if single > most { continue; }
             if nf <= 1 {
                 let mut net = known[128 + k];
                 if net == -1 { net = r.mater_cover(mt, ms, k, full); known[128 + k] = net; }
                 let p = plies_for(net, f_k, mater_to_move);
-                if p <= limit { return p; }
+                if p <= limit { break 'search p; }
                 if nf == 1 {
                     // one defending piece: it takes no flight, or flight i
                     if kn.blocked.len() >= 50_000 && !kn.blocked.contains_key(&self.placement) { kn.blocked.clear(); }
@@ -564,7 +589,7 @@ impl ClockSearch {
                         let mut v = rest[k * 9 + i];
                         if v == -1 { v = r.mater_cover(mt, ms, k, full & !(1 << i)); rest[k * 9 + i] = v; }
                         let p = plies_for(v, f_k + c[i], mater_to_move);
-                        if p <= limit { return p; }
+                        if p <= limit { break 'search p; }
                     }
                 }
             } else {
@@ -590,9 +615,10 @@ impl ClockSearch {
                     }
                 }
                 place(r, mt, ms, k, n, full, &costs[..nf], check, mater_to_move, limit, 0, 0, f_k, &mut found);
-                if found <= limit { return found; }
+                if found <= limit { break 'search found; }
             }
-        }
-        INF
+        } INF };
+        r.by_distance[fk] = Some(kings);
+        found
     }
 }

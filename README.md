@@ -292,7 +292,7 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: a dead positi
 './mateless.mjs'`, or `import Mateless from './mateless.mjs'`). The source modules
 (`./src/index.js`) give the same answers but run ~10–30% slower in V8.
 
-**WebAssembly.** The Rust port compiled to `mateless.wasm` (221 KB, 71 KB gzipped), with
+**WebAssembly.** The Rust port compiled to `mateless.wasm` (224 KB, 72 KB gzipped), with
 `mateless-wasm.js` as its dependency-free bridge: the whole ladder (static tests, Domino, both
 proofs, a game's flags, perft) and, on request, the rules a game ends at by itself, with
 `mateless.js`'s answers to the node count. Proofs run ~2.5–4× faster than in JS, a game's flags

@@ -8,6 +8,13 @@
    a pawn above the rook: the engine's own move generator says whether the rook castles. Expected:
    no castling move from a rook whose neighbours on the rank are all its own men; and some from a
    rook walled in by its pawn and its own king (the rook that looks boxed and is not).
+   Then that rook in a whole position, where the castling right decides whether it is dead:
+     8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1   dead: none of the positions it can reach
+                                                         is a mate (no capture, no pawn move);
+     8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w K - 0 1   (Chess960, start 442, RNNQBBKR) not dead:
+       1.O-O exf1=N 2.Bb2 Ne3 3.dxe3 d2 4.Kh1 dxe1=Q#.
+   The engine must never prove the second one: no static test, no search, not the dead-position
+   test. It may some day prove the first (that would be right); it does not today.
      node chess960_boxed_check.js        (ENGINE: the engine, default ../mateless.js) */
 const path = require('path');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js'));
@@ -33,7 +40,44 @@ for (const colour of ['w', 'b']) for (let kf = 1; kf <= 6; kf++) for (let rf = 0
     else if (beside.every(f => back[f] === 'N' || back[f] === 'K')) { byKing++; if (castles) byKingCastles++; }
   }
 }
-const problems = (boxedCastles ? 1 : 0) + (castling && byKingCastles ? 0 : 1);
+let problems = (boxedCastles ? 1 : 0) + (castling && byKingCastles ? 0 : 1);
 console.log(`${layouts} layouts, ${castling} with a castling move; rook walled in by its own men: ${boxed}, castling ${boxedCastles}; ` +
-            `walled in with its king: ${byKing}, castling ${byKingCastles}: ${problems} problems`);
+            `walled in with its king: ${byKing}, castling ${byKingCastles}`);
+
+// The whole position, without and with the castling right.
+const STANDARD = '8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1', C960 = '8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w K - 0 1';
+const problem = text => { problems++; console.log('PROBLEM ' + text); };
+{
+  // without the right: every position it can reach (the side to move, castling and en passant
+  // included in the code), none a mate
+  const start = E.fromFen(STANDARD).position, code = p => E.toFen(p).split(' ').slice(0, 4).join(' ');
+  if (E.legalMoves(start).some(m => m.castle)) problem('a castling move without the castling right');
+  const seen = new Set([code(start)]), todo = [start];
+  let mates = 0, irreversible = 0;
+  while (todo.length) {
+    const p = todo.pop(), moves = E.legalMoves(p);
+    if (!moves.length && E.inCheck(p)) mates++;
+    for (const m of moves) {
+      if (p.board[m.to] || (p.board[m.from] & 7) === E.PAWN) irreversible++;
+      const q = p.clone(); E.makeMove(p, q, m.from, m.to, E.QUEEN);
+      const k = code(q); if (!seen.has(k)) { seen.add(k); todo.push(q); }
+    }
+  }
+  if (mates || irreversible) problem(`without the castling right ${mates} mates and ${irreversible} captures or pawn moves`);
+  // with it: the mate in four, and nothing that claims White can never be mated
+  const g = new E.Game(E.fromFen(C960).position);
+  let status = 0;
+  for (const u of ['g1h1', 'e2f1n', 'c1b2', 'f1e3', 'd2e3', 'd3d2', 'g1h1', 'd2e1q'])
+    status = g.play(E.parseSquare(u.slice(0, 2)), E.parseSquare(u.slice(2, 4)), u[4] === 'n' ? E.KNIGHT : E.QUEEN);
+  if (status !== E.Result.BLACK_MATES) problem('the mate in four with the castling right does not end in mate');
+  const p = E.fromFen(C960).position;
+  const claims = [E.cannotMate(p, E.WHITE), E.proveCannotBeMated(p, E.WHITE).proven,
+                  E.proveCannotBeMated(p, E.WHITE, { maxPly: 9, budget: 200000 }).proven,
+                  E.proveBoth(p)[0].proven, E.isDeadPosition(p)];
+  if (claims.some(Boolean)) problem('with the castling right White is claimed never to be mated: ' + claims.join(','));
+  const s = E.fromFen(STANDARD).position;
+  console.log(`the rook beside its king, without the castling right: ${seen.size} positions reachable, no mate, ` +
+              `${E.isDeadPosition(s) ? 'proven dead' : 'not proven dead (the engine does not count the king as a wall)'}; ` +
+              `with it: a mate in four, never claimed: ${problems} problems`);
+}
 process.exitCode = problems ? 1 : 0;

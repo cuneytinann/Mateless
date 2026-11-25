@@ -292,17 +292,23 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: a dead positi
 './mateless.mjs'`, or `import Mateless from './mateless.mjs'`). The source modules
 (`./src/index.js`) give the same answers but run ~10–30% slower in V8.
 
-**WebAssembly.** The Rust port compiled to `mateless.wasm` (84 KB), with `mateless-wasm.js` as
-its dependency-free bridge: the whole ladder (static tests, Domino, both proofs, a game's flags,
-perft), with `mateless.js`'s answers to the node count. Proofs run ~2.5–4× faster than in JS, a
-game's flags ~3.2× per ply; native Rust is another ~1.5–1.9× faster. Rebuild with
-`node tools/build-wasm.js`.
+**WebAssembly.** The Rust port compiled to `mateless.wasm` (221 KB, 71 KB gzipped), with
+`mateless-wasm.js` as its dependency-free bridge: the whole ladder (static tests, Domino, both
+proofs, a game's flags, perft) and, on request, the rules a game ends at by itself, with
+`mateless.js`'s answers to the node count. Proofs run ~2.5–4× faster than in JS, a game's flags
+~3.2× per ply, and under the rules (the clock search) ~2–3×; native Rust is another ~1.4–1.9×
+faster. Rebuild with `node tools/build-wasm.js`.
 
 ```js
 const W = require('./mateless-wasm.js').instantiate(require('fs').readFileSync('mateless.wasm'));   // browser: await MatelessWasm.load('mateless.wasm')
 W.proveBoth('8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92');   // [White flagged, Black flagged], as in mateless.js
 const flags = new W.Flags();                                // a game's flags
 flags.update(fen, ply);                                     // after every move, with a FEN or W.fromFen(fen).position
+// under the rules, the options of mateless.js; history: game.repetitionHistory() from mateless.js,
+// or the FENs of the positions before this one since the last capture or pawn move
+W.proveCannotBeMated(fen, W.BLACK, { moveRule: 100, repetition: 3, history });
+const ruled = new W.Flags({ moveRule: 150, repetition: 5 });
+ruled.update(fen, ply, history);
 ```
 
 **Rust** ([rust/README.md](rust/README.md)):
@@ -467,14 +473,17 @@ node build_check.js                              # mateless.js and .mjs = a buil
 (cd ../lock && sh test-all.sh)                   # the lock detector alone, every language, on lock/positions.tsv
 (cd ../lock/second && sh test-all.sh)            # its second version, every language, on lock/second/positions.tsv
 node page_check.js                               # the page, every tab, in headless Chromium
-node wasm_check.js                               # mateless.wasm = mateless.js
+node wasm_check.js                               # mateless.wasm = mateless.js, under the rules too
 node types_check.js                              # mateless.d.ts against the engine (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, every 50th lock
 node second_version_check.js                     # the second version's rules: the 36 rows, each rule's positions
+node chess960_boxed_check.js                     # castling never moves a boxed rook (every Chess960 layout)
 ```
 
 The November rules and twin bishops are in the Rust and WebAssembly builds too: `rust_compare.js`,
-`wasm_check.js` and `trigger_check.js` (with `mateless.wasm`) find no difference.
+`wasm_check.js` and `trigger_check.js` (with `mateless.wasm`) find no difference. So are the move
+rules and the clock search: `rust_compare.js rules` and `games <file> <rule> <rep>`, and
+`wasm_check.js`'s positions and games under the rules, find none either.
 
 ## The second version
 
@@ -488,7 +497,7 @@ measured, and only where its own situation is on the board.
 | rule | runs only when | proves (of the first version's 36 unproven rows) | cost elsewhere |
 |---|---|---|---|
 | **open pawn pairs**: a white and a black pawn on a file with one square between them, the rest locked; the reachable positions split into three families by what the pair's pawns have done (neither moved, the white one stepped into the gap, the black one did), each an ordinary level with walls of its own, up to 3 pairs | the pawns hold such a pair (two shifts tell) | 3 (and the death of 5 drawn games of August and September at the ply it happens) | none measurable |
-| **boxed knights, rooks and queens**: a piece whose every step square holds its own fixed pawn or boxed piece never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history) | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
+| **boxed knights, rooks and queens**: a piece whose every step square holds its own fixed pawn or boxed piece never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history); its king is never a wall, so castling, Chess960's too, never moves a boxed rook (`test/chess960_boxed_check.js`) | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
 | **a second tier of the Domino search**: 9 plies, 10,000 nodes | the search failed without a mate, on its budget, or on its horizon on a board of kings, pawns and bishops where a king is shut in | 26 | at 6 of 14,755 such failures in 1,000 games |
 | **the stalemate guard**: a pawn the enemy king may take stays a wall if taking it always stalemates its owner (its king, wherever it may stand, defends the pawn or has no square left; nothing else of the owner's moves; the capture uncovers no bishop's check) | the cycle meets a takeable fixed pawn of a side without bishops | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
@@ -500,7 +509,7 @@ In the code: `lockTest` runs the second version's rules where they apply; `_inte
 is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
 lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out.
 
-**The move rules, on request (JavaScript for now).** A game ends by itself, drawn, after 75 moves of
+**The move rules, on request.** A game ends by itself, drawn, after 75 moves of
 each side with no capture and no pawn move (FIDE 9.6.2) and when a position occurs for the fifth
 time (9.6.1); some platforms already at 50 moves, or at threefold repetition. A mate that could come
 only later never comes. With `moveRule: 150` or `100` and `repetition: 5` or `3` (and, for
@@ -529,6 +538,12 @@ repetitions, the game's history: `history: game.repetitionHistory()`), `proveCan
   it was allowed without the rules);
 - a `Game` under the rules ends at them: the 75-move rule and fivefold repetition keep their codes
   (4, 5); the 50-move rule is 13 and threefold repetition 14.
+
+The same in Rust (`prove_cannot_be_mated_rules`, `prove_both_rules`, `is_dead_position_rules` with
+`Rules { move_rule, repetition, history }`, `Flags::with_rules`; `rust/src/clock.rs`) and in
+WebAssembly (the options above, through `mateless-wasm.js`), with the same answers and node counts:
+on 20,972 positions with the clock near a rule and 1,200 games under four settings (150/5, 100/3,
+100, 3), the three engines print the same lines.
 
 It is sound, and complete only within those limits. A proof under the rules holds for a game that
 ends at them (fivefold's holds under threefold, the 75-move rule's under the 50-move rule, not the

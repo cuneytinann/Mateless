@@ -1,8 +1,8 @@
 # Mateless in Rust
 
 A port of `mateless.js` to Rust: the same rules, the same static tests (material test, lock
-detector) and the same Domino search (6 plies, 100 nodes, no move-count rules), with the game's
-two flags (`Flags`). Legal moves are generated in the same order as in the JavaScript engine, so a
+detector) and the same Domino search (6 plies, 100 nodes), with the game's two flags (`Flags`),
+and on request the rules a game ends at by itself, with the clock search. Legal moves are generated in the same order as in the JavaScript engine, so a
 search plays the same nodes: on chasolver's 201,060 Lichess rows and the 3,000 of the August and
 September scan, on chasolver's labelled test
 positions and in thousands of games played move by move, the two engines print the same lines,
@@ -15,10 +15,22 @@ second version's rules, each run only when its own situation is on the board (op
 boxed knights, rooks and queens in `lock`; the search's second tier, 9 plies and 10,000 nodes, in
 `ladder`: `prove_cannot_be_mated_deep` and `prove_both_deep` take its size, 0 for none).
 
+The rules a game ends at by itself are here too, as in `mateless.js` (the second version's
+README: "The move rules, on request"): `Rules { move_rule, repetition, history }` (150 or 100, 0
+for none; 5 or 3, 0 for none; the codes of the game's positions before this one since its last
+capture or pawn move, `board::position_key`) for `prove_cannot_be_mated_rules`, `prove_both_rules`
+and `is_dead_position_rules`, and `Flags::with_rules(move_rule, repetition)` with
+`update_with_history(pos, ply, history)`. Near the move rule they run the clock search (`clock`,
+`ClockSearch`); the functions without `_rules` are those with `Rules::NONE`, node for node.
+`mateless rules <file>` and `mateless games <file> <rule> <rep>` print what
+`test/rust_compare.js` prints: on 20,972 positions with the clock near a rule and 1,200 games under
+four settings, the same lines, node counts included.
+
 The modules are the layers of the JavaScript sources (`src/`): `material` (rung 1, the material
 test), `lock` (rung 2, the lock detector and the two static tests together), `domino` (rung 3, the
-Domino search), `ladder` (`prove_cannot_be_mated`, `prove_both`, `is_dead_position`, `Flags`, and
-rung 4, the second tier), and under them `board`, a
+Domino search), `clock` (the clock search, near the move rule), `ladder` (`prove_cannot_be_mated`,
+`prove_both`, `is_dead_position`, `Flags`, rung 4, the second tier, and the rules), and under them
+`board`, a
 reference board (bitboards, magic bitboards, legal moves, FEN). Each module's `use` lines say what it
 takes from the board. Every public item is also re-exported at the crate root (`mateless::Flags`).
 
@@ -37,6 +49,10 @@ cargo build --release
 target/release/mateless perft 5                                   # the six CPW positions
 target/release/mateless layers chasolver-data.csv > rs.tsv        # per row: layer, nodes, failure
 node ../test/rust_compare.js layers chasolver-data.csv > js.tsv && cmp js.tsv rs.tsv
+target/release/mateless rules cases.tsv > rs.tsv                  # under the rules: <fen> <w|b> <rule> <rep> <ply> <budget>
+node ../test/rust_compare.js rules cases.tsv > js.tsv && cmp js.tsv rs.tsv
+target/release/mateless games games.txt 100 3 > rs.tsv           # a game's flags under the 50-move rule and threefold
+node ../test/rust_compare.js games games.txt 100 3 > js.tsv && cmp js.tsv rs.tsv
 cargo run --release --example vs_chasolver -- positions.txt  # against chasolver's fast check
 BOTH=1 cargo run --release --example vs_chasolver -- positions.txt   # both sides: chasolver per colour, Mateless prove_both
 ```

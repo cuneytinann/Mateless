@@ -7,7 +7,13 @@
    The same with `labels <chasolver tests/positions.txt or lichess.txt>` and `games <file>` (a game per
    line, its FENs joined by |: the plies at which the two flags came down). Every line carries the
    layer or verdict and the nodes the Domino search played, so equal outputs mean the two engines
-   searched the same trees.  (env ENGINE, default ../mateless.js) */
+   searched the same trees. Under the rules (the second version):
+     games <file> <rule> <rep>   the flags of games that end at a move rule (150, 100) and a
+                                 repetition rule (5, 3), each update given the game's history (its
+                                 positions since the last capture or pawn move, from the FENs)
+     rules <file>                lines "<fen>\t<w|b flagged>\t<rule>\t<rep>\t<ply>\t<budget>": the
+                                 proof under the rules, both proofs at once and the dead-position test
+   (env ENGINE, default ../mateless.js) */
 const fs = require('fs'), path = require('path');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js'));
 const [mode, file] = process.argv.slice(2);
@@ -32,6 +38,31 @@ if (mode === 'layers') {
     for (const [z, r] of [[E.WHITE, both[0]], [E.BLACK, both[1]]])
       out.push([i, z === E.WHITE ? 'w' : 'b', r.proven ? 1 : 0, r.staticProof ? 1 : 0, r.failure || '-', r.nodes].join('\t'));
   });
+} else if (mode === 'games' && process.argv[4]) {   // under the rules: Flags, each update with the game's history
+  const moveRule = +process.argv[4], repetition = +(process.argv[5] || 0), W = E._internal.KEY_WORDS;
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    if (!line) continue;
+    const flags = new E.Flags({ moveRule, repetition }), keys = new Int32Array(W * 4096);
+    let n = 0;
+    line.split('|').forEach((fen, ply) => {
+      const pos = E.fromFen(fen).position;
+      if (pos.halfmove === 0) n = 0;
+      flags.update(pos, ply, { keys, n });
+      E._internal.writeKey(pos, keys, W * n++);
+    });
+    out.push([flags.whiteDownAt, flags.blackDownAt].join('\t'));
+  }
+} else if (mode === 'rules') {
+  const f = r => [+r.proven, +r.staticProof, r.failure || '-', r.nodes, +r.deep, +r.ruled].join('/');
+  fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+    const c = line.split('\t');
+    if (c.length < 6) return;
+    const s = E.fromFen(c[0]);
+    if (s.error) { out.push([i, 'fen-error', s.error].join('\t')); return; }
+    const rules = { moveRule: +c[2], repetition: +c[3] }, opts = Object.assign({ maxPly: +c[4], budget: +c[5] }, rules);
+    const p = E.proveCannotBeMated(s.position, c[1] === 'w' ? E.WHITE : E.BLACK, opts), both = E.proveBoth(s.position, opts);
+    out.push([i, f(p), f(both[0]), f(both[1]), +E.isDeadPosition(s.position, rules)].join('\t'));
+  });
 } else if (mode === 'games') {   // a game per line, FENs joined by |: the plies at which the flags came down (Game)
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line) continue;
@@ -40,5 +71,5 @@ if (mode === 'layers') {
     for (let k = 1; k < fens.length; k++) { g.position = E.fromFen(fens[k]).position; g.ply = k; g.updateFlags(); }
     out.push([g.whiteDownAt, g.blackDownAt].join('\t'));
   }
-} else { console.log('usage: node rust_compare.js layers <csv> | labels <file> | games <file>'); process.exit(1); }
+} else { console.log('usage: node rust_compare.js layers <csv> | labels <file> | games <file> [rule rep] | rules <file>'); process.exit(1); }
 process.stdout.write(out.join('\n') + '\n');

@@ -1899,6 +1899,11 @@ function gapLevel(ask, k, frL, frH) {
    squares). In a game a rook or queen almost always has a square beside it that is empty or holds
    another man, and that ends it at a few operations; the levels above are not touched.
 
+   Castling, Chess960's too, never moves a boxed rook: a castling rook needs the square beside it
+   towards its king or its destination empty or holding the king, and a boxed rook has its own
+   men on both sides (its king is never one of them). test/chess960_boxed_check.js tries every
+   castling layout of Chess960 with the engine's own moves.
+
    A level is the plain loop (every set updated on every pass, as rust/src/lock.rs keeps it in
    lock_leaks_reference), with these additions:
      boxed   the pieces that no enemy king or bishop can ever reach: they never move nor fall.

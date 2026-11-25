@@ -290,17 +290,23 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: ölü pozisyo
 './mateless.mjs'` ya da `import Mateless from './mateless.mjs'`). Kaynak modüller
 (`./src/index.js`) aynı cevapları veriyor ama V8'de ~%10–30 yavaş.
 
-**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (84 KB); bağımlılıksız köprüsü
-`mateless-wasm.js`. Merdivenin tamamını veriyor (statik testler, Domino, iki ispat, bir oyunun
-bayrakları, perft), `mateless.js` ile düğüm sayısına kadar aynı cevaplarla. İspatlar JS'ten ~2,5–4
-kat, bir oyunun bayrakları ply başına ~3,2 kat hızlı; yerel Rust bundan da ~1,5–1,9 kat hızlı.
-Yeniden derlemek için `node tools/build-wasm.js`.
+**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (221 KB, gzip ile 71 KB);
+bağımlılıksız köprüsü `mateless-wasm.js`. Merdivenin tamamını (statik testler, Domino, iki ispat,
+bir oyunun bayrakları, perft) ve istenirse oyunun kendiliğinden bittiği kuralları veriyor,
+`mateless.js` ile düğüm sayısına kadar aynı cevaplarla. İspatlar JS'ten ~2,5–4 kat, bir oyunun
+bayrakları ply başına ~3,2 kat, kurallarla (saat araması) ~2–3 kat hızlı; yerel Rust bundan da
+~1,4–1,9 kat hızlı. Yeniden derlemek için `node tools/build-wasm.js`.
 
 ```js
 const W = require('./mateless-wasm.js').instantiate(require('fs').readFileSync('mateless.wasm'));   // tarayıcıda: await MatelessWasm.load('mateless.wasm')
 W.proveBoth('8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92');   // [Beyaz için, Siyah için], mateless.js'tekiyle aynı
 const flags = new W.Flags();                                // bir oyunun bayrakları
 flags.update(fen, ply);                                     // her hamleden sonra, FEN ya da W.fromFen(fen).position ile
+// kurallarla, mateless.js'in seçenekleri; history: mateless.js'ten game.repetitionHistory(),
+// ya da son alıştan veya piyon hamlesinden beri bundan önceki pozisyonların FEN'leri
+W.proveCannotBeMated(fen, W.BLACK, { moveRule: 100, repetition: 3, history });
+const ruled = new W.Flags({ moveRule: 150, repetition: 5 });
+ruled.update(fen, ply, history);
 ```
 
 **Rust** ([rust/README.md](rust/README.md)):
@@ -464,14 +470,17 @@ node build_check.js                              # mateless.js ve .mjs = src/'ni
 (cd ../lock && sh test-all.sh)                   # kilit dedektörünün kendisi, her dilde, lock/positions.tsv üzerinde
 (cd ../lock/second && sh test-all.sh)            # ikinci sürümü, her dilde, lock/second/positions.tsv üzerinde
 node page_check.js                               # sayfa, her sekmesiyle, başsız Chromium'da
-node wasm_check.js                               # mateless.wasm = mateless.js
+node wasm_check.js                               # mateless.wasm = mateless.js, kurallarla da
 node types_check.js                              # mateless.d.ts motora karşı (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü, her 50. kilit
 node second_version_check.js                     # ikinci sürümün kuralları: 36 satır, her kuralın pozisyonları
+node chess960_boxed_check.js                     # rok kutulu bir kaleyi hiç oynatmıyor (Chess960'ın her dizilişi)
 ```
 
 Kasım kuralları ve ikiz filler Rust ve WebAssembly derlemelerinde de var: `rust_compare.js`,
-`wasm_check.js` ve `trigger_check.js` (`mateless.wasm` ile) hiç fark bulmuyor.
+`wasm_check.js` ve `trigger_check.js` (`mateless.wasm` ile) hiç fark bulmuyor. Hamle kuralları ve
+saat araması da öyle: `rust_compare.js rules` ve `games <dosya> <kural> <tekrar>` ile
+`wasm_check.js`'in kurallı pozisyonları ve oyunları da fark bulmuyor.
 
 <a id="ikinci-surum"></a>
 
@@ -487,7 +496,7 @@ giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 | kural | yalnızca şu zaman çalışıyor | ispatladığı (ilk sürümün ispatlayamadığı 36 satırdan) | başka yerdeki bedeli |
 |---|---|---|---|
 | **önü açık piyon çiftleri**: bir sütunda aralarında tek kare olan bir beyaz ve bir siyah piyon, geri kalan kilitli; ulaşılabilen pozisyonlar çiftin piyonlarının ne yaptığına göre üç aileye ayrılıyor (hiçbiri oynamadı, beyaz boşluğa girdi, siyah girdi), her biri kendi duvarları olan sıradan bir seviye, en çok 3 çift | piyonlarda böyle bir çift var (iki kaydırma söylüyor) | 3 (ve ağustos–eylülün 5 beraberliğinde ölümü gerçekleştiği ply'da görüyor) | ölçülebilir değil |
-| **kutulu at, kale ve vezir**: adım karelerinin hepsinde kendi sabit piyonu ya da kutulu taşı olan bir taş hiç oynamıyor ve yalnızca kendi taşlarının karelerine saldırıyor; tahtada kalabiliyor (golf motorunun kuralı, geçmişten) | tahtada at, kale ya da vezir var; her kale ve vezirin yanındaki karelere bakıştan sonra (oyun pozisyonlarının %96'sı orada biter) | 1 (hPiwD75i) ve chasolver'ın test pozisyonlarındaki 84 bestelenmiş kilit | böyle bir taş varken kilit testi başına ~2 ns (Rust) / ~10 ns (JS) |
+| **kutulu at, kale ve vezir**: adım karelerinin hepsinde kendi sabit piyonu ya da kutulu taşı olan bir taş hiç oynamıyor ve yalnızca kendi taşlarının karelerine saldırıyor; tahtada kalabiliyor (golf motorunun kuralı, geçmişten); şahı hiçbir zaman duvar sayılmıyor, bu yüzden rok, Chess960'ınki de, kutulu bir kaleyi hiç oynatmıyor (`test/chess960_boxed_check.js`) | tahtada at, kale ya da vezir var; her kale ve vezirin yanındaki karelere bakıştan sonra (oyun pozisyonlarının %96'sı orada biter) | 1 (hPiwD75i) ve chasolver'ın test pozisyonlarındaki 84 bestelenmiş kilit | böyle bir taş varken kilit testi başına ~2 ns (Rust) / ~10 ns (JS) |
 | **Domino aramasına ikinci kademe**: 9 ply, 10.000 düğüm | arama mat bulmadan başarısız oldu: bütçesiyle ya da yalnızca şah, piyon ve fil olan, bir şahın kapana kısıldığı bir tahtada ufkuyla | 26 | 1.000 oyundaki 14.755 böyle başarısızlığın 6'sında |
 | **pat bekçisi**: rakip şahın alabileceği bir piyon, alınması sahibini her durumda pat ediyorsa duvar kalıyor (sahibinin şahı nerede durursa dursun piyonu koruyor ya da adım atacak karesi kalmıyor; sahibinin başka oynayan taşı yok; alış bir filin şahını açmıyor) | döngü, filsiz bir tarafın alınabilir sabit piyonuna rastladığında | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **piyon şahı tohumu**: piyon şahındaki bir şahın erişimi kendi karesinden değil, şimdi adım atabileceği karelerden başlıyor; kendi karesine sabit piyon saldırmaya devam ediyor | sırası gelen taraf piyon şahında (tahtada fil yok) | | |
@@ -499,7 +508,7 @@ Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalışt�
 `_internal.coreLockTest` ilk sürümün dedektörü tek başına (`lock/`'taki, scalachess yamasındaki ve
 kilit sekmesinin çizdiği); `proveCannotBeMated(pos, side, { deepBudget: 0 })` ikinci kademeyi dışarıda bırakıyor.
 
-**Hamle kuralları, istenirse (şimdilik JavaScript).** Oyun, iki taraf da alış ve piyon hamlesi olmadan 75'er hamle
+**Hamle kuralları, istenirse.** Oyun, iki taraf da alış ve piyon hamlesi olmadan 75'er hamle
 yapınca (FIDE 9.6.2) ve bir pozisyon beşinci kez gelince (9.6.1) kendiliğinden berabere biter; bazı platformlarda 50
 hamlede ya da üçlü tekrarda. Ancak sonra gelebilecek bir mat hiç gelmez. `moveRule: 150` ya da `100` ve `repetition: 5`
 ya da `3` ile (tekrarlar için oyunun geçmişiyle: `history: game.repetitionHistory()`) `proveCannotBeMated`,
@@ -522,6 +531,11 @@ ya da `3` ile (tekrarlar için oyunun geçmişiyle: `history: game.repetitionHis
   dahil. Yalnızca bir tekrar pozisyonu varsa Domino araması onunla koşar, ilk kademenin sınırlarıyla (kuralsız izin
   verildiyse ikincisininkiyle);
 - kurallı bir `Game` kurallarda biter: 75 hamle ve beşli tekrar kodlarını koruyor (4, 5); 50 hamle 13, üçlü tekrar 14.
+
+Rust'ta da aynısı var (`Rules { move_rule, repetition, history }` ile `prove_cannot_be_mated_rules`,
+`prove_both_rules`, `is_dead_position_rules`, `Flags::with_rules`; `rust/src/clock.rs`), WebAssembly'de de
+(`mateless-wasm.js` üzerinden yukarıdaki seçenekler); cevaplar ve düğüm sayıları aynı: sayacı bir kurala yakın
+20.972 pozisyonda ve dört ayarda (150/5, 100/3, 100, 3) 1.200 oyunda üç motor aynı satırları yazıyor.
 
 Sağlam, ama eksiksizliği yalnızca bu sınırlar içinde. Kurallı bir ispat o kurallarda biten bir oyun için geçerli
 (beşlininki üçlüde, 75 hamleninki 50'de de; tersi değil). Yine de bir ispatı kaçırabilir: sayaç sınıra erişiminden

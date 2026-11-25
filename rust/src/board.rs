@@ -650,8 +650,14 @@ pub fn perft(pos: &Position, depth: u32) -> u64 {
 
 /// The exact code of a position: three bit planes of the piece types, the white pieces, and one
 /// word for side, castling and en passant. Equal codes mean equal positions. (writeKey)
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct Key([u64; 5]);
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub struct Key(pub(crate) [u64; 5]);
+
+/// The code of a position (a game's history under a repetition rule is a list of them).
+pub fn position_key(pos: &Position) -> Key { write_key(pos) }
+/// A code from its five words (as mateless.js's writeKey writes them, each pair of 32-bit words
+/// joined low first): the piece planes, the white pieces, side, castling and en passant.
+pub fn key_from_words(w: [u64; 5]) -> Key { Key(w) }
 
 #[inline(always)]
 pub(crate) fn write_key(pos: &Position) -> Key {

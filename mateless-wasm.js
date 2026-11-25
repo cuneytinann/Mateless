@@ -16,8 +16,9 @@
  * a FinalizationRegistry returns it when they are collected.
  *
  * What it covers: the ladder (material test, lock detector, Domino search and its second tier, both
- * sides at once, a game's flags), perft. The rules engine itself (legal moves, game status, results) is
- * mateless.js's.
+ * sides at once, a game's flags), on request under the rules a game ends at by itself (moveRule 150
+ * or 100, repetition 5 or 3 with the game's history: the clock search near the move rule), perft.
+ * The rules engine itself (legal moves, game status, results) is mateless.js's.
  *
  * MIT License, © 2026 Cüneyt İnan. https://github.com/cuneytinann/Mateless
  */
@@ -95,27 +96,62 @@ function instantiate(source) {
   }
 
   const proofAt = (o, i) => ({ proven: o[i] === 1, staticProof: o[i + 1] === 1, failure: FAILURES[o[i + 2]],
-                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3], deep: o[i + 4] === 1 });
+                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3], deep: o[i + 4] === 1, ruled: o[i + 5] === 1 });
+
+  /* The rules, checked as mateless.js checks them, and a game's history put into the module: null
+     (none), mateless.js's { keys, n } (game.repetitionHistory()), or an array of FENs or Positions
+     (the game's positions before this one since its last capture or pawn move). */
+  function checkRules(moveRule, repetition) {
+    if (moveRule !== 0 && moveRule !== 100 && moveRule !== 150) throw new Error('mateless-wasm: moveRule must be 0, 100 or 150');
+    if (repetition !== 0 && repetition !== 3 && repetition !== 5) throw new Error('mateless-wasm: repetition must be 0, 3 or 5');
+  }
+  function setHistory(history) {
+    if (!history) { x.history_clear(); return; }
+    if (Array.isArray(history)) { x.history_clear(); for (const p of history) withPosition(p, h => x.history_push(h)); return; }
+    const n = history.n | 0, at = x.history_keys(n);
+    new Int32Array(x.memory.buffer, at, 9 * n).set(history.keys.subarray(0, 9 * n));
+    x.history_from_keys(n);
+  }
 
   /** Can `flagged` never be mated? The static tests, then the Domino search and, where it allows,
-      its second tier; the same { proven, staticProof, failure, foundBy, nodes, deep } as mateless.js. */
-  function proveCannotBeMated(p, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                            deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
-    return withPosition(p, h => { x.prove(h, flagged, maxPly, budget, deepPly, deepBudget); return proofAt(out(), 0); });
+      its second tier, and with moveRule or repetition the searches under the rules; the same
+      { proven, staticProof, failure, foundBy, nodes, deep, ruled } as mateless.js. */
+  function proveCannotBeMated(p, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY,
+                                            deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0, repetition = 0, history = null } = {}) {
+    checkRules(moveRule, repetition);
+    return withPosition(p, h => {
+      setHistory(repetition ? history : null);
+      x.prove(h, flagged, maxPly, budget, deepPly, deepBudget, moveRule, repetition); return proofAt(out(), 0);
+    });
   }
   /** Both sides in one pass: [White flagged, Black flagged]. */
-  function proveBoth(p, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET } = {}) {
-    return withPosition(p, h => { x.prove_both(h, maxPly, budget, deepPly, deepBudget); const o = out(); return [proofAt(o, 0), proofAt(o, 5)]; });
+  function proveBoth(p, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET,
+                          moveRule = 0, repetition = 0, history = null } = {}) {
+    checkRules(moveRule, repetition);
+    return withPosition(p, h => {
+      setHistory(repetition ? history : null);
+      x.prove_both(h, maxPly, budget, deepPly, deepBudget, moveRule, repetition); const o = out(); return [proofAt(o, 0), proofAt(o, 6)];
+    });
+  }
+  /** Is the position dead (FIDE 5.2.2)? With moveRule or repetition (and a history), under those rules. */
+  function isDeadPosition(p, { moveRule = 0, repetition = 0, history = null } = {}) {
+    checkRules(moveRule, repetition);
+    return withPosition(p, h => { setHistory(repetition ? history : null); return x.is_dead(h, moveRule, repetition) === 1; });
   }
 
-  /** The two flags of a game played move by move (Flags in mateless.js). */
+  /** The two flags of a game played move by move (Flags in mateless.js); moveRule and repetition: the
+      rules the game ends at (0: none). */
   class Flags {
-    constructor() {
-      this.handle = x.flags_new();
+    constructor({ moveRule = 0, repetition = 0 } = {}) {
+      checkRules(moveRule, repetition);
+      this.handle = x.flags_new(moveRule, repetition);
+      this.repetition = repetition;
       if (registry) registry.register(this, [x.flags_free, this.handle], this);
     }
-    /** Climbs the ladder at the position of game ply `ply` (a Position or a FEN), once per ply. */
-    update(p, ply) { withPosition(p, h => x.flags_update(this.handle, h, ply)); }
+    /** Climbs the ladder at the position of game ply `ply` (a Position or a FEN), once per ply;
+        history: the game's positions before it since its last capture or pawn move (see above),
+        for a repetition rule. */
+    update(p, ply, history = null) { withPosition(p, h => { setHistory(this.repetition ? history : null); x.flags_update(this.handle, h, ply); }); }
     /** The game is back at ply `ply` (moves taken back): a flag that came down after it goes up
         again, and the next update is for ply + 1 (Flags.rewind in mateless.js). */
     rewind(ply) { x.flags_rewind(this.handle, ply); }
@@ -141,8 +177,7 @@ function instantiate(source) {
     lockCannotMate: (p, flagged) => withPosition(p, h => x.lock_test(h, flagged) === 1),
     cannotMate: (p, flagged) => withPosition(p, h => x.cannot_mate(h, flagged) === 1),
     cannotMate2: (p, ask) => withPosition(p, h => x.cannot_mate2(h, ask)),
-    proveCannotBeMated, proveBoth,
-    isDeadPosition: p => withPosition(p, h => x.is_dead(h) === 1),
+    proveCannotBeMated, proveBoth, isDeadPosition,
     Flags,
     perft: (p, depth) => withPosition(p, h => x.perft(h, depth)),
     /** The raw exports, for measurements. */

@@ -2,7 +2,11 @@
 //!   mateless perft [depth]              perft of the six Chess Programming Wiki positions
 //!   mateless layers <chasolver-data.csv>  per row: gameId, layer (material|lock|domino|none), nodes, failure
 //!   mateless labels <positions.txt>       per labelled line and flag: line, flag, proven, static, failure, nodes
-//!   mateless games <file>                 per line (a game: FENs joined by |): the plies at which the flags came down
+//!   mateless games <file> [rule] [rep]    per line (a game: FENs joined by |): the plies at which the flags came down;
+//!                                         with a move rule (150, 100) and a repetition rule (5, 3), the flags of a game
+//!                                         that ends at them, each update given the game's history
+//!   mateless rules <file>                 per line "<fen>\t<w|b flagged>\t<rule>\t<rep>\t<ply>\t<budget>": the proof
+//!                                         under the rules, both proofs at once, and the dead-position test
 //! The JavaScript side of the comparison is test/rust_compare.js, which prints the same lines.
 use mateless::*;
 use std::io::{BufRead, BufReader, Write};
@@ -78,17 +82,40 @@ fn main() {
         }
         Some("games") => {
             let f = BufReader::new(std::fs::File::open(&args[2]).expect("file"));
+            let rule: u32 = args.get(3).and_then(|r| r.parse().ok()).unwrap_or(0);
+            let rep: u32 = args.get(4).and_then(|r| r.parse().ok()).unwrap_or(0);
             for line in f.lines() {
                 let line = line.unwrap();
                 if line.is_empty() { continue; }
-                let mut flags = Flags::new();
+                let mut flags = Flags::with_rules(rule, rep);
+                let mut keys: Vec<Key> = Vec::new();         // the positions since the last capture or pawn move
                 for (ply, fen) in line.split('|').enumerate() {
                     let pos = from_fen(fen).expect("fen");
-                    flags.update(&pos, ply as i64);
+                    if pos.halfmove == 0 { keys.clear(); }
+                    flags.update_with_history(&pos, ply as i64, &keys);
+                    keys.push(position_key(&pos));
                 }
                 writeln!(out, "{}\t{}", flags.white_down_at, flags.black_down_at).unwrap();
             }
         }
-        _ => eprintln!("usage: mateless perft [depth] | mateless layers <csv> | mateless labels <file> | mateless games <file>"),
+        Some("rules") => {
+            let f = BufReader::new(std::fs::File::open(&args[2]).expect("file"));
+            let mut search = Domino::new();
+            for (i, line) in f.lines().enumerate() {
+                let line = line.unwrap();
+                let c: Vec<&str> = line.split('\t').collect();
+                if c.len() < 6 { continue; }
+                let pos = match from_fen(c[0]) { Ok(p) => p, Err(e) => { writeln!(out, "{}\tfen-error\t{}", i, e).unwrap(); continue; } };
+                let flagged = if c[1] == "w" { WHITE } else { BLACK };
+                let rules = Rules { move_rule: c[2].parse().unwrap(), repetition: c[3].parse().unwrap(), history: &[] };
+                let (ply, budget): (u32, i64) = (c[4].parse().unwrap(), c[5].parse().unwrap());
+                let p = prove_cannot_be_mated_rules(&mut search, &pos, flagged, ply, budget, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, &rules);
+                let both = prove_both_rules(&mut search, &pos, ply, budget, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, &rules);
+                let dead = is_dead_position_rules(&mut search, &pos, &rules);
+                let f = |p: &Proof| format!("{}/{}/{}/{}/{}/{}", p.proven as u8, p.static_proof as u8, failure(p.failure), p.nodes, p.deep as u8, p.ruled as u8);
+                writeln!(out, "{}\t{}\t{}\t{}\t{}", i, f(&p), f(&both[0]), f(&both[1]), dead as u8).unwrap();
+            }
+        }
+        _ => eprintln!("usage: mateless perft [depth] | mateless layers <csv> | mateless labels <file> | mateless games <file> [rule] [rep] | mateless rules <file>"),
     }
 }

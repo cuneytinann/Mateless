@@ -25,9 +25,9 @@ declare namespace Mateless {
   /** a1 = 0, b1 = 1, …, h1 = 7, a2 = 8, …, h8 = 63; NO_SQUARE (-1) where there is none. */
   type Square = number;
   /** How a game ended, or 0 while it goes on (see Result and RESULT_NAMES). */
-  type ResultCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  type ResultCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
   /** The results in words, by code. */
-  type ResultName = 'ongoing' | 'white checkmates' | 'black checkmates' | 'stalemate' | '75-move rule' | 'fivefold repetition' | 'dead position' | 'white wins on time' | 'black wins on time' | 'white wins by resignation' | 'black wins by resignation' | 'draw on time' | 'draw on resignation';
+  type ResultName = 'ongoing' | 'white checkmates' | 'black checkmates' | 'stalemate' | '75-move rule' | 'fivefold repetition' | 'dead position' | 'white wins on time' | 'black wins on time' | 'white wins by resignation' | 'black wins by resignation' | 'draw on time' | 'draw on resignation' | '50-move rule' | 'threefold repetition';
 
   const BLACK: 0;
   const WHITE: 8;
@@ -43,8 +43,8 @@ declare namespace Mateless {
   /** Index = piece code; ' ' marks codes that are no piece. */
   const PIECE_LETTERS: string;
   /** Each result in words: RESULT_NAMES[code]. */
-  const RESULT_NAMES: readonly ['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation'];
-  /** The result codes by name. Claims (threefold repetition, the 50-move rule) and agreed draws are the platform's. */
+  const RESULT_NAMES: readonly ['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation', '50-move rule', 'threefold repetition'];
+  /** The result codes by name. Claims (threefold repetition, the 50-move rule) and agreed draws are the platform's; 13 and 14 end a Game whose own rules are the 50-move rule or threefold repetition. */
   const Result: {
     readonly NONE: 0;
     readonly WHITE_MATES: 1;
@@ -59,6 +59,13 @@ declare namespace Mateless {
     readonly BLACK_BY_RESIGNATION: 10;
     readonly DRAW_ON_TIME: 11;
     readonly DRAW_ON_RESIGNATION: 12;
+    readonly FIFTY_MOVES: 13;
+    readonly THREEFOLD: 14;
+  };
+  /** The draws a player may claim now (Game.claimable), as bits. */
+  const Claim: {
+    readonly FIFTY_MOVES: 1;
+    readonly THREEFOLD: 2;
   };
   /** The castling skeleton of standard chess: one digit per file, 3 king, 1 king-side rook, 2 queen-side rook. */
   const STANDARD_SKELETON: '20003001';
@@ -264,7 +271,10 @@ declare namespace Mateless {
   /** The two flags of a game played move by move ("may still mate"): a side whose flag is down has
       been proven unable to mate for the rest of the game. */
   class Flags {
-    constructor();
+    /** rungs: 1 the material test, 2 and the lock detector, 3 (the default) the whole ladder. */
+    constructor(options?: { rungs?: 1 | 2 | 3 });
+    /** How much of the ladder the flags climb. */
+    readonly rungs: 1 | 2 | 3;
     /** The ply at which White was proven unable to mate; -1 while its flag is up. */
     whiteDownAt: number;
     /** The ply at which Black was proven unable to mate; -1 while its flag is up. */
@@ -285,9 +295,30 @@ declare namespace Mateless {
     rewind(ply: number): void;
   }
 
+  /** A platform's own rules for a Game; the defaults are FIDE's and the whole ladder. */
+  interface GameOptions {
+    /** The game ends by itself at this halfmove clock: 150 (the 75-move rule) or 100 (the 50-move rule); 0, the default, is 150. */
+    moveRule?: 0 | 100 | 150;
+    /** The game ends by itself at this occurrence of a position: 5 or 3; 0, the default, is 5. */
+    repetition?: 0 | 3 | 5;
+    /** From which halfmove clock a draw may be claimed: 100 (the default) or 0 (no claim). */
+    claimMoves?: 0 | 100;
+    /** From which occurrence a draw may be claimed: 3 (the default) or 0 (no claim). */
+    claimRepetition?: 0 | 3;
+    /** 1 the material test, 2 and the lock detector, 3 (the default) the whole ladder. */
+    rungs?: 1 | 2 | 3;
+    /** With rungs 3: the Domino search runs only when a flag falls or a side resigns. */
+    dominoAtEnd?: boolean;
+  }
   /** A game played move by move: its positions, repetitions and the two flags ("may still mate"). */
   class Game {
-    constructor(position: Position);
+    constructor(position: Position, options?: GameOptions);
+    readonly moveRule: 0 | 100 | 150;
+    readonly repetition: 0 | 3 | 5;
+    readonly claimMoves: 0 | 100;
+    readonly claimRepetition: 0 | 3;
+    readonly rungs: 1 | 2 | 3;
+    readonly dominoAtEnd: boolean;
     /** The current position. */
     position: Position;
     /** How many times the current position has occurred. */
@@ -311,7 +342,9 @@ declare namespace Mateless {
     play(from: Square, to: Square, promotion?: Promotion): ResultCode;
     /** The game status of the current position; brings the flags up to date. */
     status(): ResultCode;
-    /** The verdict if `side`'s flag falls now (or it resigns), read from the opponent's flag. */
+    /** The draws a player may claim now: Claim bits (the 50-move rule, threefold repetition). */
+    claimable(): number;
+    /** The verdict if `side`'s flag falls now (or it resigns), read from the opponent's flag; with dominoAtEnd the search runs now. */
     flagVerdict(side: Color, options?: { resigned?: boolean }): ResultCode;
   }
 

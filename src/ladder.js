@@ -11,9 +11,9 @@
    From the board it needs nothing beyond what the rungs need, and the halfmove clock and the en
    passant square, which say when the static tests can have changed. */
 
-import { BLACK, NO_SQUARE, WHITE } from './board.js';
+import { BLACK, fail, NO_SQUARE, WHITE } from './board.js';
 import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, pawnCheck, staticTests2, TEST_LOCK,
-         TESTS_BOTH } from './lock.js';
+         TEST_MATERIAL, TESTS_BOTH } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_PLY, Domino } from './domino.js';
 
 /* The flagged side is the one to be proven unable to be mated: "White can never mate" is the
@@ -91,7 +91,11 @@ export function isDeadPosition(pos) {
    by the clock rule, as after plies left out. (The same holds when updatedPly is
    written by hand.) */
 export class Flags {
-  constructor() {
+  /** rungs: how much of the ladder the flags climb: 1 the material test, 2 the material test and
+      the lock detector, 3 (the default) the whole ladder, the Domino search too. */
+  constructor({ rungs = 3 } = {}) {
+    if (rungs !== 1 && rungs !== 2 && rungs !== 3) fail('Flags: rungs must be 1, 2 or 3');
+    this.rungs = rungs;
     /** The ply at which each side was proven unable to mate; -1 while its flag is up. */
     this.whiteDownAt = -1;
     this.blackDownAt = -1;
@@ -133,8 +137,9 @@ export class Flags {
     if (!this.neverMates(WHITE)) open |= FLAGGED_BLACK;
     if (!this.neverMates(BLACK)) open |= FLAGGED_WHITE;
     if (!open) return;
-    let proven = tests ? staticTests2(pos, open, tests) : 0;
-    if (open & ~proven) {
+    const asked = this.rungs === 1 ? tests & TEST_MATERIAL : tests;
+    let proven = asked ? staticTests2(pos, open, asked) : 0;
+    if ((open & ~proven) && this.rungs === 3) {
       const r = sharedSearch.run2(pos, open & ~proven, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
       if (r[0].proven) proven |= FLAGGED_WHITE;
       if (r[1].proven) proven |= FLAGGED_BLACK;

@@ -54,13 +54,13 @@ import { materialCannotMate, materialTest } from './material.js';
 import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2 } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_PLY, Domino, PositionSet } from './domino.js';
 import { Flags, isDeadPosition, proveBoth, proveCannotBeMated } from './ladder.js';
-import { flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
+import { Claim, flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
 
 // The public API (tools/build.js turns this list into the object mateless.js returns).
 export {
   // constants
   WHITE, BLACK, PAWN, KING, QUEEN, KNIGHT, ROOK, BISHOP, NO_SQUARE, PROMOTION_ORDER,
-  PIECE_LETTERS, RESULT_NAMES, Result, STANDARD_SKELETON,
+  PIECE_LETTERS, RESULT_NAMES, Result, Claim, STANDARD_SKELETON,
   // squares and pieces
   fileOf, rankOf, squareName, parseSquare, colorOf, typeOf, opponent,
   // positions and moves

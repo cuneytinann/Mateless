@@ -7,13 +7,24 @@
                              only when the reader picks the second version
      site/chasolver/*.js     chasolver's JavaScript port, run by the chasolver tab and, as text,
                              by the Lichess scan's workers
+     the Download tab's files (tools/package-sources.js): each version's type declarations,
+                             WebAssembly module and wrapper and Rust sources, and the licence, as one
+                             gzip of JSON in base64, <script id="pkg-data" type="text/plain">
    Each tab's style sheet is scoped to its tab (#tab-arbiter, #tab-lock, …), so the tabs cannot restyle
    one another; site/site.css and site/shell.css are the look they share.
    Usage: node tools/build-site.js [--check]    (--check: fail if index.html is not what it builds) */
-const fs = require('fs'), path = require('path');
+const fs = require('fs'), path = require('path'), zlib = require('zlib');
+const { packageSources } = require('./package-sources.js');
 const root = path.join(__dirname, '..'), S = path.join(root, 'site');
 const read = f => fs.readFileSync(path.join(S, f), 'utf8');
-const TABS = ['arbiter', 'lock', 'rules', 'scan', 'chasolver'];
+const TABS = ['arbiter', 'lock', 'rules', 'scan', 'chasolver', 'download'];
+
+/* the Download tab's files, the engines apart (the page holds them): gzip of JSON, in base64 */
+function packageData() {
+  const P = packageSources(), v = x => ({ dts: x.dts, wasmJs: x.wasmJs, wasm: Buffer.from(x.wasm).toString('base64'), rust: x.rust });
+  const json = JSON.stringify({ license: P.license, fast: v(P.fast), full: v(P.full) });
+  return zlib.gzipSync(Buffer.from(json), { level: 9 }).toString('base64');
+}
 
 /* the end of the block that opens at s[at] ('{') */
 function closing(s, at) {
@@ -87,12 +98,15 @@ function build() {
     script(read('scan/fzstd.js'), 'scan-fzstd', 'text/plain') +
     script(read('scan/scan-core.js'), 'scan-core', 'text/plain') +
     script(read('scan/worker-glue.js'), 'scan-worker', 'text/plain') +
+    script(packageData(), 'pkg-data', 'text/plain') +
     script(read('shell.js')) +
     script(read('arbiter/arbiter.js')) +
     script(read('lock/lockviz.js')) +
     script(read('lock/lock.js')) +
     script(read('scan/scan.js')) +
     script(read('chasolver/chasolver.js')) +
+    script(read('download/builder.js')) +
+    script(read('download/download.js')) +
     script('MatelessSite.start();') +
     '</body>\n</html>\n';
 }

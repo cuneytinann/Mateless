@@ -3,7 +3,7 @@
 
 use crate::board::{BLACK, NO_SQUARE, Position, WHITE};
 use crate::lock::{cannot_mate, cannot_mate2, FLAGGED_BLACK, FLAGGED_WHITE, pawn_check,
-    static_tests2, TEST_LOCK, TESTS_BOTH};
+    static_tests2, TEST_LOCK, TEST_MATERIAL, TESTS_BOTH};
 use crate::domino::{Domino, DOMINO_BUDGET, DOMINO_PLY, Failure, SearchResult};
 
 #[derive(Clone, Copy, Debug)]
@@ -44,15 +44,23 @@ pub struct Flags {
     memory_ply: i64,
     updated_ep: bool,
     updated_check: bool,
+    /// How much of the ladder the flags climb: 1 the material test, 2 and the lock detector, 3 the
+    /// whole ladder.
+    rungs: u8,
     search: Domino,
 }
 
 impl Default for Flags { fn default() -> Self { Self::new() } }
 
 impl Flags {
-    pub fn new() -> Flags {
-        Flags { white_down_at: -1, black_down_at: -1, updated_ply: -1, memory_ply: -1, updated_ep: false, updated_check: false, search: Domino::new() }
+    pub fn new() -> Flags { Flags::with_rungs(3) }
+    /// Flags that climb only `rungs` rungs of the ladder: 1 the material test, 2 the material test
+    /// and the lock detector, 3 the whole ladder (Flags::new).
+    pub fn with_rungs(rungs: u8) -> Flags {
+        assert!((1..=3).contains(&rungs), "Flags: rungs must be 1, 2 or 3");
+        Flags { white_down_at: -1, black_down_at: -1, updated_ply: -1, memory_ply: -1, updated_ep: false, updated_check: false, rungs, search: Domino::new() }
     }
+    pub fn rungs(&self) -> u8 { self.rungs }
     pub fn never_mates(&self, color: u8) -> bool { if color == WHITE { self.white_down_at >= 0 } else { self.black_down_at >= 0 } }
     /// Climbs the ladder for each side whose flag is still up, at the position of game ply `ply`:
     /// both sides in one pass (cannot_mate2, then Domino::run2), with the same answers as climbing
@@ -82,8 +90,9 @@ impl Flags {
         if !self.never_mates(WHITE) { open |= FLAGGED_BLACK; }
         if !self.never_mates(BLACK) { open |= FLAGGED_WHITE; }
         if open == 0 { return; }
-        let mut proven = if tests != 0 { static_tests2(pos, open, tests) } else { 0 };
-        if open & !proven != 0 {
+        let asked = if self.rungs == 1 { tests & TEST_MATERIAL } else { tests };
+        let mut proven = if asked != 0 { static_tests2(pos, open, asked) } else { 0 };
+        if open & !proven != 0 && self.rungs == 3 {
             let r = self.search.run2(pos, open & !proven, DOMINO_PLY, DOMINO_BUDGET, false);
             if r[0].proven { proven |= FLAGGED_WHITE; }
             if r[1].proven { proven |= FLAGGED_BLACK; }

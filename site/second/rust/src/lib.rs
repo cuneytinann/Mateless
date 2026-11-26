@@ -1,0 +1,48 @@
+//! Mateless — can this side still mate? Rust port of `mateless.js`.
+//!
+//! The same rules, the same static tests (material test, lock detector) and the same Domino search
+//! as the JavaScript engine, move for move: legal moves are generated in the same order (from a1,
+//! b1, … h8, then by target square), so a search plays the same nodes and spends the same budget.
+//! Bitboards are plain `u64` here instead of two 32-bit words. The JavaScript engine's comments
+//! explain each rule; each item here names the JavaScript function it comes from.
+//!
+//! The modules are the layers of the JavaScript sources (`src/`). Mateless itself:
+//!   - [`material`]  rung 1: the material test
+//!   - [`lock`]      rung 2: the lock detector, and the two static tests together
+//!   - [`domino`]    rung 3: the Domino search, 3 plies and 10 nodes, by default no move-count rules
+//!   - [`clock`]     the search under a move rule, bounded by the clock (the second version)
+//!   - [`ladder`]    the rungs put together: [`prove_cannot_be_mated`], [`prove_both`] and
+//!                   [`is_dead_position`] for one position, [`Flags`] for the two flags of a game
+//!                   played move by move; and rung 4, the stuck mater (`stuck`) and the search's second tier (the second version)
+//!
+//! Both versions are here: the first version's lock detector and search, and the second version's
+//! rules (open pawn pairs, boxed knights, rooks and queens, twin bishops, the four rules of kings and
+//! pawns: the stalemate guard, the check seed, the stuck mater, the forced step; the stuck mater move by move and the second tier),
+//! each run only when its own situation is on the board.
+//!
+//! and under it [`board`], a reference board (bitboards, magic bitboards, legal moves, FEN). Every
+//! public item is also re-exported here, at the crate root.
+//!
+//! Unlike the JavaScript engine, nothing here is module state: the lock detector's census and the
+//! move-generation context live on the stack, and each `Domino` search owns its memory.
+//!
+//! MIT License.
+
+pub mod board;
+pub mod fen;
+pub mod material;
+pub mod lock;
+pub mod domino;
+pub mod clock;
+pub mod ladder;
+pub mod stuck;
+pub mod game;
+
+pub use board::*;
+pub use fen::*;
+pub use material::*;
+pub use lock::*;
+pub use domino::*;
+pub use clock::*;
+pub use ladder::*;
+pub use game::*;

@@ -235,7 +235,7 @@ which does both).
 install. It is the site's front page,
 [cuneytinann.github.io/Mateless](https://cuneytinann.github.io/Mateless/), and its Download link
 saves the same file, which runs offline (only the fonts come from the internet). English by default,
-Turkish to choose. Five tabs:
+Turkish to choose. Six tabs:
 - **Arbiter**: a board on top, set up by hand (pieces dragged on and off, the side to move, castling,
   en passant, the halfmove clock): above and below it, at once, whether each side can still mate,
   with the engine's settings beside it. Below, a FEN, CSV or TXT files of positions, or PGN games. Each verdict is
@@ -273,6 +273,16 @@ Turkish to choose. Five tabs:
   same fix it gave the same answer on every row: the fast check on 342,559 inputs, the full
   analysis, mating lines included, on 138,075. The arbiter's "Ask chasolver" button hands a
   position over to it.
+- **Engine**: the engine for a platform, as a .zip made in the browser: the language (JavaScript,
+  Rust or WebAssembly), the version (fast or full; the full one without the third tier) and the
+  platform's own rules: how much of the ladder runs (the material test; with the lock detector;
+  the whole ladder), whether the search runs after every move or only when a flag falls or a side
+  resigns, and the move and repetition rules (a claim at 50 moves and the automatic end at 75, as
+  FIDE has it; the automatic end at 50; no claim; and the same for threefold and fivefold
+  repetition). The engine is never cut down: the choices go into a settings file, beside a README,
+  the licence, a self-test and SHA256SUMS (`site/download/builder.js`; `test/package_check.js`
+  builds and runs packages of every language and version). The search's budget is not a choice;
+  the README says where to change it.
 
 The page is built from `site/` (one folder per tab, see [site/README.md](site/README.md)) and
 embeds the engine; after changing `src/` or `site/`:
@@ -305,6 +315,12 @@ E.RESULT_NAMES[game.flagVerdict(E.WHITE)];          // 'black wins on time': if 
 E.RESULT_NAMES[game.flagVerdict(E.BLACK, { resigned: true })];   // 'draw on resignation' (FIDE 5.1.2)
 game.play(E.parseSquare('h1'), E.parseSquare('g2'));   // White is never examined again
 
+// A platform's own rules: when the game ends by itself, when a draw may be claimed, how much of
+// the ladder runs (the defaults are FIDE's and the whole ladder).
+const g2 = new E.Game(position, { moveRule: 100, repetition: 3, claimMoves: 0, claimRepetition: 0, rungs: 2 });
+g2.claimable() & E.Claim.THREEFOLD;                 // a claim the player may make now (here: none, it ends by itself)
+new E.Game(position, { dominoAtEnd: true });        // the search only when a flag falls or a side resigns
+
 // A platform with its own game object keeps only the flags: the new position and its ply.
 const flags = new E.Flags();
 flags.update(position, 0);                          // the first position (ply 0): both sides locked
@@ -316,9 +332,10 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: a dead positi
 './mateless.mjs'`, or `import Mateless from './mateless.mjs'`). The source modules
 (`./src/index.js`) give the same answers but run ~10–30% slower in V8.
 
-**WebAssembly.** The Rust port compiled to `mateless.wasm` (106 KB), with `mateless-wasm.js` as
+**WebAssembly.** The Rust port compiled to `mateless.wasm` (136 KB), with `mateless-wasm.js` as
 its dependency-free bridge: the whole ladder (static tests, Domino, both proofs, a game's flags,
-perft), with `mateless.js`'s answers to the node count. Proofs run ~2.5–4× faster than in JS, a
+perft) and a whole game (`W.Game`: the same options, results and claims, legal moves, FEN), with
+`mateless.js`'s answers to the node count (`test/game_check.js` plays both side by side). Proofs run ~2.5–4× faster than in JS, a
 game's flags ~3.2× per ply; native Rust is another ~1.5–1.9× faster. Rebuild with
 `node tools/build-wasm.js`.
 
@@ -336,6 +353,10 @@ let pos = mateless::from_fen("8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92").u
 let mut search = mateless::Domino::new();
 let proof = mateless::prove_cannot_be_mated(&mut search, &pos, mateless::BLACK, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET);
 assert!(proof.proven && proof.static_proof);    // the lock detector: White can never mate
+
+// A game under a platform's own rules (GameOptions::DEFAULT: FIDE's, the whole ladder).
+let mut game = mateless::Game::new(&pos, mateless::GameOptions::DEFAULT).unwrap();
+let result = game.flag_verdict(mateless::BLACK, false);   // 11: a draw on time
 ```
 
 **TypeScript.** The types are in `mateless.d.ts`, beside the engine, so TypeScript finds them:

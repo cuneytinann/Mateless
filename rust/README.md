@@ -12,7 +12,10 @@ search owns its memory), so the library can be used from many threads, one `Domi
 
 The modules are the layers of the JavaScript sources (`src/`): `material` (rung 1, the material
 test), `lock` (rung 2, the lock detector and the two static tests together), `domino` (rung 3, the
-Domino search), `ladder` (`prove_cannot_be_mated`, `prove_both`, `Flags`), and under them `board`, a
+Domino search), `ladder` (`prove_cannot_be_mated`, `prove_both`, `Flags`), `game` (a whole game under a
+platform's own rules, as `Game` in `src/game.js`: `GameOptions` for the move and repetition rules,
+the claims, how much of the ladder runs and whether the search waits for the end; `play`, `status`,
+`claimable`, `flag_verdict`, `legal_moves`), and under them `board`, a
 reference board (bitboards, magic bitboards, legal moves, FEN as written: `read_fen`), and over
 them `fen`, the outer layer, as `src/fen.js`: `from_fen` reads a FEN into a position some game can
 reach, refusing the rest (`"oppcheck"`, `"pawns"`, `"pieces"`, `"promo"`, `"captures"`,
@@ -28,8 +31,10 @@ chasolver: the speed comparison (`vs_chasolver`) and its full analysis line by l
 merged), the same chasolver as the site's chasolver tab.
 
 `wasm/` is a thin C ABI over the crate for WebAssembly (`mateless.wasm`, used through
-`mateless-wasm.js`): positions and the flags of games kept in two tables behind handles, a FEN in
-through one input buffer, answers out as return values or in one array. `node tools/build-wasm.js`
+`mateless-wasm.js`): positions, the flags of games and games kept in three tables behind handles, a
+FEN in through one input buffer, answers out as return values, in one array, in a list (legal moves)
+or as text (a FEN). `mateless play <file>` and `node ../test/rust_compare.js play <file>` play the
+same games under their own rules (`test/game_check.js` writes such a file) and print the same lines. `node tools/build-wasm.js`
 builds it: with the `wasm32-unknown-unknown` target installed, a plain release build; without it,
 from the standard library's source (`-Zbuild-std`, see the script).
 

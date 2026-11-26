@@ -1,0 +1,53 @@
+<h1><span lang="en">The engine, for your platform</span><span lang="tr">Motor, kendi platformun için</span></h1>
+<p class="lede" lang="en">The whole chess engine, not only the ladder: the board, legal moves, FEN, a game with its results and its draw rules, and Mateless’s proofs that a side can never mate. Pick the language, the version and your platform’s rules; the package is made here, in your browser.</p>
+<p class="lede" lang="tr">Yalnızca merdiven değil, bütün satranç motoru: tahta, legal hamleler, FEN, sonuçları ve beraberlik kurallarıyla bir oyun ve Mateless’in bir tarafın asla mat edemeyeceği ispatları. Dili, sürümü ve platformunun kurallarını seç; paket burada, tarayıcında hazırlanır.</p>
+<p class="dim" lang="en">The engine is never cut down: your choices go into a settings file, so the package runs the code that is tested, and JavaScript, Rust and WebAssembly give the same answers. Each package has a README, the MIT licence, a self-test and the files’ checksums.</p>
+<p class="dim" lang="tr">Motor hiçbir zaman kırpılmaz: seçimlerin bir ayar dosyasına girer, yani paket test edilen kodun ta kendisini çalıştırır; JavaScript, Rust ve WebAssembly aynı cevapları verir. Her pakette bir README, MIT lisansı, bir öz test ve dosyaların sağlama toplamları var.</p>
+
+<section class="panel" id="dl-form">
+  <fieldset><legend><span lang="en">Language</span><span lang="tr">Dil</span></legend>
+    <label><input type="radio" name="dl-lang" value="js" checked> JavaScript</label>
+    <label><input type="radio" name="dl-lang" value="rust"> Rust</label>
+    <label><input type="radio" name="dl-lang" value="wasm"> WebAssembly</label>
+    <p class="hint"><span lang="en">WebAssembly is the Rust port compiled: about twice as fast as JavaScript in a browser or Node, and it runs in other languages too, through a WebAssembly runtime (Java and Scala, Go, Python, C#…). Other languages will follow.</span><span lang="tr">WebAssembly, derlenmiş Rust sürümü: tarayıcıda ya da Node’da JavaScript’in iki katı kadar hızlı ve bir WebAssembly çalıştırıcısıyla başka dillerde de çalışır (Java ve Scala, Go, Python, C#…). Başka diller de gelecek.</span></p>
+  </fieldset>
+  <fieldset><legend><span lang="en">Version</span><span lang="tr">Sürüm</span></legend>
+    <label><input type="radio" name="dl-version" value="fast" checked> <span lang="en">fast: the rules proposed to Lichess</span><span lang="tr">hızlı: Lichess’e önerilen kurallar</span></label>
+    <label><input type="radio" name="dl-version" value="full"> <span lang="en">full: more rules, the stuck mater and a second tier of the search</span><span lang="tr">tam: daha çok kural, hamlesiz rakip ve aramanın ikinci kademesi</span></label>
+    <p class="hint"><span lang="en">The full version has no third tier: that one is for the analysis after the game (the arbiter’s box), not for play.</span><span lang="tr">Tam sürümde 3. kademe yok: o oyun için değil, oyun sonrası analiz için (hakem sekmesindeki kutu).</span></p>
+  </fieldset>
+  <fieldset><legend><span lang="en">Ladder</span><span lang="tr">Merdiven</span></legend>
+    <label><input type="radio" name="dl-rungs" value="1"> <span lang="en">1: the material test</span><span lang="tr">1: materyal testi</span></label>
+    <label><input type="radio" name="dl-rungs" value="2"> <span lang="en">1–2: the material test and the lock detector</span><span lang="tr">1–2: materyal testi ve kilit dedektörü</span></label>
+    <label><input type="radio" name="dl-rungs" value="3" checked> <span lang="en">the whole ladder</span><span lang="tr">tüm merdiven</span> <span class="dim" id="dl-rungs-note"></span></label>
+    <p class="hint"><span lang="en">Each rung keeps a flag per side: proven unable to mate, for good. Both flags down is a dead position, and the game ends at once; one is what a flag fall or a resignation reads. Rungs 1 and 2 are asked only when their answer can change (after a capture, a pawn move…), so they cost almost nothing.</span><span lang="tr">Her basamak taraf başına bir bayrak tutar: mat edemeyeceği kesin olarak ispatlandı. İki bayrak da inmişse pozisyon ölüdür ve oyun hemen biter; tekiyse süre bitince ya da terkte okunur. 1 ve 2. basamaklar yalnızca cevapları değişebildiğinde (alıştan, piyon hamlesinden… sonra) sorulur, neredeyse hiç maliyetleri yok.</span></p>
+  </fieldset>
+  <fieldset id="dl-when"><legend><span lang="en">The search runs</span><span lang="tr">Arama ne zaman</span></legend>
+    <label><input type="radio" name="dl-when" value="move" checked> <span lang="en">after every move (recommended)</span><span lang="tr">her hamleden sonra (önerilen)</span></label>
+    <label><input type="radio" name="dl-when" value="end"> <span lang="en">only when a flag falls or a side resigns</span><span lang="tr">yalnızca süre bitince ya da terkte</span></label>
+    <p class="hint"><span lang="en">Only for the Domino search; the static tests always run. At the end only, a dead position that only the search proves is not ended in play.</span><span lang="tr">Yalnızca Domino araması için; statik testler hep çalışır. Yalnızca sonda seçilirse, ancak aramanın ispatladığı bir ölü pozisyon oyun içinde bitirilmez.</span></p>
+  </fieldset>
+  <fieldset><legend><span lang="en">The move rule</span><span lang="tr">Hamle kuralı</span></legend>
+    <label><input type="radio" name="dl-moves" value="a" checked> <span lang="en">a) claim at 50 moves, automatic at 75 (FIDE)</span><span lang="tr">a) 50 hamlede iddia, 75’te otomatik (FIDE)</span></label>
+    <label><input type="radio" name="dl-moves" value="b"> <span lang="en">b) automatic at 50</span><span lang="tr">b) 50’de otomatik</span></label>
+    <label><input type="radio" name="dl-moves" value="c"> <span lang="en">c) no claim, automatic at 75</span><span lang="tr">c) iddia yok, 75’te otomatik</span></label>
+  </fieldset>
+  <fieldset><legend><span lang="en">Repetition</span><span lang="tr">Tekrar</span></legend>
+    <label><input type="radio" name="dl-rep" value="a" checked> <span lang="en">a) claim at threefold, automatic at fivefold (FIDE)</span><span lang="tr">a) üçlüde iddia, beşlide otomatik (FIDE)</span></label>
+    <label><input type="radio" name="dl-rep" value="b"> <span lang="en">b) automatic at threefold</span><span lang="tr">b) üçlüde otomatik</span></label>
+    <label><input type="radio" name="dl-rep" value="c"> <span lang="en">c) no claim, automatic at fivefold</span><span lang="tr">c) iddia yok, beşlide otomatik</span></label>
+    <p class="hint" id="dl-rules-note"></p>
+  </fieldset>
+  <div class="gorow">
+    <button class="primary" id="dl-go"><span lang="en">Download the package (.zip)</span><span lang="tr">Paketi indir (.zip)</span></button>
+    <span class="stat" id="dl-status" aria-live="polite"></span>
+  </div>
+  <p class="hint"><span lang="en">The search’s budget is not a setting: the defaults are the ones measured, and the README says where to change them.</span><span lang="tr">Aramanın bütçesi bir ayar değil: varsayılanlar ölçülenler; README nerede değiştirileceğini söylüyor.</span></p>
+  <div class="files" id="dl-files"></div>
+</section>
+
+<section class="panel alt">
+  <h2><span lang="en">Only the lock detector, in 20 languages</span><span lang="tr">Yalnızca kilit dedektörü, 20 dilde</span></h2>
+  <p class="dim"><span lang="en">Rung 2 alone, about two hundred lines in each language (C, C++, C#, Go, Java, Kotlin, Python, Rust, Scala, TypeScript and more), for a platform that wants only the static test: it is the fast version’s detector.</span><span lang="tr">Yalnızca 2. basamak, her dilde iki yüz kadar satır (C, C++, C#, Go, Java, Kotlin, Python, Rust, Scala, TypeScript ve diğerleri); yalnızca statik testi isteyen bir platform için: hızlı sürümün dedektörü.</span></p>
+  <a class="btn" id="dl-lockzip" href="https://github.com/cuneytinann/Mateless/raw/main/mateless-lock.zip" download="mateless-lock.zip"><span lang="en">Download mateless-lock.zip</span><span lang="tr">mateless-lock.zip indir</span></a>
+</section>

@@ -27,6 +27,7 @@ pub mod material;
 pub mod lock;
 pub mod domino;
 pub mod ladder;
+pub mod game;
 
 pub use board::*;
 pub use fen::*;
@@ -34,3 +35,4 @@ pub use material::*;
 pub use lock::*;
 pub use domino::*;
 pub use ladder::*;
+pub use game::*;

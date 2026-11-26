@@ -6,6 +6,7 @@
                 (the positions box and the board editor, when left) and one it refuses, the PGN
                 replay, the engine source
      chasolver  a position handed over by the arbiter's "Ask chasolver" link (#chasolver?fen=…)
+     download   a package made and downloaded (the full version in WebAssembly)
      lock       every example, both sides, every level and pass of the explorer, in both languages;
                 the download of the detector alone (mateless-lock.zip) and its section
      rules      an anchor link inside the tab
@@ -20,7 +21,7 @@ const dir = path.resolve(process.argv[2] || path.join(__dirname, '..'));
 const fail = [];
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
@@ -158,9 +159,19 @@ const fail = [];
   if (!/mw 1, ml 1/.test(scan)) fail.push('the scan did not find the timeout and the late draw: ' + scan);
   fs.unlinkSync(pgn);
 
+  // 5b. the Download tab: a package through the button (the full version in WebAssembly), with its files
+  await page.click('.tabs a[data-tab="download"]');
+  await page.check('input[name="dl-lang"][value="wasm"]');
+  await page.check('input[name="dl-version"][value="full"]');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#dl-go')]);
+  const zipName = download.suggestedFilename(), zipSize = fs.statSync(await download.path()).size;
+  console.log('download:', zipName, zipSize, 'B |', await page.textContent('#dl-status'));
+  if (zipName !== 'mateless-full-wasm.zip' || zipSize < 100000) fail.push('the Download tab gave ' + zipName + ', ' + zipSize + ' B');
+  await page.check('input[name="dl-lang"][value="js"]'); await page.check('input[name="dl-version"][value="fast"]');
+
   // 6. Turkish, every tab
   await page.selectOption('#lang', 'tr');
-  for (const t of ['arbiter', 'lock', 'rules', 'scan', 'chasolver']) {
+  for (const t of ['arbiter', 'lock', 'rules', 'scan', 'chasolver', 'download']) {
     await page.click('.tabs a[data-tab="' + t + '"]');
     await page.waitForFunction(t => MatelessSite.active() === t, t);
     const h1 = await page.evaluate(t => document.querySelector('#tab-' + t + ' h1').innerText, t);
@@ -172,7 +183,7 @@ const fail = [];
 
   // 7. no tab is wider than the screen on a phone
   await page.setViewportSize({ width: 390, height: 800 });
-  for (const t of ['arbiter', 'lock', 'rules', 'scan', 'chasolver']) {
+  for (const t of ['arbiter', 'lock', 'rules', 'scan', 'chasolver', 'download']) {
     await page.click('.tabs a[data-tab="' + t + '"]');
     const w = await page.evaluate(() => document.documentElement.scrollWidth);
     if (w > 390) fail.push(t + ' is ' + w + ' px wide at 390');

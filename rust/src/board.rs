@@ -257,6 +257,8 @@ impl Position {
     pub(crate) fn empty(rights_at: [u8; 64]) -> Position {
         Position { board: [0; 64], bb: [0; 16], side: WHITE, castling: 0, ep: NO_SQUARE, halfmove: 0, rights_at, undo: Vec::new() }
     }
+    /// Forgets the moves that could be taken back (a game keeps only its current position).
+    pub(crate) fn forget_undo(&mut self) { self.undo.clear(); }
     /// Copies the position, not its undo stack (which starts empty, keeping its capacity).
     pub fn copy_from(&mut self, o: &Position) {
         self.board = o.board; self.bb = o.bb; self.side = o.side; self.castling = o.castling;

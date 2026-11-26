@@ -7,10 +7,11 @@
 ```
 head.html, head-comment.txt   the page's <head> and the comment at its top (licences follow it)
 site.css                      the look every tab shares: colours, type, forms, boards, tables
-shell.html, shell.css         the bar (tabs, language, download) and the five tab containers
+shell.html, shell.css         the bar (tabs, language, download) and the six tab containers
 shell.js                      the frame: which tab shows, the language, the address
 arbiter/                      the arbiter: arbiter.html, arbiter.css, arbiter.js
-second/                       mateless.js of the full version (the second-version branch, e66f668), for the arbiter
+second/                       the full version (the second-version branch, 67cf70f): mateless.js, for the arbiter;
+                              mateless.d.ts, mateless-wasm.js, mateless.wasm and rust/src, for the Engine tab
 lock/                         the lock detector explained: lock.html, lock.css, lock.js, and
                               lockviz.js, a display copy of the detector (test/lockviz_check.js)
 rules/                        the rules (FIDE 5.2.2, 6.9, 5.1.2): rules.html, rules.css
@@ -19,6 +20,8 @@ scan/                         the Lichess scan: scan.html, scan.css, scan.js on 
 chasolver/                    chasolver's JavaScript port (3.0.0, main's stalemate-filter fix and ours):
                               engine.js and glue.js (MIT,
                               LICENSE.txt), the tab's chasolver.html, chasolver.css, chasolver.js
+download/                     the Engine tab: download.html, download.css, download.js, and builder.js,
+                              which makes a package (also run by test/package_check.js)
 ```
 
 How the page is put together:
@@ -31,15 +34,21 @@ How the page is put together:
   `<script id="mateless-engine-2" type="text/plain">`. The arbiter's "version" choice runs it
   (positions and games alike) and only then: until it is picked, the page runs `mateless.js`
   alone. Files it exports end in `-second.csv`.
+- **The Engine tab's files.** Besides the two engines, a package needs each version's type
+  declarations, WebAssembly module and wrapper, Rust sources and the licence
+  (`tools/package-sources.js`: this repository's for the fast version, `second/` for the full one).
+  They are embedded once, as one gzip of JSON in base64, `<script id="pkg-data" type="text/plain">`,
+  read only when a package is made (the browser's `DecompressionStream`). The engines come from
+  `#mateless-engine` and `#mateless-engine-2`, as they are.
 - **Tabs do not touch each other.** Each tab's style sheet is scoped to its container
-  (`#tab-arbiter`, `#tab-lock`, `#tab-rules`, `#tab-scan`, `#tab-chasolver`) when the page is
+  (`#tab-arbiter`, `#tab-lock`, `#tab-rules`, `#tab-scan`, `#tab-chasolver`, `#tab-download`) when the page is
   built; ids are unique across tabs (chasolver's start with `cha-`, the scan's with `scan-`, the
   rules' anchors with `r-`); each tab's script looks only inside its own container.
-- **The address.** `#arbiter` (the default), `#lock`, `#rules`, `#scan`, `#chasolver`;
+- **The address.** `#arbiter` (the default), `#lock`, `#rules`, `#scan`, `#chasolver`, `#download`;
   `#chasolver?fen=…&side=white|black` hands a position to chasolver; `#<id>` of anything inside
   a tab opens that tab and scrolls there.
 - **Two languages.** English unless the reader chooses Turkish (kept in the browser as
   `mateless-lang`). The arbiter and chasolver keep their texts in dictionaries; the lock tab, the
-  rules and the scan write each text twice, `lang="en"` and `lang="tr"`, and the page shows the
+  rules, the scan and the Engine tab write each text twice, `lang="en"` and `lang="tr"`, and the page shows the
   chosen one. A script that writes text asks `MatelessSite.lang` and listens with
   `MatelessSite.onLang`.

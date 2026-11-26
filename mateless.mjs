@@ -2360,7 +2360,11 @@ function isDeadPosition(pos) {
    by the clock rule, as after plies left out. (The same holds when updatedPly is
    written by hand.) */
 class Flags {
-  constructor() {
+  /** rungs: how much of the ladder the flags climb: 1 the material test, 2 the material test and
+      the lock detector, 3 (the default) the whole ladder, the Domino search too. */
+  constructor({ rungs = 3 } = {}) {
+    if (rungs !== 1 && rungs !== 2 && rungs !== 3) fail('Flags: rungs must be 1, 2 or 3');
+    this.rungs = rungs;
     /** The ply at which each side was proven unable to mate; -1 while its flag is up. */
     this.whiteDownAt = -1;
     this.blackDownAt = -1;
@@ -2402,8 +2406,9 @@ class Flags {
     if (!this.neverMates(WHITE)) open |= FLAGGED_BLACK;
     if (!this.neverMates(BLACK)) open |= FLAGGED_WHITE;
     if (!open) return;
-    let proven = tests ? staticTests2(pos, open, tests) : 0;
-    if (open & ~proven) {
+    const asked = this.rungs === 1 ? tests & TEST_MATERIAL : tests;
+    let proven = asked ? staticTests2(pos, open, asked) : 0;
+    if ((open & ~proven) && this.rungs === 3) {
       const r = sharedSearch.run2(pos, open & ~proven, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
       if (r[0].proven) proven |= FLAGGED_WHITE;
       if (r[1].proven) proven |= FLAGGED_BLACK;
@@ -2431,22 +2436,36 @@ class Flags {
                    back only over the moves since the last capture or pawn move, every other ply
                    (the side to move must match). */
 
-/* The twelve results the engine decides, as it numbers them; 0 means the game goes on.
+/* The fourteen results the engine decides, as it numbers them; 0 means the game goes on.
      the board ends the game         1, 2 checkmate; 3 stalemate; 4 the 75-move rule; 5 fivefold
-                                     repetition (FIDE 9.6); 6 a dead position (FIDE 5.2.2)
+                                     repetition (FIDE 9.6); 6 a dead position (FIDE 5.2.2);
+                                     13 the 50-move rule, only in a game that ends at it (moveRule
+                                     100); 14 threefold repetition, only in a game that ends at it
+                                     (repetition 3)
      a flag falls (FIDE 6.9)         7, 8 a win on time; 11 a draw: the opponent can never mate
      a side resigns (FIDE 5.1.2)     9, 10 a win; 12 a draw: the opponent can never mate
    RESULT_NAMES gives each one in words. Draws that need a claim (threefold repetition, FIDE 9.2;
-   the 50-move rule, 9.3) or an agreement are the platform's to decide: a Game counts repetitions
-   and every position keeps its halfmove clock. */
-const RESULT_NAMES = Object.freeze(['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation']);
+   the 50-move rule, 9.3) or an agreement are the platform's to decide: a Game says when a claim
+   may be made (claimable) and every position keeps its halfmove clock. */
+const RESULT_NAMES = Object.freeze(['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation', '50-move rule', 'threefold repetition']);
 const Result = Object.freeze({
   NONE: 0,
   WHITE_MATES: 1, BLACK_MATES: 2, STALEMATE: 3,
   SEVENTY_FIVE_MOVES: 4, FIVEFOLD: 5, DEAD_POSITION: 6,
   WHITE_ON_TIME: 7, BLACK_ON_TIME: 8, WHITE_BY_RESIGNATION: 9, BLACK_BY_RESIGNATION: 10,
-  DRAW_ON_TIME: 11, DRAW_ON_RESIGNATION: 12,
+  DRAW_ON_TIME: 11, DRAW_ON_RESIGNATION: 12, FIFTY_MOVES: 13, THREEFOLD: 14,
 });
+/** The draws a player may claim now (Game.claimable), as bits. */
+const Claim = Object.freeze({ FIFTY_MOVES: 1, THREEFOLD: 2 });
+
+/* A game's own rules (Game's options), each checked once. */
+function checkGameOptions({ moveRule, repetition, claimMoves, claimRepetition, rungs }) {
+  if (moveRule !== 0 && moveRule !== 100 && moveRule !== 150) fail('Game: moveRule must be 0, 100 or 150');
+  if (repetition !== 0 && repetition !== 3 && repetition !== 5) fail('Game: repetition must be 0, 3 or 5');
+  if (claimMoves !== 0 && claimMoves !== 100) fail('Game: claimMoves must be 0 or 100');
+  if (claimRepetition !== 0 && claimRepetition !== 3) fail('Game: claimRepetition must be 0 or 3');
+  if (rungs !== 1 && rungs !== 2 && rungs !== 3) fail('Game: rungs must be 1, 2 or 3');
+}
 
 /** How the game stands: checkmate, stalemate, dead position, fivefold repetition,
     the 75-move rule, in that order: the endings that need no claim. Returns a Result code, 0
@@ -2466,8 +2485,10 @@ function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = 
   else if (deadPositionSearch) dead = isDeadPosition(pos);
   else dead = cannotMate(pos, WHITE) && cannotMate(pos, BLACK);
   if (dead) return Result.DEAD_POSITION;
-  if (repetitions >= 5) return Result.FIVEFOLD;
-  if (pos.halfmove >= 150) return Result.SEVENTY_FIVE_MOVES;
+  // A Game's own rules may end it sooner: threefold repetition, the 50-move rule.
+  const rep = memory && memory.repetition === 3 ? 3 : 5, rule = memory && memory.moveRule === 100 ? 100 : 150;
+  if (repetitions >= rep) return rep === 3 ? Result.THREEFOLD : Result.FIVEFOLD;
+  if (pos.halfmove >= rule) return rule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
   return Result.NONE;
 }
 
@@ -2489,9 +2510,31 @@ function verdictCode(side, draw, resigned) {
     it counts how many times the current position has occurred, and
     the two flags (Flags, ladder.js). A position before the last capture or pawn move can never
     come back, so only the positions since then are compared, every other one, with the same side
-    to move. */
+    to move.
+    The options are a platform's own rules; the defaults are FIDE's and the ladder's.
+      moveRule          when the game ends by itself without a capture or a pawn move: 150 plies
+                        (the 75-move rule) or 100 (the 50-move rule); 0, the default, is 150.
+      repetition        at which occurrence of a position the game ends by itself: 5 or 3; 0, the
+                        default, is 5. (In this version neither rule changes a proof.)
+      claimMoves        from which halfmove clock a player may claim a draw (claimable): 100 (the
+                        default, FIDE 9.3) or 0 (no claim).
+      claimRepetition   from which occurrence a player may claim it: 3 (the default, FIDE 9.2) or
+                        0 (no claim).
+      rungs             how much of the ladder the flags climb: 1 the material test, 2 and the lock
+                        detector, 3 (the default) the whole ladder.
+      dominoAtEnd       with rungs 3: the Domino search runs only when a flag falls or a side
+                        resigns (flagVerdict), not after every move; a dead position is then
+                        found by the static tests alone. */
 class Game {
-  constructor(position) {
+  constructor(position, { moveRule = 0, repetition = 0, claimMoves = 100, claimRepetition = 3, rungs = 3,
+                          dominoAtEnd = false } = {}) {
+    checkGameOptions({ moveRule, repetition, claimMoves, claimRepetition, rungs });
+    this.moveRule = moveRule;
+    this.repetition = repetition;
+    this.claimMoves = claimMoves;
+    this.claimRepetition = claimRepetition;
+    this.rungs = rungs;
+    this.dominoAtEnd = rungs === 3 && !!dominoAtEnd;
     this.position = position.clone();
     this.history = new Int32Array(KEY_WORDS * 64);
     this.length = 0;
@@ -2501,8 +2544,9 @@ class Game {
     this.repetitions = 1;
     /** Plies played since the first position. */
     this.ply = 0;
-    /** The two flags "may still mate" (ladder.js). */
-    this.flags = new Flags();
+    /** The two flags "may still mate" (ladder.js), climbing the game's rungs (the Domino search
+        only at the end with dominoAtEnd). */
+    this.flags = new Flags({ rungs: this.dominoAtEnd ? 2 : rungs });
   }
   /** The ply at which each side was proven unable to mate; -1 while its flag is up (this.flags). */
   get whiteDownAt() { return this.flags.whiteDownAt; }
@@ -2548,10 +2592,20 @@ class Game {
   }
   /** The game status of the current position; brings the flags up to date. */
   status() { return gameStatus(this.position, { repetitions: this.repetitions, memory: this }); }
-  /** The verdict if `side`'s flag falls now, or `side` resigns: read from the opponent's flag. */
+  /** The draws a player may claim in the current position (Claim bits): the 50-move rule from the
+      game's claimMoves, threefold repetition from its claimRepetition. Whether the game is still
+      on is status()'s to say. */
+  claimable() {
+    return (this.claimMoves && this.position.halfmove >= this.claimMoves ? Claim.FIFTY_MOVES : 0) |
+           (this.claimRepetition && this.repetitions >= this.claimRepetition ? Claim.THREEFOLD : 0);
+  }
+  /** The verdict if `side`'s flag falls now, or `side` resigns: read from the opponent's flag
+      (with dominoAtEnd, the Domino search runs now if the flag is still up). */
   flagVerdict(side, { resigned = false } = {}) {
     this.updateFlags();
-    return verdictCode(side, this.neverMates(side ^ WHITE), resigned);
+    let draw = this.neverMates(side ^ WHITE);
+    if (!draw && this.dominoAtEnd) draw = proveCannotBeMated(this.position, side).proven;
+    return verdictCode(side, draw, resigned);
   }
 }
 
@@ -2561,7 +2615,7 @@ class Game {
 return Object.freeze({
   // constants
   WHITE, BLACK, PAWN, KING, QUEEN, KNIGHT, ROOK, BISHOP, NO_SQUARE, PROMOTION_ORDER,
-  PIECE_LETTERS, RESULT_NAMES, Result, STANDARD_SKELETON,
+  PIECE_LETTERS, RESULT_NAMES, Result, Claim, STANDARD_SKELETON,
   // squares and pieces
   fileOf, rankOf, squareName, parseSquare, colorOf, typeOf, opponent,
   // positions and moves
@@ -2580,7 +2634,7 @@ return Object.freeze({
 export const {
   // constants
   WHITE, BLACK, PAWN, KING, QUEEN, KNIGHT, ROOK, BISHOP, NO_SQUARE, PROMOTION_ORDER,
-  PIECE_LETTERS, RESULT_NAMES, Result, STANDARD_SKELETON,
+  PIECE_LETTERS, RESULT_NAMES, Result, Claim, STANDARD_SKELETON,
   // squares and pieces
   fileOf, rankOf, squareName, parseSquare, colorOf, typeOf, opponent,
   // positions and moves

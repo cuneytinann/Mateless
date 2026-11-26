@@ -235,7 +235,7 @@ dedektörüyle 4.822 (yalnızca `in-game`) ya da 4.568 (`a-lock` ve ikisini bird
 **Sayfa.** Bütün site tek dosyada, `index.html`'de: tarayıcıda açılır, kurulum gerekmez. Sitenin ön
 sayfası odur, [cuneytinann.github.io/Mateless](https://cuneytinann.github.io/Mateless/); İndir
 bağlantısı aynı dosyayı kaydeder, o da internetsiz çalışır (yalnızca yazı tipleri internetten
-gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
+gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Altı sekme:
 - **Hakem**: üstte elle kurulan bir tahta (taşlar sürüklenerek konup kaldırılıyor; sıra, rok, geçerken alma,
   yarım hamle sayacı): üstünde ve altında, hemen, her tarafın hâlâ mat edip edemeyeceği; yanında motor ayarları.
   Altında bir FEN, CSV ya da TXT pozisyon dosyaları ya da PGN oyunları. Her hüküm bir
@@ -272,6 +272,15 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   Tam çözücü; kazanılabilir her pozisyon için bir mat hattı gösterir. Aynı düzeltmeli Rust
   sürümüyle her satırda aynı cevabı verdi: hızlı kontrol 342.559 girdide, tam analiz, mat hatları
   dahil, 138.075 girdide. Hakemdeki "chasolver'a sor" düğmesi pozisyonu ona aktarır.
+- **Motor**: bir platform için motor, tarayıcıda hazırlanan bir .zip olarak: dil (JavaScript, Rust
+  ya da WebAssembly), sürüm (hızlı ya da tam; tam sürüm 3. kademesiz) ve platformun kendi
+  kuralları: merdivenin ne kadarı çalışacak (materyal testi; kilit dedektörüyle; tüm merdiven),
+  arama her hamleden sonra mı yoksa yalnızca süre bitince ya da terkte mi çalışacak, hamle ve tekrar
+  kuralları (FIDE'deki gibi 50 hamlede iddia ve 75'te otomatik son; 50'de otomatik son; iddia yok;
+  üçlü ve beşli tekrar için de aynısı). Motor hiç kırpılmıyor: seçimler bir ayar dosyasına giriyor;
+  yanında README, lisans, öz test ve SHA256SUMS (`site/download/builder.js`; `test/package_check.js`
+  her dil ve sürümden paketler üretip çalıştırıyor). Aramanın bütçesi bir seçim değil; README
+  nerede değiştirileceğini söylüyor.
 
 Sayfa `site/`'tan kuruluyor (her sekmeye bir klasör, bkz. [site/README.md](site/README.md)) ve
 motoru gömülü taşıyor; `src/` ya da `site/` değişince:
@@ -304,6 +313,12 @@ E.RESULT_NAMES[game.flagVerdict(E.WHITE)];          // 'black wins on time': Bey
 E.RESULT_NAMES[game.flagVerdict(E.BLACK, { resigned: true })];   // 'draw on resignation': Siyah terk ederse de beraberlik (FIDE 5.1.2)
 game.play(E.parseSquare('h1'), E.parseSquare('g2'));   // Beyaz bir daha incelenmez
 
+// Platformun kendi kuralları: oyun ne zaman kendiliğinden biter, ne zaman beraberlik iddia edilebilir,
+// merdivenin ne kadarı çalışır (varsayılanlar FIDE'ninkiler ve tüm merdiven).
+const g2 = new E.Game(position, { moveRule: 100, repetition: 3, claimMoves: 0, claimRepetition: 0, rungs: 2 });
+g2.claimable() & E.Claim.THREEFOLD;                 // oyuncunun şimdi yapabileceği bir iddia (burada yok, kendiliğinden biter)
+new E.Game(position, { dominoAtEnd: true });        // arama yalnızca süre bitince ya da terkte
+
 // Kendi oyun nesnesi olan bir platform yalnızca bayrakları tutar: yeni pozisyon ve ply'ı.
 const flags = new E.Flags();
 flags.update(position, 0);                          // ilk pozisyon (ply 0): iki taraf da kilitli
@@ -315,9 +330,11 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: ölü pozisyo
 './mateless.mjs'` ya da `import Mateless from './mateless.mjs'`). Kaynak modüller
 (`./src/index.js`) aynı cevapları veriyor ama V8'de ~%10–30 yavaş.
 
-**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (106 KB); bağımlılıksız köprüsü
-`mateless-wasm.js`. Merdivenin tamamını veriyor (statik testler, Domino, iki ispat, bir oyunun
-bayrakları, perft), `mateless.js` ile düğüm sayısına kadar aynı cevaplarla. İspatlar JS'ten ~2,5–4
+**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (136 KB); bağımlılıksız köprüsü
+`mateless-wasm.js`. Merdivenin tamamını (statik testler, Domino, iki ispat, bir oyunun bayrakları,
+perft) ve bütün bir oyunu (`W.Game`: aynı seçenekler, sonuçlar ve iddialar, legal hamleler, FEN)
+veriyor, `mateless.js` ile düğüm sayısına kadar aynı cevaplarla (`test/game_check.js` ikisini yan
+yana oynatıyor). İspatlar JS'ten ~2,5–4
 kat, bir oyunun bayrakları ply başına ~3,2 kat hızlı; yerel Rust bundan da ~1,5–1,9 kat hızlı.
 Yeniden derlemek için `node tools/build-wasm.js`.
 
@@ -335,6 +352,10 @@ let pos = mateless::from_fen("8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92").u
 let mut search = mateless::Domino::new();
 let proof = mateless::prove_cannot_be_mated(&mut search, &pos, mateless::BLACK, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET);
 assert!(proof.proven && proof.static_proof);    // kilit dedektörü: Beyaz hiçbir zaman mat edemez
+
+// Platformun kendi kurallarıyla bir oyun (GameOptions::DEFAULT: FIDE'ninkiler, tüm merdiven).
+let mut game = mateless::Game::new(&pos, mateless::GameOptions::DEFAULT).unwrap();
+let result = game.flag_verdict(mateless::BLACK, false);   // 11: süreden beraberlik
 ```
 
 **TypeScript.** Tipler motorun yanındaki `mateless.d.ts`'te; TypeScript onları kendiliğinden buluyor:

@@ -31,6 +31,15 @@
 'use strict';
 
 const WHITE = 8, BLACK = 0, FLAGGED_WHITE = 1, FLAGGED_BLACK = 2, DOMINO_PLY = 3, DOMINO_BUDGET = 10;
+const QUEEN = 3, KNIGHT = 4, ROOK = 5, BISHOP = 6, PROMOTIONS = [0, 0, 0, QUEEN, KNIGHT, ROOK, BISHOP];
+/* The results and claims, as mateless.js numbers them (game.js). */
+const RESULT_NAMES = Object.freeze(['ongoing', 'white checkmates', 'black checkmates', 'stalemate', '75-move rule', 'fivefold repetition', 'dead position', 'white wins on time', 'black wins on time', 'white wins by resignation', 'black wins by resignation', 'draw on time', 'draw on resignation', '50-move rule', 'threefold repetition']);
+const Result = Object.freeze({
+  NONE: 0, WHITE_MATES: 1, BLACK_MATES: 2, STALEMATE: 3, SEVENTY_FIVE_MOVES: 4, FIVEFOLD: 5, DEAD_POSITION: 6,
+  WHITE_ON_TIME: 7, BLACK_ON_TIME: 8, WHITE_BY_RESIGNATION: 9, BLACK_BY_RESIGNATION: 10,
+  DRAW_ON_TIME: 11, DRAW_ON_RESIGNATION: 12, FIFTY_MOVES: 13, THREEFOLD: 14,
+});
+const Claim = Object.freeze({ FIFTY_MOVES: 1, THREEFOLD: 2 });
 const FEN_ERRORS = ['', 'syntax', 'kings', 'pawnrank', 'oppcheck', 'pawns', 'pieces', 'promo', 'captures', 'checks'];
 const FIXED = [[1, 'castling'], [2, 'en passant'], [8, 'halfmove'], [4, 'fullmove']];
 const FAILURES = [null, 'mate', 'horizon', 'budget'];
@@ -137,9 +146,68 @@ function instantiate(source) {
     }
   }
 
+  /* The moves the last call put in list(): { from, to, promotion } as legalMoves in mateless.js. */
+  const movesOut = n => Array.from(new Int32Array(x.memory.buffer, x.list(), n),
+                                   m => ({ from: m & 63, to: (m >> 6) & 63, castle: false, promotion: (m >> 12) !== 0 }));
+  const textOut = n => new TextDecoder().decode(new Uint8Array(x.memory.buffer, x.text(), n));
+  /** The legal moves of a position (a Position or a FEN): { from, to, promotion } each. */
+  function legalMoves(p) { return withPosition(p, h => movesOut(x.position_legal_moves(h))); }
+  /** The FEN of a position, with move number `fullmove`. */
+  function toFen(p, fullmove = 1) { return withPosition(p, h => textOut(x.position_fen(h, fullmove))); }
+
+  /** A game played move by move (Game in mateless.js): from a Position or a FEN, under a
+      platform's own rules (the same options and defaults: moveRule, repetition, claimMoves,
+      claimRepetition, rungs, dominoAtEnd). */
+  class Game {
+    constructor(start, { moveRule = 0, repetition = 0, claimMoves = 100, claimRepetition = 3, rungs = 3, dominoAtEnd = false } = {}) {
+      const fields = typeof start === 'string' ? start.trim().split(/\s+/) : [];
+      this.startFullmove = Math.max(1, parseInt(fields[5], 10) || 1);
+      this.handle = withPosition(start, h => {
+        this.startSide = x.position_side(h);
+        return x.game_new(h, moveRule, repetition, claimMoves, claimRepetition, rungs, dominoAtEnd ? 1 : 0);
+      });
+      if (this.handle < 0) throw new Error('mateless-wasm: Game options: moveRule 0, 100 or 150; repetition 0, 3 or 5; claimMoves 0 or 100; claimRepetition 0 or 3; rungs 1, 2 or 3');
+      Object.assign(this, { moveRule, repetition, claimMoves, claimRepetition, rungs, dominoAtEnd: rungs === 3 && !!dominoAtEnd });
+      if (registry) registry.register(this, [x.game_free, this.handle], this);
+    }
+    /** Plays a legal move and returns the game status after it; throws when it is not legal. */
+    play(from, to, promotion = QUEEN) {
+      if (!PROMOTIONS[promotion]) throw new Error('mateless-wasm: promotion must be QUEEN, ROOK, BISHOP or KNIGHT');
+      const r = x.game_play(this.handle, from, to, promotion);
+      if (r < 0) throw new Error('mateless-wasm: illegal move');
+      return r;
+    }
+    /** The game status of the current position; brings the flags up to date. */
+    status() { return x.game_status(this.handle); }
+    /** The draws a player may claim now: Claim bits. */
+    claimable() { return x.game_claimable(this.handle); }
+    /** The verdict if `side`'s flag falls now, or `side` resigns. */
+    flagVerdict(side, { resigned = false } = {}) { return x.game_verdict(this.handle, side, resigned ? 1 : 0); }
+    /** Brings the flags up to date (once per position). */
+    updateFlags() { x.game_update_flags(this.handle); }
+    /** Has `color` been proven unable to mate, for the rest of the game? */
+    neverMates(color) { return (color === WHITE ? this.whiteDownAt : this.blackDownAt) >= 0; }
+    get whiteDownAt() { return x.game_white_down_at(this.handle); }
+    get blackDownAt() { return x.game_black_down_at(this.handle); }
+    get repetitions() { return x.game_repetitions(this.handle); }
+    get ply() { return x.game_ply(this.handle); }
+    get halfmove() { return x.game_halfmove(this.handle); }
+    get side() { return x.game_side(this.handle); }
+    legalMoves() { return movesOut(x.game_legal_moves(this.handle)); }
+    /** The FEN of the current position (the move number counted from the start's). */
+    fen() { return textOut(x.game_fen(this.handle, this.startFullmove + ((this.ply + (this.startSide === BLACK ? 1 : 0)) >> 1))); }
+    free() {
+      if (this.handle < 0) return;
+      if (registry) registry.unregister(this);
+      x.game_free(this.handle);
+      this.handle = -1;
+    }
+  }
+
   return Object.freeze({
-    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET,
-    Position, fromFen,
+    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET, QUEEN, KNIGHT, ROOK, BISHOP,
+    RESULT_NAMES, Result, Claim,
+    Position, fromFen, toFen, legalMoves, Game,
     materialCannotMate: (p, flagged) => withPosition(p, h => x.material_test(h, flagged) === 1),
     lockCannotMate: (p, flagged) => withPosition(p, h => x.lock_test(h, flagged) === 1),
     cannotMate: (p, flagged) => withPosition(p, h => x.cannot_mate(h, flagged) === 1),

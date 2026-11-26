@@ -1,17 +1,18 @@
 /* The page's frame: which tab shows, and in which language. Runs before the tabs' scripts.
-   Address: #arbiter (the default), #lock, #rules, #scan, #chasolver; #<tab>?k=v&… hands values
+   Address: #arbiter (the default), #lock, #rules, #scan, #chasolver, #download; #<tab>?k=v&… hands values
    to that tab (#chasolver?fen=…&side=white is the arbiter's "Ask chasolver"); #<id> of anything
    inside a tab opens that tab and scrolls there. The language is English unless the reader
    chose Turkish; the choice is kept in this browser. */
 (function () {
   'use strict';
-  var TABS = ['arbiter', 'lock', 'rules', 'scan', 'chasolver'];
+  var TABS = ['arbiter', 'lock', 'rules', 'scan', 'chasolver', 'download'];
   var TITLE = {
     arbiter: ['Mateless arbiter', 'Mateless hakem'],
     lock: ['Mateless lock detector', 'Mateless kilit dedektörü'],
     rules: ['Mateless: the rules', 'Mateless: kurallar'],
     scan: ['Mateless Lichess scan', 'Mateless Lichess taraması'],
-    chasolver: ['chasolver', 'chasolver']
+    chasolver: ['chasolver', 'chasolver'],
+    download: ['Mateless: the engine', 'Mateless: motor']
   };
   var $ = function (id) { return document.getElementById(id) };
   var saved = function () { try { return localStorage.getItem('mateless-lang') } catch (x) { return null } };

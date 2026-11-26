@@ -288,6 +288,12 @@ E.RESULT_NAMES[game.flagVerdict(E.WHITE)];          // 'black wins on time': Bey
 E.RESULT_NAMES[game.flagVerdict(E.BLACK, { resigned: true })];   // 'draw on resignation': Siyah terk ederse de beraberlik (FIDE 5.1.2)
 game.play(E.parseSquare('h1'), E.parseSquare('g2'));   // Beyaz bir daha incelenmez
 
+// Platformun kendi kuralları: oyun ne zaman kendiliğinden biter (ispatlar da onunla), ne zaman
+// beraberlik iddia edilebilir (hiçbir ispat iddiaya dayanmaz), merdivenin ne kadarı çalışır.
+const g2 = new E.Game(position, { moveRule: 100, repetition: 3, claimMoves: 0, claimRepetition: 0, rungs: 2 });
+g2.claimable() & E.Claim.THREEFOLD;                 // oyuncunun şimdi yapabileceği bir iddia (burada yok, kendiliğinden biter)
+new E.Game(position, { moveRule: 150, repetition: 5, dominoAtEnd: true });   // aramalar yalnızca süre bitince ya da terkte
+
 // Kendi oyun nesnesi olan bir platform yalnızca bayrakları tutar: yeni pozisyon ve ply'ı.
 const flags = new E.Flags();
 flags.update(position, 0);                          // ilk pozisyon (ply 0): iki taraf da kilitli
@@ -299,9 +305,10 @@ flags.neverMates(E.WHITE) && flags.neverMates(E.BLACK);   // true: ölü pozisyo
 './mateless.mjs'` ya da `import Mateless from './mateless.mjs'`). Kaynak modüller
 (`./src/index.js`) aynı cevapları veriyor ama V8'de ~%10–30 yavaş.
 
-**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (245 KB, gzip ile 80 KB);
+**WebAssembly.** Rust çevirisi `mateless.wasm` olarak derlendi (269 KB, gzip ile 87 KB);
 bağımlılıksız köprüsü `mateless-wasm.js`. Merdivenin tamamını (statik testler, Domino, iki ispat,
-bir oyunun bayrakları, perft) ve istenirse oyunun kendiliğinden bittiği kuralları veriyor,
+bir oyunun bayrakları, perft), bütün bir oyunu (`W.Game`: aynı seçenekler, sonuçlar ve iddialar,
+legal hamleler, FEN; `test/game_check.js`) ve istenirse oyunun kendiliğinden bittiği kuralları veriyor,
 `mateless.js` ile düğüm sayısına kadar aynı cevaplarla. İspatlar JS'ten ~2,5–4 kat, bir oyunun
 bayrakları ply başına ~3,2 kat, kurallarla (saat araması) ~2–3 kat hızlı; yerel Rust bundan da
 ~1,4–1,9 kat hızlı. Yeniden derlemek için `node tools/build-wasm.js`.
@@ -325,6 +332,10 @@ let pos = mateless::from_fen("8/8/4k3/3p2p1/1p1P1pP1/1P3P2/8/3K4 b - - 47 92").u
 let mut search = mateless::Domino::new();
 let proof = mateless::prove_cannot_be_mated(&mut search, &pos, mateless::BLACK, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET);
 assert!(proof.proven && proof.static_proof);    // kilit dedektörü: Beyaz hiçbir zaman mat edemez
+
+// Platformun kendi kurallarıyla bir oyun (GameOptions::DEFAULT: FIDE'ninkiler, tüm merdiven).
+let mut game = mateless::Game::new(&pos, mateless::GameOptions::DEFAULT).unwrap();
+let result = game.flag_verdict(mateless::BLACK, false);   // 11: süreden beraberlik
 ```
 
 **TypeScript.** Tipler motorun yanındaki `mateless.d.ts`'te; TypeScript onları kendiliğinden buluyor:

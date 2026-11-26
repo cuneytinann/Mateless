@@ -20,7 +20,7 @@ import { BETWEEN, BISHOP, bishopRay, BLACK, fail, firstSquare, hashKey, KEY_WORD
          KNIGHT_STEPS, LINE, lowestBit, NO_SQUARE, northHi, northLo, PAWN, popcount, QUEEN, rayHi, rayLo, ROOK, rookRay,
          sideways, southHi, southLo, WHITE } from './board.js';
 import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, pawnCheck, staticTests2, TEST_LOCK,
-         TESTS_BOTH } from './lock.js';
+         TEST_MATERIAL, TESTS_BOTH } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_RULE_BUDGET, Domino,
          PositionSet } from './domino.js';
 import { ClockSearch, REGION_REACH } from './clock.js';
@@ -542,11 +542,14 @@ export function isDeadPosition(pos, { moveRule = 0, repetition = 0, history = nu
    written by hand.) */
 export class Flags {
   /** moveRule: 0 (none), 150 or 100; repetition: 0 (none), 5 or 3. The proofs hold for a game that
-      ends at those rules. */
-  constructor({ moveRule = 0, repetition = 0 } = {}) {
+      ends at those rules. rungs: how much of the ladder the flags climb: 1 the material test, 2
+      the material test and the lock detector, 3 (the default) the whole ladder, the searches too. */
+  constructor({ moveRule = 0, repetition = 0, rungs = 3 } = {}) {
     checkMoveRule(moveRule); checkRepetition(repetition);
+    if (rungs !== 1 && rungs !== 2 && rungs !== 3) fail('Flags: rungs must be 1, 2 or 3');
     this.moveRule = moveRule;
     this.repetition = repetition;
+    this.rungs = rungs;
     /** The ply at which each side was proven unable to mate; -1 while its flag is up. */
     this.whiteDownAt = -1;
     this.blackDownAt = -1;
@@ -589,8 +592,9 @@ export class Flags {
     if (!this.neverMates(WHITE)) open |= FLAGGED_BLACK;
     if (!this.neverMates(BLACK)) open |= FLAGGED_WHITE;
     if (!open) return;
-    let proven = tests ? staticTests2(pos, open, tests) : 0;
-    if (open & ~proven) {
+    const asked = this.rungs === 1 ? tests & TEST_MATERIAL : tests;
+    let proven = asked ? staticTests2(pos, open, asked) : 0;
+    if ((open & ~proven) && this.rungs === 3) {
       const r = sharedSearch.run2(pos, open & ~proven, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
       if (r[0].proven) proven |= FLAGGED_WHITE;
       if (r[1].proven) proven |= FLAGGED_BLACK;

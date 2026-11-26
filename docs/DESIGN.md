@@ -319,6 +319,29 @@ the gain is small (in an open position the search hits its ceiling after ~6 node
 ~0.4 µs per ply in Rust), and move numbers mean nothing in games from a FEN. A platform may start
 calling `Flags.update` later; the first update asks the static tests whatever the last move was.
 
+**A platform's own rules.** A `Game` takes them as options; the defaults are FIDE's and the whole
+ladder, and a game without options plays exactly as before.
+- `moveRule` (150 or 100) and `repetition` (5 or 3): where the game ends by itself, with results 4
+  and 5 (the 75-move rule, fivefold repetition) or 13 and 14 (the 50-move rule, threefold
+  repetition). In this version the proofs are made under them (section 12): a mate that could
+  only come after the game has ended by itself never comes. So the rules come first, after
+  checkmate and stalemate: at the rule's end every side is proven unable to mate, but the rule
+  says why the game ended. Then a dead position, then fivefold and the 75-move rule.
+- `claimMoves` (100 or 0) and `claimRepetition` (3 or 0): when a player may claim a draw.
+  `claimable()` says which claim is open (`Claim` bits); making it is the platform's, and no proof
+  ever assumes it: a player who does not claim plays on, and a mate may still come.
+- `rungs` (1, 2 or 3): how much of the ladder the flags climb: the material test; and the lock
+  detector; the whole ladder. Rungs 1 and 2 are asked only when their answer can change (section
+  6), so they cost almost nothing; a lower rung gives fewer draws, never a wrong one.
+- `dominoAtEnd`: the searches (the first, the stuck mater, the second tier, the rules') run only
+  when a flag falls or a side resigns (`flagVerdict`), not after every move; a dead position is
+  then found by the static tests alone.
+
+The same `Game`, with the same options, results and claims, is in Rust (`game.rs`, `GameOptions`)
+and in WebAssembly (`W.Game`, which also gives the legal moves and the FEN); `test/game_check.js`
+and `rust_compare.js play` hold the three to the same answers, ply by ply. The Engine tab packs one
+of them with a settings file of these options: the engine itself is never cut down.
+
 ## 10. Builds
 
 - **One file, inside a function.** `tools/build.js` joins the layers in import order in one scope.
@@ -331,8 +354,9 @@ calling `Flags.update` later; the first update asks the static tests whatever th
 - **Rust** has no module state: the census and the move context live on the stack, each `Domino`
   owns its memory, so the crate can be used from many threads (one `Domino` per thread). With LTO
   and one codegen unit the module boundaries cost nothing (instruction counts within 0.2%).
-- **WebAssembly.** `rust/wasm` is a thin C ABI over the crate; positions and the flags of games live
-  in two tables behind handles, a FEN comes in through one buffer. Proofs run ~2.5–4× faster than
+- **WebAssembly.** `rust/wasm` is a thin C ABI over the crate; positions, the flags of games and
+  games live in three tables behind handles, a FEN comes in through one buffer (legal moves and a
+  FEN go out through a list and a text buffer). Proofs run ~2.5–4× faster than
   in JS, a game's flags ~3.2× per ply; the static tests alone not at all (a call across the
   boundary costs what the test costs). The arbiter page does not embed it: it judges chasolver's
   192,457 Lichess rows in about 4 s in Chromium (~20 µs a row, reading, tests and report

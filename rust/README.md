@@ -31,6 +31,13 @@ and `is_dead_position_rules`, and `Flags::with_rules(move_rule, repetition)` wit
 `test/rust_compare.js` prints: on 20,972 positions with the clock near a rule and 1,200 games under
 four settings, the same lines, node counts included.
 
+A whole game under a platform's own rules is `game` (`Game` in `src/game.js`): `GameOptions` for
+the move and repetition rules the game ends at (and its proofs are made under), the claims (which
+no proof assumes), how much of the ladder runs and whether the searches wait for the end; `play`,
+`status`, `claimable`, `flag_verdict`, `legal_moves`. `mateless play <file>` and `node
+../test/rust_compare.js play <file>` play the same games and print the same lines
+(`test/game_check.js` writes such a file).
+
 The modules are the layers of the JavaScript sources (`src/`): `material` (rung 1, the material
 test), `lock` (rung 2, the lock detector and the two static tests together), `domino` (rung 3, the
 Domino search), `clock` (the clock search, near the move rule), `ladder` (`prove_cannot_be_mated`,

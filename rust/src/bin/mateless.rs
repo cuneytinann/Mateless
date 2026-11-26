@@ -5,6 +5,7 @@
 //!   mateless games <file> [rule] [rep]    per line (a game: FENs joined by |): the plies at which the flags came down;
 //!                                         with a move rule (150, 100) and a repetition rule (5, 3), the flags of a game
 //!                                         that ends at them, each update given the game's history
+//!   mateless play <file>                  per line (options|FEN|uci moves): a Game under its own rules, ply by ply
 //!   mateless fen <file>                   per FEN (a line, its first tab field, a labelled line or a game's FENs
 //!                                         joined by |): the strict reading and the loose one, each as the error or
 //!                                         the fixed bits (1 castling, 2 en passant, 4 move number, 8 halfmove clock) and the FEN
@@ -138,6 +139,33 @@ fn main() {
                 }
             }
         }
-        _ => eprintln!("usage: mateless perft [depth] | mateless layers <csv> | mateless labels <file> | mateless games <file> [rule] [rep] | mateless rules <file> | mateless fen <file>"),
+        Some("play") => {
+            // A game per line: options|FEN|moves (uci). Per ply status:claimable:repetitions, then the
+            // flags' plies and the verdicts if White's flag falls, then if Black resigns.
+            let sq = |s: &str| { let b = s.as_bytes(); (b[0] - b'a') as usize + 8 * (b[1] - b'1') as usize };
+            let f = BufReader::new(std::fs::File::open(&args[2]).expect("file"));
+            for line in f.lines() {
+                let line = line.unwrap();
+                if line.is_empty() { continue; }
+                let mut parts = line.split('|');
+                let o: Vec<u32> = parts.next().unwrap().split(',').map(|x| x.parse().unwrap()).collect();
+                let pos = from_fen(parts.next().unwrap()).expect("fen");
+                let options = GameOptions { rungs: o[0] as u8, domino_at_end: o[1] == 1, move_rule: o[2], repetition: o[3],
+                                            claim_moves: o[4], claim_repetition: o[5] };
+                let mut g = Game::new(&pos, options).expect("options");
+                let st = g.status();
+                let mut plies = vec![format!("{}:{}:{}", st, g.claimable(), g.repetitions)];
+                for m in parts.next().unwrap_or("").split(' ').filter(|m| !m.is_empty()) {
+                    let promo = match m.as_bytes().get(4) { Some(b'r') => ROOK, Some(b'b') => BISHOP, Some(b'n') => KNIGHT, _ => QUEEN };
+                    let st = g.play(sq(&m[0..2]), sq(&m[2..4]), promo).expect("legal move");
+                    plies.push(format!("{}:{}:{}", st, g.claimable(), g.repetitions));
+                }
+                let (w, b) = (g.flags.white_down_at, g.flags.black_down_at);
+                let v1 = g.flag_verdict(WHITE, false);
+                let v2 = g.flag_verdict(BLACK, true);
+                writeln!(out, "{}\t{}\t{}\t{}\t{}", plies.join(" "), w, b, v1, v2).unwrap();
+            }
+        }
+        _ => eprintln!("usage: mateless perft [depth] | mateless layers <csv> | mateless labels <file> | mateless games <file> [rule] [rep] | mateless rules <file> | mateless fen <file> | mateless play <file>"),
     }
 }

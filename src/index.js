@@ -65,13 +65,13 @@ import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lo
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, Domino, PositionSet } from './domino.js';
 import { ClockSearch, REGION_REACH } from './clock.js';
 import { Flags, isDeadPosition, proveBoth, proveCannotBeMated, stuckEvery } from './ladder.js';
-import { flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
+import { Claim, flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
 
 // The public API (tools/build.js turns this list into the object mateless.js returns).
 export {
   // constants
   WHITE, BLACK, PAWN, KING, QUEEN, KNIGHT, ROOK, BISHOP, NO_SQUARE, PROMOTION_ORDER,
-  PIECE_LETTERS, RESULT_NAMES, Result, STANDARD_SKELETON,
+  PIECE_LETTERS, RESULT_NAMES, Result, Claim, STANDARD_SKELETON,
   // squares and pieces
   fileOf, rankOf, squareName, parseSquare, colorOf, typeOf, opponent,
   // positions and moves

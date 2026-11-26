@@ -64,6 +64,11 @@ declare namespace Mateless {
     /** Only in a game under threefold repetition (repetition 3). */
     readonly THREEFOLD: 14;
   };
+  /** The draws a player may claim now (Game.claimable), as bits. */
+  const Claim: {
+    readonly FIFTY_MOVES: 1;
+    readonly THREEFOLD: 2;
+  };
   /** The castling skeleton of standard chess: one digit per file, 3 king, 1 king-side rook, 2 queen-side rook. */
   const STANDARD_SKELETON: '20003001';
 
@@ -305,7 +310,9 @@ declare namespace Mateless {
       been proven unable to mate for the rest of the game. */
   class Flags {
     /** moveRule: the proofs hold for a game that ends at that rule (default 0: no rule). */
-    constructor(options?: { moveRule?: MoveRule; repetition?: Repetition });
+    constructor(options?: { moveRule?: MoveRule; repetition?: Repetition; rungs?: 1 | 2 | 3 });
+    /** How much of the ladder the flags climb: 1 the material test, 2 and the lock detector, 3 (the default) the whole ladder. */
+    readonly rungs: 1 | 2 | 3;
     /** The move rule the flags are proven under. */
     readonly moveRule: MoveRule;
     /** The repetition rule the flags are proven under. */
@@ -330,10 +337,31 @@ declare namespace Mateless {
     rewind(ply: number): void;
   }
 
+  /** A platform's own rules for a Game. */
+  interface GameOptions {
+    /** 150 or 100: the game ends at that rule and its flags are proven under it; 0 (default): it ends at the 75-move rule, flags without a rule. */
+    moveRule?: MoveRule;
+    /** 5 or 3: the game ends at that repetition and its flags are proven under it; 0 (default): it ends at fivefold, flags without the rule. */
+    repetition?: Repetition;
+    /** From which halfmove clock a draw may be claimed: 100 (the default) or 0 (no claim). No proof assumes a claim. */
+    claimMoves?: 0 | 100;
+    /** From which occurrence a draw may be claimed: 3 (the default) or 0 (no claim). */
+    claimRepetition?: 0 | 3;
+    /** 1 the material test, 2 and the lock detector, 3 (the default) the whole ladder. */
+    rungs?: 1 | 2 | 3;
+    /** With rungs 3: the searches run only when a flag falls or a side resigns. */
+    dominoAtEnd?: boolean;
+  }
   /** A game played move by move: its positions, repetitions and the two flags ("may still mate"). */
   class Game {
     /** moveRule 150 or 100: the game ends at that rule and its flags are proven under it; 0 (default): it ends at the 75-move rule, flags without a rule. */
-    constructor(position: Position, options?: { moveRule?: MoveRule; repetition?: Repetition });
+    constructor(position: Position, options?: GameOptions);
+    readonly claimMoves: 0 | 100;
+    readonly claimRepetition: 0 | 3;
+    readonly rungs: 1 | 2 | 3;
+    readonly dominoAtEnd: boolean;
+    /** The draws a player may claim now: Claim bits (the 50-move rule, threefold repetition). */
+    claimable(): number;
     /** The game's move rule. */
     readonly moveRule: MoveRule;
     /** The game's repetition rule. */

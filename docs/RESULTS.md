@@ -4,6 +4,28 @@ Measured on a shared cloud machine (2 vCPU Xeon 2.8 GHz, Node 22, rustc 1.97, on
 separate runs move by ±5–10%, so ranges are given where runs differed. How the engine works is in
 [DESIGN.md](DESIGN.md).
 
+## A game's own rules, and the engine as a package (26 November 2026, night)
+
+A `Game` now takes a platform's own rules (DESIGN.md, section 9): where the game ends by itself
+(the 75- or the 50-move rule, fivefold or threefold repetition), when a draw may be claimed, how
+much of the ladder runs, and whether the search waits for a flag fall or a resignation. The same
+`Game` is in Rust (`game.rs`) and in WebAssembly (`W.Game`, with legal moves and the FEN).
+
+| | games | plies | JS = WebAssembly | JS = Rust |
+|---|---|---|---|---|
+| the fast version, random games under random options (`test/game_check.js`) | 3,000 | 202,072 | yes | yes |
+| the full version, the same | 3,000 | 201,561 | yes | yes |
+
+Every ending occurs: in this version's run 574 threefold repetitions, 59 games at the 75-move
+rule, 59 fivefold repetitions, 37 at the 50-move rule, 98 checkmates, 26 stalemates and 25 dead
+positions. Without options a game plays as before: the comparisons of the ladder (`rust_compare.js`
+layers, labels, games, fen; `wasm_check.js`, `twosided_check.js`, `trigger_check.js`,
+`game_flags_check.js`) print the same lines.
+
+The site's Engine tab (on main) makes a package of one version in one language with these options
+in a settings file; its packages of this version build and pass their self-tests in JavaScript,
+WebAssembly and Rust.
+
 ## The stuck mater after the first search; the third tier out of the engine (26 November 2026, evening)
 
 The engine's ladder after a first search (3 plies, 10 nodes) that fails without a mate is now the

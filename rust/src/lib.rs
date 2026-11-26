@@ -36,6 +36,7 @@ pub mod domino;
 pub mod clock;
 pub mod ladder;
 pub mod stuck;
+pub mod game;
 
 pub use board::*;
 pub use fen::*;
@@ -44,3 +45,4 @@ pub use lock::*;
 pub use domino::*;
 pub use clock::*;
 pub use ladder::*;
+pub use game::*;

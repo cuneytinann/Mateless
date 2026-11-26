@@ -83,5 +83,21 @@ if (mode === 'fen') {   // per FEN: the strict reading and the loose one (the er
     for (let k = 1; k < fens.length; k++) { g.position = E.fromFen(fens[k]).position; g.ply = k; g.updateFlags(); }
     out.push([g.whiteDownAt, g.blackDownAt].join('\t'));
   }
+} else if (mode === 'play') {   // a game per line: options|FEN|moves (uci, space-separated): Game under its own rules
+  // options: rungs,dominoAtEnd,moveRule,repetition,claimMoves,claimRepetition. Per ply: status:claimable:repetitions,
+  // then the flags' plies and the verdicts if White's flag falls, then if Black resigns.
+  const PROMO = { q: E.QUEEN, r: E.ROOK, b: E.BISHOP, n: E.KNIGHT }, sq = s => 'abcdefgh'.indexOf(s[0]) + 8 * (+s[1] - 1);
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    if (!line) continue;
+    const [opt, fen, moves] = line.split('|'), o = opt.split(',').map(Number);
+    const g = new E.Game(E.fromFen(fen).position, { rungs: o[0], dominoAtEnd: o[1] === 1, moveRule: o[2], repetition: o[3],
+                                                    claimMoves: o[4], claimRepetition: o[5] });
+    const plies = [g.status() + ':' + g.claimable() + ':' + g.repetitions];
+    for (const m of moves.trim().split(' ').filter(Boolean)) {
+      const st = g.play(sq(m.slice(0, 2)), sq(m.slice(2, 4)), m[4] ? PROMO[m[4]] : E.QUEEN);
+      plies.push(st + ':' + g.claimable() + ':' + g.repetitions);
+    }
+    out.push([plies.join(' '), g.whiteDownAt, g.blackDownAt, g.flagVerdict(E.WHITE), g.flagVerdict(E.BLACK, { resigned: true })].join('\t'));
+  }
 } else { console.log('usage: node rust_compare.js layers <csv> | labels <file> | games <file> [rule rep] | rules <file> | fen <file>'); process.exit(1); }
 process.stdout.write(out.join('\n') + '\n');

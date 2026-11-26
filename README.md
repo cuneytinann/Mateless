@@ -17,6 +17,49 @@ prove it leaves to the platform's rule (the flag loses) and to a complete solver
 [Design](docs/DESIGN.md) · [Results](docs/RESULTS.md) ·
 [for Lichess: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 
+## Why it matters: the proposed model
+
+Two layers, one in the game and one after it.
+
+**In the game: the fast version** (or the full one with its two tiers), after every move, for both
+sides. It costs under a microsecond a move in Rust and one or two in JavaScript (~0.35 and ~1.6 µs
+for a game's two flags, below). The arbiter page, warm, judges the 270,020 positions of chasolver's
+list and `lichess.txt` (204,484 timeouts and 65,536 positions of real games) in 1.8 s on a desktop
+browser: 6.8 µs a position, reading the FEN and the page included. The proof alone is a fraction of
+that, and Rust and WebAssembly are several times faster than JavaScript (fast version, one core of a
+2-vCPU cloud machine, the same 270,020 positions):
+
+| | JavaScript | WebAssembly | Rust |
+|---|---|---|---|
+| the proof, the position already read | 0.78 µs | 0.34 µs | 0.16 µs |
+| with reading the FEN | 4.4 µs | | 1.0 µs |
+
+What that buys is not only the results put right:
+- **Dead positions end at once** (FIDE 5.2.2), so no game is played on after it has died. On
+  Lichess about 5,200–5,600 rated games a month (August–October 2026) were drawn only after their
+  position had died, a median of 11–12 plies later, some 23–25 hours of clock time a month; 4,300–4,600
+  of them were locks, which the check ends the moment they lock instead of at a repetition, an
+  agreement or a flag much later.
+- **Results put right.** A flag that falls, or a resignation, against a side that can never mate is
+  a draw (FIDE 6.9, 5.1.2). chasolver's list holds 204,484 Lichess games scored as wins instead; since
+  scalachess #821 there are still about 19 a day (460 from 7 to 30 September 2026), 92% of them
+  locks, and 170 resignations of this kind in August and September.
+
+**After the game: the full version, without limits, month by month.** What the game's check
+leaves unproven (on chasolver's list 656 for the fast version, 2 for the full one) a pass over the
+month's games catches: the full version with its third tier and as large a budget as needed, and
+chasolver, the complete solver, behind it. A game found wrongly scored gets its rating points back,
+as platforms already do after a cheating ban. The cost, from the measurements here: a month of
+Lichess is about 90 million rated games (181.5 million in August and September 2026). The full
+version with its third tier takes ~15 µs a position in Rust (~51 µs in JavaScript) on real game
+positions, so the final positions of a whole month, more than the pass needs (only games won on
+time or by resignation ask), take under half an hour of one core. With the move counters, the
+75-move and fivefold rules, whose search then reaches 150 plies, ~0.95 ms a position: ~24 core-hours,
+a few hours on a server's cores. Reading the month's PGN comes on top.
+
+So the microseconds paid on every move buy back far more: games that end when they are over, and
+results that are right, in play or, for the very rare position the game's check leaves, after it.
+
 ## Bit-level detection of the whole structure
 
 The centre of Mateless is a **lock detector**: it recognises structures of pawns, kings and

@@ -118,6 +118,11 @@ h4{font:600 15px/1.4 var(--sans);margin:26px 0 8px}
 details.fold{margin:56px 0 0;border-top:1px solid var(--line);padding-top:14px}
 details.fold>summary{cursor:pointer;font:600 18px/1.4 var(--cond);list-style:none;display:flex;gap:10px;align-items:baseline}
 details.fold>summary::-webkit-details-marker{display:none}
+details.fold.why{margin:-16px 0 32px;border-top:0;padding-top:0}
+.whyb{max-width:82ch;font-size:14.5px}
+.whyb p{margin:10px 0}
+.whyb ul{margin:6px 0 10px;padding-left:20px}
+.whyb li{margin:4px 0}
 details.fold>summary::before{content:"+";color:var(--dim);font-family:var(--mono);font-weight:400}
 details.fold[open]>summary::before{content:"−"}
 .src{font:11.5px/1.6 var(--mono);background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:12px 14px;white-space:pre;overflow:auto;max-height:75vh;margin:10px 0 0;tab-size:2;color:#cfd4dc}

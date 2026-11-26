@@ -18,6 +18,48 @@ platformun kuralına (süresi biten kaybeder) ve oyundan sonra tam bir çözüc�
 [Lichess için: mateless-scalachess](https://github.com/cuneytinann/mateless-scalachess)
 (belgeler İngilizce)
 
+## Neden önemli: önerilen model
+
+İki katman: biri oyunun içinde, biri oyundan sonra.
+
+**Oyun içinde: hızlı sürüm** (ya da iki kademesiyle tam sürüm), her hamleden sonra, iki taraf için.
+Hamle başına maliyeti Rust'ta bir mikrosaniyenin altında, JavaScript'te bir iki mikrosaniye (bir
+oyunun iki bayrağı için ~0,35 ve ~1,6 µs, aşağıda). Hakem sayfası, ısınmış haliyle, chasolver'ın
+listesi ve `lichess.txt`'nin 270.020 pozisyonunu (204.484 süre kaybı ve gerçek oyunlardan 65.536
+pozisyon) bir masaüstü tarayıcıda 1,8 sn'de yargılıyor: FEN okuma ve sayfa dahil pozisyon başına
+6,8 µs. İspatın kendisi bunun küçük bir kısmı; Rust ve WebAssembly de JavaScript'ten birkaç kat hızlı
+(hızlı sürüm, 2 vCPU'lu bir bulut makinesinin tek çekirdeği, aynı 270.020 pozisyon):
+
+| | JavaScript | WebAssembly | Rust |
+|---|---|---|---|
+| ispat, pozisyon okunmuşken | 0,78 µs | 0,34 µs | 0,16 µs |
+| FEN okumayla | 4,4 µs | | 1,0 µs |
+
+Bunun kazandırdığı yalnızca düzelen sonuçlar değil:
+- **Ölü pozisyonlar hemen biter** (FIDE 5.2.2): ölmüş bir oyun oynanmaya devam etmez. Lichess'te
+  ayda 5.200–5.600 kadar dereceli oyun (Ağustos–Ekim 2026) ancak pozisyonu öldükten sonra, ortanca
+  11–12 ply sonra berabere bitti; ayda 23–25 saat kadar saat süresi. Bunların 4.300–4.600'ü kilitti:
+  kontrol onları çok sonra bir tekrarda, anlaşmada ya da bayrakta değil, kilitlendikleri anda bitirir.
+- **Sonuçlar düzelir.** Hiç mat edemeyecek bir tarafa karşı düşen bayrak ya da terk beraberliktir
+  (FIDE 6.9, 5.1.2). chasolver'ın listesinde bunun yerine galibiyet sayılmış 204.484 Lichess oyunu
+  var; scalachess #821'den beri hâlâ günde 19 kadar (7–30 Eylül 2026'da 460), %92'si kilit; Ağustos
+  ve Eylül'de bu türden 170 de terk.
+
+**Oyundan sonra: sınırsız tam sürüm, ay ay.** Oyundaki kontrolün ispatsız bıraktığını (chasolver'ın
+listesinde hızlı sürümde 656, tamda 2) ayın oyunlarının üzerinden geçen bir analiz yakalar: üçüncü
+kademesi ve gerektiği kadar büyük bir bütçesiyle tam sürüm, arkasında da tam çözücü chasolver.
+Yanlış sonuçlandığı bulunan oyunun puanları geri verilir, platformların hile kapatmalarından sonra
+zaten yaptığı gibi. Maliyet, buradaki ölçümlerden: Lichess'te bir ay yaklaşık 90 milyon dereceli
+oyun (Ağustos ve Eylül 2026'da 181,5 milyon). Üçüncü kademesiyle tam sürüm gerçek oyun
+pozisyonlarında Rust'ta pozisyon başına ~15 µs (JavaScript'te ~51 µs) harcıyor; yani bütün bir ayın
+son pozisyonları, analizin gerektirdiğinden fazlası (yalnız süreden ya da terkle kazanılan oyunlar
+sorulur), tek çekirdekte yarım saatin altında. Hamle sayaçlarıyla, yani araması o zaman 150 ply'a
+uzanan 75 hamle ve beşli tekrar kurallarıyla pozisyon başına ~0,95 ms: ~24 çekirdek-saat, bir
+sunucunun çekirdeklerinde birkaç saat. Ayın PGN'ini okumak bunun üstüne.
+
+Yani her hamlede ödenen mikrosaniyeler çok daha fazlasını geri kazandırır: bittiğinde biten oyunlar
+ve doğru sonuçlar; oyunda, ya da oyundaki kontrolün bıraktığı çok nadir pozisyon için, ondan sonra.
+
 ## Bütün yapının bit düzeyinde tespiti
 
 Mateless'in merkezinde bir **kilit dedektörü** var: hiçbir yasal hamle dizisinin açamayacağı

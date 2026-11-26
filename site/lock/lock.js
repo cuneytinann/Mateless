@@ -348,8 +348,8 @@
       panelHTML(L('Both kings free: cones', 'İki şah serbest: koniler'), L('h2 may promote on h1', 'h2, h1’de terfi edebilir'), a.pcs, { w: l0.quick.wCone, b: l0.quick.bCone }, [['w', l0.quick.wCone, ''], ['b', l0.quick.bCone, '']]) +
       panelHTML(L('White’s king frozen: walls', 'Beyaz şah donmuş: duvarlar'), L('the king on h1 is a wall for both sides', 'h1’deki şah iki taraf için de duvar'), a.pcs, { w: ww, b: bw }, [['w', ww, ''], ['b', bw, '']]) +
       panelHTML(L('White’s king frozen: reaches', 'Beyaz şah donmuş: erişimler'), L('h1 alone: the king never moves', 'yalnızca h1: şah hiç oynamıyor'), a.pcs, { w: r.wKing, b: r.bKing }, [['w', r.wKing, ''], ['b', r.bKing, '']]) +
-      '</div><figcaption>' + L('Lichess UdbdvLHz. With both kings free, h2 could promote one day and the first level fails at once. Every square around the white king is held or attacked by a pawn, so it is tried frozen: h1 becomes a wall, h2 is fixed, and the king’s reach stays h1. White can never be mated, and neither can Black.',
-        'Lichess UdbdvLHz. İki şah da serbestken h2 bir gün terfi edebilir ve ilk seviye hemen düşüyor. Beyaz şahın çevresindeki her kare bir piyonun elinde ya da bir piyonun saldırısı altında; şah bu yüzden donmuş olarak deneniyor: h1 duvar oluyor, h2 sabit, şahın erişimi h1’de kalıyor. Beyaz hiç mat edilemez, Siyah da.') + '</figcaption>';
+      '</div><figcaption>' + L('Lichess UdbdvLHz. With both kings free, h2 could promote one day and the first level fails at once. Every square around the white king is held or attacked by a pawn, so it is tried frozen: h1 becomes a wall, h2 is fixed, and the king’s reach stays h1. White can never be mated, and neither can Black. Here White has no move at all, so the game would end in stalemate after any Black move; the lock does not use that. It reads only that at the king’s one square of reach, h1, no capture and no pawn advance can ever happen: g1 is attacked by h2, h2 is defended by g3, g2 is White’s own pawn, blocked by g3. A white bishop on the light squares would give White moves and change nothing: it could never touch the pawns on g3 and h2.',
+        'Lichess UdbdvLHz. İki şah da serbestken h2 bir gün terfi edebilir ve ilk seviye hemen düşüyor. Beyaz şahın çevresindeki her kare bir piyonun elinde ya da bir piyonun saldırısı altında; şah bu yüzden donmuş olarak deneniyor: h1 duvar oluyor, h2 sabit, şahın erişimi h1’de kalıyor. Beyaz hiç mat edilemez, Siyah da. Burada Beyazın hiç hamlesi yok, yani Siyahın her hamlesinden sonra oyun patla biterdi; kilit bunu kullanmıyor. Yalnızca şahın tek erişim karesinde, h1’de, hiçbir alışın ve hiçbir piyon ilerleyişinin olamayacağını okuyor: g1’e h2 saldırıyor, h2’yi g3 koruyor, g2 Beyazın kendi piyonu ve g3’e takılı. Açık karelerde bir beyaz fil Beyaza hamle verir ve hiçbir şeyi değiştirmezdi: g3 ve h2’deki piyonlara asla dokunamaz.') + '</figcaption>';
   }
 
   function figCheck() {
@@ -374,8 +374,8 @@
         L('White’s queen and knight on a8 and b8 can never move', 'Beyazın a8 ve b8’deki veziri ve atı hiç oynayamaz')],
     ];
     $('f-buried').innerHTML = '<div class="row r3">' + B.map(([fen, m, t, sub]) => panelHTML(t, sub, pieceArray(fen), { mark: m }, [])).join('') +
-      '</div><figcaption>' + L('Left: Lichess hPiwD75i (2022, 1+0), the one game of the 201,060. Middle and right: two of chasolver’s composed test positions. Ringed: the buried pieces. All three positions are dead.',
-        'Solda: Lichess hPiwD75i (2022, 1+0), 201.060 oyunun tek örneği. Ortada ve sağda: chasolver’ın bestelenmiş test pozisyonlarından ikisi. Halkalı: gömülü taşlar. Üç pozisyon da ölü.') + '</figcaption>';
+      '</div><figcaption>' + L('Left: Lichess hPiwD75i (2022, 1+0), the one game of the 204,484. Middle and right: two of chasolver’s composed test positions. Ringed: the buried pieces. All three positions are dead.',
+        'Solda: Lichess hPiwD75i (2022, 1+0), 204.484 oyunun tek örneği. Ortada ve sağda: chasolver’ın bestelenmiş test pozisyonlarından ikisi. Halkalı: gömülü taşlar. Üç pozisyon da ölü.') + '</figcaption>';
   }
 
   function figHalves() {

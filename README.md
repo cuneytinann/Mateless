@@ -30,7 +30,8 @@ search behind the detector, Mateless covers **99.98%** of the Lichess data below
 faster** than the nearest known method (Rust against Rust), measured with the search at 6 plies and
 100 nodes. Since 26 November 2026 the search is 3 plies and 10 nodes: about twice as fast in real
 game positions, as fast on the timeouts, and it proves 99.68% of chasolver's list of 19 November
-(203,828 of 204,484 rows; at 6 and 100, 204,448); the full version, below, proves them all.
+(203,828 of 204,484 rows; at 6 and 100, 204,448); the full version, below, all but 2, and with
+the arbiter page's third tier, for analysis after the game, all of them.
 
 [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022) is the
 reference in this field, and a complete solver: it settles composed problems that Mateless does
@@ -204,9 +205,11 @@ Turkish to choose. Five tabs:
   (fivefold or threefold) to choose, and Chess960 (castling by its rules, the board's castling
   files from a start position's number, 0–959); a box runs the chosen version's lock detector alone, to see which
   positions it catches. The search's limits are in the engine's settings beside the board: the
-  first search is 3 plies and 10 nodes in both versions; the full one adds a second tier of 9 plies
-  and 5,000 nodes and a third of 150 plies and 5,000,000 (its box ticked by default), each where
-  the one before fails without a mate, every one adjustable.
+  first search is 3 plies and 10 nodes in both versions; the full one adds, where it fails without
+  a mate, the stuck mater move by move and a second tier of 9 plies and 5,000 nodes, both adjustable.
+  A third tier, 150 plies and 5,000,000 nodes, is the page's own, for analysis after the game: off
+  unless its box is ticked, it runs after a ladder that fails without a mate, and it is in no
+  engine the page downloads or the repository holds.
 - **Lock detector**: rung 2 from the simplest up. What the Lichess locks hold, and why knights,
   rooks, queens and twin bishops are left out; then pawns and kings on bitboards (a capture means
   no lock; the cones; the fixed point of walls, fixed pawns, king reaches and take squares; one wall
@@ -488,11 +491,15 @@ This version, the fast one, is the layer for a game server: sound, small, and me
 every move. The full version stands beside it, on the `second-version` branch, and the arbiter page
 runs it when it is chosen. It is not complete either; "full" names its goal, and it keeps growing as
 new rules are added: open pawn pairs, boxed knights, rooks and queens, twin bishops, four rules for
-the ways a game of kings and pawns runs into a stalemate, two more tiers of the Domino search (9
-plies and 5,000 nodes, then 150 and 5,000,000), each where the one before fails without a mate,
+the ways a game of kings and pawns runs into a stalemate, and, where the Domino search fails
+without a mate, the stuck mater move by move (whatever the flagged side plays, the other side, left
+with its king and pawns, has no move) and a second tier of the search (9 plies and 5,000 nodes),
 and, on request, the 75- or 50-move rule and fivefold or threefold repetition (in JavaScript, Rust
 and WebAssembly). Of chasolver's list of 19 November (204,484 rows) this version leaves 656
-unproven, the full one none under the 75-move rule. Near the move rule a search bounded by the
+unproven, the full one 2; with the arbiter page's third tier (150 plies, 5,000,000 nodes, for
+analysis after the game, not in the engine) under the 75-move rule, none. So in play even the full
+version may, very rarely, leave a position unproven that cannot be mated; the analysis after the
+game catches it. Near the move rule a search bounded by the
 clock itself, cut by a lower bound on the plies to a mate or to a capture or pawn move, decides
 whether a mate can still come in time: on endings of three to five men around their rule distances
 it proves 99.8% of the cases that cannot be mated in time, and none that can (the search it

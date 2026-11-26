@@ -56,7 +56,7 @@ function judge(fen, ply, bud, forced, hist) {
              why: lk ? '' : 'nolock', castle: castleText(pos), lockOnly: true };
   }
   const t0 = performance.now();
-  const proof = E.proveCannotBeMated(pos, flagged, limits);
+  const proof = prove(pos, flagged, limits);
   const ms = performance.now() - t0;
   let reason;
   if (proof.proven) reason = proof.nodes > 0 ? 'domino' : E.materialCannotMate(pos, flagged) ? 'material' : proof.staticProof ? 'lock' : 'stalemate';
@@ -64,10 +64,10 @@ function judge(fen, ply, bud, forced, hist) {
   /* the other side, for a dead position, with the game's own limits (and rules): what a game would have
      found. With the reader's limits it cost a search to the ply ceiling in every position where the other
      side can still mate, for nothing: the verdict is the flagged side's. */
-  const dead = proof.proven && E.proveCannotBeMated(pos, other, Object.assign({ thirdBudget: 0 }, rules)).proven;
+  const dead = proof.proven && E.proveCannotBeMated(pos, other, rules).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
-    draw: proof.proven, dead, reason, used: proof.nodes, deep: proof.deep || 0, ruled: !!proof.ruled, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, deep: proof.deep || 0, stuck: !!proof.stuck, ruled: !!proof.ruled, ms,
     why: proof.proven ? '' : proof.failure,
     castle: castleText(pos),
   };
@@ -92,7 +92,7 @@ function bothSides(fen, P, B) {
   for (let g = 0; g < 2; g++) {
     const flagged = g ? E.BLACK : E.WHITE;          /* can g mate? = can its opponent never be mated? */
     if (LOCKONLY) { const lk = E.lockCannotMate(pos, flagged); out.push({ cannot: lk, reason: lk ? 'lock' : 'nolock' }); continue; }
-    const proof = E.proveCannotBeMated(pos, flagged, limits);
+    const proof = prove(pos, flagged, limits);
     out.push({ cannot: proof.proven,
                reason: proof.proven ? (proof.ruled ? 'rule' : proof.nodes > 0 ? 'domino' : E.materialCannotMate(pos, flagged) ? 'material' : proof.staticProof ? 'lock' : 'stalemate')
                                     : proof.failure === 'mate' ? 'mate' : 'open' });
@@ -100,8 +100,8 @@ function bothSides(fen, P, B) {
   return out;
 }
 /* The figures of info3: chasolver's list of 2026-11-19 with the default limits (3 plies, 10 nodes; the
-   full version through its three tiers, under the 75-move rule). */
-var LIST_ROWS = 204484, LIST_OPEN = [656, 0];
+   full version with its own ladder, the third tier unticked, with or without the 75-move rule). */
+var LIST_ROWS = 204484, LIST_OPEN = [656, 2];
 
 var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
 var $ = function (id) { return document.getElementById(id) }, ROOT = document.getElementById('tab-arbiter');
@@ -130,7 +130,19 @@ var DT = [];
 function readDeep() {
   DT = VER !== 2 ? [] : [[limitOf('g2p'), limitOf('g2b')]].concat($('g3on').checked ? [[limitOf('g3p'), limitOf('g3b')]] : []) }
 function deepOf() {
-  return VER !== 2 ? {} : { deepPly: DT[0][0], deepBudget: DT[0][1], thirdPly: DT[1] ? DT[1][0] : 150, thirdBudget: DT[1] ? DT[1][1] : 0 } }
+  return VER !== 2 ? {} : { deepPly: DT[0][0], deepBudget: DT[0][1] } }
+/* The ladder as the page runs it: the engine's own (for the full version the static tests, the first
+   search, the stuck mater move by move, the second tier and the rules), then, only when the third
+   tier's box is ticked and that ladder failed without a mate, one search of the third tier's size,
+   under the same rules. The third tier is this page's, for analysis after the game: no engine has
+   it (not mateless.js, nor its Rust port or WebAssembly build), and a game never runs it.
+   deep: how many tiers after the first ran (0, 1 or 2). */
+function prove(pos, flagged, limits) {
+  const r = E.proveCannotBeMated(pos, flagged, limits), deep = r.deep ? 1 : 0;
+  if (VER !== 2 || !DT[1] || r.proven || r.failure === 'mate') return Object.assign(r, { deep: deep });
+  const t = E.proveCannotBeMated(pos, flagged, Object.assign({}, limits, { maxPly: DT[1][0], budget: DT[1][1], deepBudget: 0 }));
+  return Object.assign(t, { nodes: r.nodes + t.nodes, deep: deep + 1, stuck: false, ruled: !!(r.ruled || t.ruled) });
+}
 /* "lock detector only": the positions are judged by the chosen version's lock detector alone, to see
    which of them it catches; the games (PGN) keep the whole ladder */
 var LOCKONLY = false;
@@ -153,7 +165,7 @@ en: {
  sp2n: "~17–18×",
  sp2t: "faster than the nearest known method, on all of the data: detection at the level of bits, as far as we know the fastest",
  sp3n: "99.68%",
- sp3t: "of chasolver’s 204,484 Lichess games lost on time that should have been drawn, proven by the fast version; the full one proves them all",
+ sp3t: "of chasolver’s 204,484 Lichess games lost on time that should have been drawn, proven by the fast version; the full one leaves 2, and with its third tier, in analysis after the game, none",
  hPos: "Positions",
  posHint: "One FEN per line. A line may start with a chasolver label (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) to give the expected answer; lines starting with <code>#</code> are skipped. A FEN the engine puts right (castling rights the board does not allow, an en passant square no last move left, the move counters) is written as it reads it when you leave the box. Ctrl+Enter judges.",
  hFiles: "Files",
@@ -176,17 +188,17 @@ en: {
  lblPly: "ply ceiling",
  lblBud: "node budget",
  limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move; so does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for",
- limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move and, where that fails without a mate, a second tier of {2} plies and {3} nodes; so does the check, after a draw, of whether the other side cannot mate either (a dead position). Your tiers are for the side the flag fell for; the third runs when its box is ticked, after a second that fails without a mate",
+ limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move and, where that fails without a mate, looks for the stuck mater move by move, then runs a second tier of {2} plies and {3} nodes; so does the check, after a draw, of whether the other side cannot mate either (a dead position). Your tiers are for the side the flag fell for. The third tier is not in the engine: it is this page’s, for analysis after the game, off unless its box is ticked, and runs after a ladder that fails without a mate",
  lblGate1: "gate 1",
  lblGate2: "gate 2",
- lblGate3: "gate 3",
+ lblGate3: "gate 3 (analysis)",
  lblPlies: "plies",
  lblNodes: "nodes",
  lblVer: "version",
  ver1: "fast (the first version)",
  ver2: "full (the second version)",
  verNote1: "the rules proposed to Lichess: material, the lock detector of kings, pawns and bishops, the Domino search",
- verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); and two more tiers to the Domino search (9 plies and 5,000 nodes, then 150 and 5,000,000), each where the one before fails without a mate; not complete either, and a little slower",
+ verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); and, where the Domino search fails without a mate, the stuck mater move by move (whatever the flagged side plays, the other side, left with its king and pawns, has no move) and a second tier of the search (9 plies and 5,000 nodes); not complete either, and a little slower. The third tier (150 plies and 5,000,000 nodes) is this page’s, for analysis after the game, not the engine’s",
  verTag: " · full version",
  lblLockOnly: "lock detector only",
  lockOnlyNote: "positions are judged by the lock detector alone, no material test and no search; the games below still use the whole ladder",
@@ -222,7 +234,7 @@ en: {
  rs_bad: "Invalid FEN",
  rd_material: "the other side has too little material to mate at all",
  rd_lock: "pawns, kings and bishops that no series of moves can open",
- rd_domino: "every line the Domino search followed ended without mate",
+ rd_domino: "every line the Domino search followed ended without mate (or, after it, the stuck mater move by move)",
  rd_stalemate: "no legal move and no check: no mate can follow",
  rd_mate: "a series of legal moves that ends in mate: the win is proven",
  rd_open: "the search hit the ply ceiling or the node budget first: the win stands by default",
@@ -309,6 +321,7 @@ en: {
  st2Skip: "Not needed: material settled it.",
  st3Ok: "Followed every line until mate became impossible, {0} in all: {1} cannot mate. Draw by the Domino effect.",
  st3Deep: "The first search ({0}) ended without a proof and without a mate, so the next tiers ran: {1}.",
+ st3Stuck: "The first search ({0}) ended without a proof and without a mate; then the stuck mater, move by move: whatever {1} plays, {2}, left with its king and pawns, has no move. {2} cannot mate. Draw.",
  st3Mate: "Found a line in which {0} mates. Win on time, proven.",
  st3Hor: "A line reached the ply ceiling ({0}) without a proof. Nothing proven: the win for {1} stands by default.",
  st3Bud: "The node budget ({0}) ran out without a proof. Nothing proven: the win for {1} stands by default.",
@@ -383,7 +396,7 @@ en: {
  infoH: "What the two answers mean",
  info1: "If neither side can mate, the game can end in a draw at once. Nothing is lost by ending it (FIDE 5.2.2, dead position).",
  info2: "If one side can mate and the other cannot, the game goes on. But the side that can still mate does not lose even if its time runs out: the game must end in a draw (FIDE 6.9).",
- info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.6% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1} with its default limits (3 plies, 10 nodes), and the full version, through its three tiers and under the 75-move rule, every one.",
+ info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.6% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1} with its default limits (3 plies, 10 nodes), and the full version all but {2}. So in play even the full version may, very rarely, leave unproven a position that cannot be mated; the analysis after the game catches it: with the third tier ticked (and, if need be, a larger budget), under the 75-move rule, the full version proves every one of the {0}.",
  flagToMove: "{0}, the side to move",
  flagForced: "{0}, by “judge both flags”; {1} is to move",
  kMoves: "legal moves",
@@ -537,7 +550,7 @@ en: {
  pk_moves: "Moves",
  secEngine: "The engine on this page",
  engineNote: "<code>mateless.js</code>, exactly as it runs here ({0} bytes): a reference board, the material test, the lock detector, the Domino search and a flag per side that a game keeps move by move. The same engine is in the repository, with its Rust port and WebAssembly build.",
- engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, two more tiers of the Domino search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too.",
+ engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, after a Domino search that fails without a mate the stuck mater move by move and a second tier of the search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too. The third tier is not in it: it is this page’s own, for analysis after the game.",
  foot: "Mateless never declares a draw without a proof: a position it cannot prove falls to the win and is left to a complete solver after the game. Its verdicts were checked against chasolver’s labels, and every flag that came down in thousands of games against chasolver’s full analysis, with no false draw. MIT License, © 2026 Cüneyt İnan. Source, Rust port and data: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess data: Miguel Ambrona’s <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a>.",
 },
 tr: {
@@ -552,7 +565,7 @@ tr: {
  sp2n: "~17–18×",
  sp2t: "verinin tamamında bilinen en yakın yöntemden hızlı: bit düzeyinde tespit, bildiğimiz en hızlısı",
  sp3n: "%99,68",
- sp3t: "chasolver’ın berabere bitmesi gerekirken süreden kaybedilmiş 204.484 Lichess oyununda hızlı sürümün ispatladığı pay; tam sürüm hepsini ispatlıyor",
+ sp3t: "chasolver’ın berabere bitmesi gerekirken süreden kaybedilmiş 204.484 Lichess oyununda hızlı sürümün ispatladığı pay; tam sürüm 2 tanesini bırakıyor, oyun sonrası analizde 3. kapıyla hiçbirini",
  hPos: "Pozisyonlar",
  posHint: "Her satıra bir FEN. Satır, beklenen cevabı vermek için bir chasolver etiketiyle (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) başlayabilir; <code>#</code> ile başlayan satırlar atlanır. Motorun düzelttiği bir FEN (tahtanın izin vermediği rok hakları, hiçbir son hamlenin bırakmadığı geçerken alma karesi, sayaçlar) kutudan çıkınca motorun okuduğu gibi yazılır. Ctrl+Enter hüküm verir.",
  hFiles: "Dosyalar",
@@ -575,17 +588,17 @@ tr: {
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
  limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için",
- limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar, bu arama mat bulmadan başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle. Senin kademelerin bayrağı düşen taraf için; üçüncüsü, kutusu işaretliyse, mat bulmadan başarısız olan bir ikinciden sonra çalışır",
+ limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar, bu arama mat bulmadan başarısız olursa hamle hamle hamlesiz rakibe bakar, sonra {2} ply ve {3} düğümlük ikinci bir kademe çalıştırır; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle. Senin kademelerin bayrağı düşen taraf için. 3. kapı motorda yok: bu sayfanın, oyun sonrası analiz için; kutusu işaretlenmedikçe kapalı, mat bulmadan başarısız olan bir merdivenden sonra çalışır",
  lblGate1: "1. kapı",
  lblGate2: "2. kapı",
- lblGate3: "3. kapı",
+ lblGate3: "3. kapı (analiz)",
  lblPlies: "ply",
  lblNodes: "düğüm",
  lblVer: "sürüm",
  ver1: "hızlı (ilk sürüm)",
  ver2: "tam (ikinci sürüm)",
  verNote1: "Lichess’e önerilen kurallar: materyal, şah, piyon ve fillerin kilit dedektörü, Domino araması",
- verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım), Domino aramasına da iki kademe daha (9 ply ve 5.000 düğüm, sonra 150 ve 5.000.000) ekler, her biri öncekinin mat bulmadan başarısız olduğu yerde; o da tam değil ve biraz daha yavaş",
+ verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım) ekler; Domino aramasının mat bulmadan başarısız olduğu yerde de hamle hamle hamlesiz rakibi (bayrağı düşen ne oynarsa oynasın, şahı ve piyonlarıyla kalan öbür tarafın hamlesi yok) ve aramanın ikinci bir kademesini (9 ply ve 5.000 düğüm); o da tam değil ve biraz daha yavaş. 3. kapı (150 ply ve 5.000.000 düğüm) motorun değil, bu sayfanın: oyun sonrası analiz için",
  verTag: " · tam sürüm",
  lblLockOnly: "yalnız kilit dedektörü",
  lockOnlyNote: "pozisyonlar yalnızca kilit dedektörüyle yargılanır, materyal testi ve arama yok; aşağıdaki oyunlar yine bütün merdiveni kullanır",
@@ -621,7 +634,7 @@ tr: {
  rs_bad: "Geçersiz FEN",
  rd_material: "öbür tarafın mat edecek kadar materyali hiç yok",
  rd_lock: "piyon, şah ve fillerden hiçbir hamle dizisinin açamayacağı bir yapı",
- rd_domino: "Domino aramasının izlediği her hat matsız bitti",
+ rd_domino: "Domino aramasının izlediği her hat matsız bitti (ya da ardından hamle hamle hamlesiz rakip)",
  rd_stalemate: "legal hamle yok, şah da yok: ardından mat gelemez",
  rd_mate: "matla biten bir legal hamle dizisi: galibiyet ispatlı",
  rd_open: "arama önce ply tavanına ya da düğüm bütçesine çarptı: galibiyet varsayılan olarak kalıyor",
@@ -708,6 +721,7 @@ tr: {
  st2Skip: "Gerek yok: materyal çözdü.",
  st3Ok: "Her hat mat imkânsızlaşana dek izlendi, toplam {0}: {1} mat edemez. Domino etkisiyle berabere.",
  st3Deep: "İlk arama ({0}) ispatsız ve matsız bitti; sonraki kademeler çalıştı: {1}.",
+ st3Stuck: "İlk arama ({0}) ispatsız ve matsız bitti; ardından hamle hamle hamlesiz rakip: {1} ne oynarsa oynasın, şahı ve piyonlarıyla kalan {2} hamlesiz kalıyor. {2} mat edemez. Berabere.",
  st3Mate: "{0} tarafının mat ettiği bir hat bulundu. Süreden galibiyet, ispatlı.",
  st3Hor: "Bir hat ispat olmadan ply tavanına ({0}) ulaştı. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
  st3Bud: "Düğüm bütçesi ({0}) ispat olmadan tükendi. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
@@ -782,7 +796,7 @@ tr: {
  infoH: "İki cevap ne demek",
  info1: "İki taraf da mat edemiyorsa oyun hemen berabere bitebilir. Bitmesinde sakınca yok (FIDE 5.2.2, ölü pozisyon).",
  info2: "Bir taraf mat edebiliyor, öbürü edemiyorsa oyun sürer. Ama mat edebilen taraf süresi bitse de kaybetmez: oyun berabere bitmeli (FIDE 6.9).",
- info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,6’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm kendi varsayılan sınırlarıyla (3 ply, 10 düğüm) ispatlıyor; tam sürüm ise üç kademesiyle ve 75 hamle kuralı altında hepsini.",
+ info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,6’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm kendi varsayılan sınırlarıyla (3 ply, 10 düğüm) ispatlıyor; tam sürüm ise {2} tanesi dışında hepsini. Yani oyun içinde tam sürüm de, çok nadiren, mat edilemeyen bir pozisyonu ispatsız bırakabilir; oyun sonrası analiz onu yakalar: 3. kapı işaretliyken (gerekirse daha büyük bir bütçeyle), 75 hamle kuralı altında tam sürüm {0} oyunun hepsini ispatlıyor.",
  flagToMove: "{0}, sırası gelen",
  flagForced: "{0}, “iki bayrağı da dene” ile; sıra {1} tarafında",
  kMoves: "legal hamle",
@@ -936,7 +950,7 @@ tr: {
  pk_moves: "Hamleler",
  secEngine: "Bu sayfadaki motor",
  engineNote: "<code>mateless.js</code>, burada çalıştığı haliyle ({0} bayt): bir referans tahta, materyal testi, kilit dedektörü, Domino araması ve bir oyunun hamle hamle tuttuğu taraf başına bir bayrak. Aynı motor, Rust çevirisi ve WebAssembly derlemesiyle birlikte repoda.",
- engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında iki kademe daha ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor.",
+ engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, mat bulmadan başarısız olan bir Domino aramasından sonra hamle hamle hamlesiz rakip ve aramanın ikinci bir kademesi ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor. 3. kapı onda yok: bu sayfanın kendisinin, oyun sonrası analiz için.",
  foot: "Mateless ispatı olmadan hiçbir zaman beraberlik demez: ispatlayamadığı pozisyon galibiyete düşer ve oyundan sonra tam bir çözücüye kalır. Hükümleri chasolver’ın etiketlerine, binlerce oyunda düşen her bayrak da chasolver’ın tam analizine karşı denetlendi; hiç yanlış beraberlik çıkmadı. MIT Lisansı, © 2026 Cüneyt İnan. Kaynak, Rust çevirisi ve veri: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess verisi: Miguel Ambrona’nın <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a> sayfası.",
 }};
 var lang = 'en';
@@ -1182,7 +1196,7 @@ function warmTime(w, P, B) {
   var setup = E.fromFen(w.fen); if (setup.error) return null;
   var pos = setup.position, g = w.g === 0 || w.g === 1 ? w.g : (pos.side === E.WHITE ? 1 : 0), flagged = g ? E.WHITE : E.BLACK, lim = Object.assign({ maxPly: P, budget: B }, deepOf(), rulesOf(null));
   var block = LOCKONLY ? function (k) { for (var i = 0; i < k; i++) E.lockCannotMate(pos, flagged) }
-                       : function (k) { for (var i = 0; i < k; i++) E.proveCannotBeMated(pos, flagged, lim) };
+                       : function (k) { for (var i = 0; i < k; i++) prove(pos, flagged, lim) };
   /* a block of calls between two readings of the clock; the first ~15 ms only warm the JIT up */
   var t0 = performance.now(), k = 1, n = 0, t;
   while (performance.now() - t0 < 15 && k < 1 << 16) { block(k); k *= 2 }
@@ -1386,6 +1400,7 @@ function detailHTML(k) {
   var rl = results.rule || 0, rn = '';
   if (r.ruled) { c3 += ' · moveRule ' + rl; rn = ' ' + F(r.draw ? 'st3Rule' : r.reason == 'mate' ? 'st3RuleMate' : 'st3RuleNo', rl / 2); dn += rn }
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
+  else if (r.stuck) s += stepRow('dec', T('s3n'), c3 + ' → stuck(' + who + ')', F('st3Stuck', F('limits', P, num(B)), fl, op));
   else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op) + dn);
   else if (r.reason == 'stalemate') s += stepRow('dec', T('s3n'), c3, T('st3SM'));
   else if (r.reason == 'mate') s += stepRow('win', T('s3n'), c3, (r.used ? F('st3Mate', op) : T('st3Mated')) + dn);

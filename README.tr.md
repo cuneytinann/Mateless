@@ -30,7 +30,8 @@ kısa aramayla Mateless, aşağıdaki Lichess verisinin **%99,98'ini** bilinen e
 **~17–18 kat hızlı** kapsıyor (Rust'a karşı Rust); bu ölçümlerde arama 6 ply ve 100 düğümdü. 26
 Kasım 2026'dan beri arama 3 ply ve 10 düğüm: gerçek oyun pozisyonlarında yaklaşık iki kat hızlı,
 süre kayıplarında aynı hızda; chasolver'ın 19 Kasım listesinin %99,68'ini (204.484 satırın
-203.828'ini; 6 ve 100 ile 204.448'ini) ispatlıyor, aşağıdaki tam sürüm hepsini.
+203.828'ini; 6 ve 100 ile 204.448'ini) ispatlıyor, aşağıdaki tam sürüm 2'si dışında hepsini,
+hakem sayfasının oyun sonrası analiz için 3. kapısıyla hepsini.
 
 Alanın referansı [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022)
 tam bir çözücü: Mateless'in denemediği bestelenmiş problemleri de çözüyor. Mateless böyle bir
@@ -205,9 +206,11 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   (beşli ya da üçlü) ve Chess960'la (rok onun kurallarıyla, tahtanın rok sütunları bir başlangıç pozisyonunun
   numarasından, 0–959); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
   hangi pozisyonları yakaladığını gösteriyor. Aramanın sınırları tahtanın yanındaki motor
-  ayarlarında: ilk arama iki sürümde de 3 ply ve 10 düğüm; tam olan buna 9 ply ve 5.000 düğümlük
-  ikinci bir kademe ile 150 ply ve 5.000.000 düğümlük bir üçüncüsünü (kutusu varsayılan olarak
-  işaretli) ekliyor, her biri öncekinin mat bulmadan başarısız olduğu yerde; hepsi ayarlanabilir.
+  ayarlarında: ilk arama iki sürümde de 3 ply ve 10 düğüm; tam olan, bu arama mat bulmadan
+  başarısız olunca, hamle hamle hamlesiz rakibi ve 9 ply ve 5.000 düğümlük ikinci bir kademeyi
+  ekliyor, ikisi de ayarlanabilir. 150 ply ve 5.000.000 düğümlük 3. kapı sayfanın kendisinin, oyun
+  sonrası analiz için: kutusu işaretlenmedikçe kapalı, mat bulmadan başarısız olan bir merdivenden
+  sonra çalışır ve ne sayfanın indirdiği ne de repodaki hiçbir motorda var.
 - **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
   kale, vezir ve ikiz filler neden dışarıda; sonra bitboard'larla piyonlar ve şahlar (alış varsa
   kilit yok; koniler; duvarlar, sabit piyonlar, şah erişimleri ve alım karelerinin sabit noktası;
@@ -486,10 +489,14 @@ Bu sürüm, hızlı olanı, bir oyun sunucusu için yapılan katman: sağlam, k�
 çalışmak için yapıldı. Yanında `second-version` dalında tam sürüm duruyor; hakem sayfası, seçilince
 onu çalıştırıyor. O da tam değil; "tam" hedefinin adı ve yeni kurallar eklendikçe büyüyor: önü açık
 piyon çiftleri, kutulu at, kale ve vezir, ikiz filler, şah ve piyonlu bir oyunun pata gidiş yolları
-için dört kural, Domino aramasına iki kademe daha (9 ply ve 5.000 düğüm, sonra 150 ve 5.000.000),
-her biri öncekinin mat bulmadan başarısız olduğu yerde, ve istenirse 75 ya da 50 hamle kuralı ile
-beşli ya da üçlü tekrar (JavaScript, Rust ve WebAssembly'de). chasolver'ın 19 Kasım listesinde
-(204.484 satır) bu sürüm 656 satırı ispatsız bırakıyor, tam olan 75 hamle kuralı altında hiçbirini.
+için dört kural, Domino aramasının mat bulmadan başarısız olduğu yerde hamle hamle hamlesiz rakip
+(bayrağı düşen ne oynarsa oynasın, şahı ve piyonlarıyla kalan öbür tarafın hamlesi yok) ve aramanın
+ikinci bir kademesi (9 ply ve 5.000 düğüm), ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da
+üçlü tekrar (JavaScript, Rust ve WebAssembly'de). chasolver'ın 19 Kasım listesinde (204.484 satır)
+bu sürüm 656 satırı ispatsız bırakıyor, tam olan 2'sini; hakem sayfasının 3. kapısıyla (150 ply,
+5.000.000 düğüm, oyun sonrası analiz için, motorda yok) 75 hamle kuralı altında hiçbirini. Yani oyun
+içinde tam sürüm de, çok nadiren, mat edilemeyen bir pozisyonu ispatsız bırakabilir; oyun sonrası
+analiz onu yakalar.
 Hamle sınırına yakınken matın zamanında gelip gelemeyeceğine, saatin kendisiyle sınırlı ve mata ya
 da bir alışa veya piyon hamlesine kalan yarım hamlelerin alt sınırıyla budanan bir arama karar
 veriyor: üç ile beş taşlı oyun sonlarında, kural uzaklıklarının çevresinde, zamanında mat

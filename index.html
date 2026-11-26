@@ -745,9 +745,9 @@ html[lang="en"] .tab [lang="tr"],html[lang="tr"] .tab [lang="en"]{display:none!i
               <label><span class="glab" data-i="lblPly">ply ceiling</span> <input type="number" id="g2p" value="9" min="1" max="1500" step="1" inputmode="numeric"></label>
               <label><span class="glab" data-i="lblBud">node budget</span> <input type="number" id="g2b" value="5000" min="1" max="1000000000" step="1" inputmode="numeric"></label>
             </div>
-            <div class="engrow gaterow"><label class="gatelab"><input type="checkbox" id="g3on" checked> <span data-i="lblGate3">gate 3</span></label>
-              <label><span class="glab" data-i="lblPly">ply ceiling</span> <input type="number" id="g3p" value="150" min="1" max="1500" step="1" inputmode="numeric"></label>
-              <label><span class="glab" data-i="lblBud">node budget</span> <input type="number" id="g3b" value="5000000" min="1" max="1000000000" step="1" inputmode="numeric"></label>
+            <div class="engrow gaterow"><label class="gatelab"><input type="checkbox" id="g3on"> <span data-i="lblGate3">gate 3 (analysis)</span></label>
+              <label><span class="glab" data-i="lblPly">ply ceiling</span> <input type="number" id="g3p" disabled value="150" min="1" max="1500" step="1" inputmode="numeric"></label>
+              <label><span class="glab" data-i="lblBud">node budget</span> <input type="number" id="g3b" disabled value="5000000" min="1" max="1000000000" step="1" inputmode="numeric"></label>
             </div>
           </div>
         </div>
@@ -7112,9 +7112,9 @@ return Object.freeze({
  *
  * Two versions in one: the first is the fast layer (the lock detector of lock/ and of the
  * scalachess patch); the second adds rules that see more, each run only when its own situation is
- * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and two
- * more tiers of the Domino search (9 plies and 5,000 nodes, then 150 and 5,000,000), each where the
- * one before it fails without finding a mate. Not complete either: wider, with completeness as its goal.
+ * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and, where
+ * the Domino search fails without finding a mate, the stuck mater move by move and a second tier
+ * of the search (9 plies, 5,000 nodes). Not complete either: wider, with completeness as its goal.
  *
  * The source is in layers, one ES module each (src/); tools/build.js joins them into mateless.js,
  * one dependency-free file. Mateless itself, what this library adds:
@@ -7448,6 +7448,11 @@ function rookIndex(sq, occLo, occHi) {
 function bishopIndex(sq, occLo, occHi) {
   return B_BASE[sq] + ((Math.imul(occLo & B_MASK_LO[sq], B_MAGIC_LO[sq]) ^ Math.imul(occHi & B_MASK_HI[sq], B_MAGIC_HI[sq])) >>> B_SHIFT[sq]);
 }
+/** The attacks of a bishop or a rook from sq, the board occupied as (occLo, occHi), returned
+    through rayLo / rayHi (the second version's stuck mater, ladder.js). */
+let rayLo = 0, rayHi = 0;
+function bishopRay(sq, occLo, occHi) { const b = bishopIndex(sq, occLo, occHi); rayLo = BISHOP_LO[b]; rayHi = BISHOP_HI[b]; }
+function rookRay(sq, occLo, occHi) { const r = rookIndex(sq, occLo, occHi); rayLo = ROOK_LO[r]; rayHi = ROOK_HI[r]; }
 /** The rays of a rook and a bishop on an empty board, used to find pinning pieces. */
 const ROOK_EMPTY_LO = new Int32Array(64), ROOK_EMPTY_HI = new Int32Array(64);
 const BISHOP_EMPTY_LO = new Int32Array(64), BISHOP_EMPTY_HI = new Int32Array(64);
@@ -10037,8 +10042,6 @@ class PositionSet {
 const DOMINO_PLY = 3, DOMINO_BUDGET = 10;
 /** The second tier (the second version, see ladder.js): 9 plies, 5,000 nodes. */
 const DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 5000;
-/** The third tier (the second version, see ladder.js): 150 plies, 5,000,000 nodes. */
-const DOMINO_THIRD_PLY = 150, DOMINO_THIRD_BUDGET = 5000000;
 /** The search under a move rule (the second version, see ladder.js): at least 200,000 nodes. Near the
     rule its tree is closed by the rule itself, a tree a few plies deep but wide: with a queen, every
     one of its moves. */
@@ -10893,9 +10896,8 @@ class ClockSearch {
      1. the material test   (material.js)
      2. the lock detector   (lock.js)
      3. the Domino search   (domino.js), 3 plies and 10 nodes
-     4. the Domino search's second tier, 9 plies and 5,000 nodes, and its third, 150 plies and
-        5,000,000 nodes, each where the one before it fails without finding a mate (the second
-        version, below)
+     4. where the Domino search fails without finding a mate, the stuck mater move by move, then
+        the search's second tier, 9 plies and 5,000 nodes (the second version, below)
      5. under a move rule (moveRule 150 or 100) or a repetition rule (repetition 5 or 3, with the
         game's history), the second version, below: a search with the rules ending lines, where
         they can end one (the clock search, clock.js, near the move rule)
@@ -10913,30 +10915,28 @@ const sharedSearch = new Domino();
 /* The search under a move rule (clock.js), shared the same way. */
 const sharedClock = new ClockSearch();
 
-/* ─── The tiers (the second version) ───────────────────────────────────────────────────
+/* ─── After the first search (the second version) ──────────────────────────────────────
 
    Where the first search (3 plies and 10 nodes, the first version's) fails without finding a
-   mate, a deeper one can still prove the side: a king that must take a last queen or rook, and
-   then a pawn ending that runs into stalemate or a lock, takes more than 3 plies or 10 nodes. So a
-   side the first search leaves unproven goes on to the second tier (9 plies, 5,000 nodes), and
-   one the second leaves unproven to the third (150 plies, 5,000,000 nodes): each position on its
-   own, the moment the tier before it fails. A search that found a mate has proven nothing can be
-   proven: there the ladder stops. A budget is a ceiling, not a cost: a tier ends when its search
-   does, by a proof, a mate, or lines that reach its ply ceiling.
+   mate, two more things can still prove the side, in this order: the stuck mater move by move
+   (below), on the bitboards, and the second tier, the same search at 9 plies and 5,000 nodes (a
+   king that must take a last queen or rook, and then a pawn ending that runs into stalemate or a
+   lock, takes more than 3 plies or 10 nodes). A search that found a mate has proven nothing can be
+   proven: there the ladder stops. A budget is a ceiling, not a cost: a search ends when its lines
+   do, by a proof, a mate, or lines that reach its ply ceiling.
 
-   On chasolver's list of 19 November (204,484 rows) the first tier leaves 645 rows to the second
-   and 2 reach the third; none is left unproven under the 75-move rule, and without it 1
-   (8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w, which only the rule proves, see below). Until 26 November
-   2026 the second tier (then 9 plies and 10,000 nodes, after a first search of 6 plies and 100)
-   ran only after a failure on the budget, or on the horizon with no knight, rook or queen on the
-   board and a king shut in; after a first search of 3 plies that left 14 rows unproven.
+   On chasolver's list of 19 November 2026 (204,484 rows) the first search leaves 645 rows
+   unproven without a mate; the stuck mater proves 345 of them, the second tier all but 2 of the
+   other 300: 1k6/1P5p/BP3p2/1P6/8/8/5PKP/8 b (a tempo, proven by a search of 25 plies) and
+   8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w (a bishop's cage that only a search of 150 plies under the
+   75-move rule proves). The arbiter page has such a search, for analyses after the game, as a third
+   tier; it is not part of the engine, which runs after every move.
+   Until 26 November 2026 the second tier (then 9 plies and 10,000 nodes, after a first search of
+   6 plies and 100) ran only after a failure on the budget, or on the horizon with no knight, rook
+   or queen on the board and a king shut in; after a first search of 3 plies that left 14 rows
+   unproven.
 
-   The third tier runs for a single position's verdict (proveCannotBeMated, proveBoth,
-   flagVerdict; thirdBudget 0: none). A game's flags (Flags) and isDeadPosition stop at the
-   second: they search after every move, for both sides, and the third would widen the window of
-   the rules' searches (below) for every side its ply ceiling stopped.
-
-   Like the first search the tiers prove only what they prove: a failure is no claim that a mate
+   Like the first search they prove only what they prove: a failure is no claim that a mate
    exists. */
 
 /** Does the next tier run after a search that failed for `failure`? After any failure but a mate. */
@@ -10955,6 +10955,233 @@ function secondTier(pos, open, fw, fb) {
   return (d[0].proven ? FLAGGED_WHITE : 0) | (d[1].proven ? FLAGGED_BLACK : 0);
 }
 
+/* ─── The stuck mater, move by move (the second version) ──────────────────────────────────
+
+   With the flagged side to move and a mater of a king and pawns only: when every move of the
+   flagged side leaves the mater without a legal move, the game ends at the mater's turn (a
+   stalemate, or a mate of the mater) and the flagged side is never mated. There a search with
+   many flagged moves (a bishop free to go anywhere, a king free to step) runs out of its budget
+   before it has tried them all, though each is over at once: the lock-like rows of group D
+   (chasolver's list of 19 November: 183 rows, 175 of them proven here; of the 8 left, in 6 one
+   move leads to a lock, in 2 the mater has a bishop).
+
+   Decided on the bitboards; no move is made and no position searched. With a mater of a king and
+   pawns no flagged man is pinned, and the flagged king's steps are exact: not onto its own men,
+   not where a mater pawn or the mater's king attacks. In a pawn's check the flagged side has those
+   steps and the captures of the checking pawn (en passant too). For each move the bitboards after
+   it are written out, and the mater's legal moves looked for: a king's step to a square the
+   flagged side neither attacks nor defends, its sliders seeing through the king's own square; a
+   pawn's push, capture or en passant capture, a pinned pawn only along its pin, and in check only
+   onto the checking man or between it and the king. The en passant capture is counted even where
+   a horizontal pin forbids it, so the answer "stuck" is always right. No answer (false) with a
+   castling right of the flagged side's, two mater pawns with an empty square ahead, or two flagged
+   men a mater pawn can take (no single move mends either). */
+
+/* the bitboards after a flagged move, and the lines a pinned mater pawn may move along */
+const AFTER_LO = new Int32Array(16), AFTER_HI = new Int32Array(16);
+const PIN_LO = new Int32Array(64), PIN_HI = new Int32Array(64);
+/* the squares a pawn of colour `white` attacks from the squares of (lo, hi): through pawnLo / pawnHi */
+let pawnLo = 0, pawnHi = 0;
+function pawnAttacks(lo, hi, white) {
+  if (white) { pawnLo = sideways(northLo(lo)); pawnHi = sideways(northHi(lo, hi)); }
+  else { pawnLo = sideways(southLo(lo, hi)); pawnHi = sideways(southHi(hi)); }
+}
+/* every square colour `by` attacks or defends with the bitboards (lo, hi), the board occupied as
+   (occLo, occHi): through atkLo / atkHi */
+let atkLo = 0, atkHi = 0;
+function attackSet(lo, hi, by, occLo, occHi) {
+  pawnAttacks(lo[by | PAWN], hi[by | PAWN], by === WHITE);
+  let aL = pawnLo, aH = pawnHi;
+  const k = 2 * firstSquare(lo[by | KING], hi[by | KING]);
+  aL |= KING_STEPS[k]; aH |= KING_STEPS[k + 1];
+  let sL = lo[by | KNIGHT], sH = hi[by | KNIGHT];
+  while (sL | sH) {
+    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
+    aL |= KNIGHT_STEPS[2 * q]; aH |= KNIGHT_STEPS[2 * q + 1];
+  }
+  sL = lo[by | BISHOP] | lo[by | QUEEN]; sH = hi[by | BISHOP] | hi[by | QUEEN];
+  while (sL | sH) {
+    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
+    bishopRay(q, occLo, occHi); aL |= rayLo; aH |= rayHi;
+  }
+  sL = lo[by | ROOK] | lo[by | QUEEN]; sH = hi[by | ROOK] | hi[by | QUEEN];
+  while (sL | sH) {
+    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
+    rookRay(q, occLo, occHi); aL |= rayLo; aH |= rayHi;
+  }
+  atkLo = aL; atkHi = aH;
+}
+
+/** Has the mater (a king and pawns, to move) a legal move, with the bitboards AFTER_LO / AFTER_HI?
+    ep: the square behind a flagged double step, where a mater pawn beside it may capture en
+    passant (-1: none). */
+function materCanMove(flagged, ep) {
+  const lo = AFTER_LO, hi = AFTER_HI, mater = flagged ^ WHITE, mw = mater === WHITE;
+  const mpL = lo[mater | PAWN], mpH = hi[mater | PAWN], mkL = lo[mater | KING], mkH = hi[mater | KING];
+  const occL = lo[0] | lo[8], occH = hi[0] | hi[8];
+  const k = firstSquare(mkL, mkH);
+  // the king: a step to a square the flagged side neither attacks nor defends
+  const frL = KING_STEPS[2 * k] & ~lo[mater], frH = KING_STEPS[2 * k + 1] & ~hi[mater];
+  if (frL | frH) {
+    attackSet(lo, hi, flagged, occL & ~mkL, occH & ~mkH);
+    if ((frL & ~atkLo) | (frH & ~atkHi)) return true;
+  }
+  if (!(mpL | mpH)) return false;
+  // checks on the mater's king, and the squares that answer one
+  const dL = lo[flagged | BISHOP] | lo[flagged | QUEEN], dH = hi[flagged | BISHOP] | hi[flagged | QUEEN];
+  const oL = lo[flagged | ROOK] | lo[flagged | QUEEN], oH = hi[flagged | ROOK] | hi[flagged | QUEEN];
+  pawnAttacks(mkL, mkH, mw);
+  let cL = (pawnLo & lo[flagged | PAWN]) | (KNIGHT_STEPS[2 * k] & lo[flagged | KNIGHT]);
+  let cH = (pawnHi & hi[flagged | PAWN]) | (KNIGHT_STEPS[2 * k + 1] & hi[flagged | KNIGHT]);
+  bishopRay(k, occL, occH); cL |= rayLo & dL; cH |= rayHi & dH;
+  rookRay(k, occL, occH); cL |= rayLo & oL; cH |= rayHi & oH;
+  const checks = popcount(cL) + popcount(cH);
+  if (checks >= 2) return false;
+  let evL = -1, evH = -1;
+  if (checks) { const j = 2 * (64 * k + firstSquare(cL, cH)); evL = BETWEEN[j] | cL; evH = BETWEEN[j + 1] | cH; }
+  // pins: a flagged slider on a line through the king with one man between, a mater pawn
+  let pinL = 0, pinH = 0;
+  bishopRay(k, 0, 0); let sL = rayLo & dL, sH = rayHi & dH;
+  rookRay(k, 0, 0); sL |= rayLo & oL; sH |= rayHi & oH;
+  while (sL | sH) {
+    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
+    const j = 2 * (64 * k + q), bl = BETWEEN[j] & occL, bh = BETWEEN[j + 1] & occH;
+    if (popcount(bl) + popcount(bh) === 1 && ((bl & mpL) | (bh & mpH))) {
+      const p = firstSquare(bl, bh);
+      pinL |= bl; pinH |= bh; PIN_LO[p] = LINE[j]; PIN_HI[p] = LINE[j + 1];
+    }
+  }
+  // the pawns
+  const fL = lo[flagged], fH = hi[flagged];
+  const epL = ep >= 0 && ep < 32 ? 1 << ep : 0, epH = ep >= 32 ? 1 << (ep - 32) : 0;
+  let psL = mpL, psH = mpH;
+  while (psL | psH) {
+    let p; if (psL) { p = lowestBit(psL); psL &= psL - 1; } else { p = 32 + lowestBit(psH); psH &= psH - 1; }
+    const bL = p < 32 ? 1 << p : 0, bH = p >= 32 ? 1 << (p - 32) : 0;
+    let oneL, oneH;
+    if (mw) { oneL = northLo(bL) & ~occL; oneH = northHi(bL, bH) & ~occH; }
+    else { oneL = southLo(bL, bH) & ~occL; oneH = southHi(bH) & ~occH; }
+    let twoL = 0, twoH = 0;
+    if (mw ? (bL & 0x0000ff00) : (bH & 0x00ff0000)) {
+      if (mw) { twoL = northLo(oneL) & ~occL; twoH = northHi(oneL, oneH) & ~occH; }
+      else { twoL = southLo(oneL, oneH) & ~occL; twoH = southHi(oneH) & ~occH; }
+    }
+    pawnAttacks(bL, bH, mw);
+    let tL = oneL | twoL | (pawnLo & fL), tH = oneH | twoH | (pawnHi & fH);
+    let eL = pawnLo & epL, eH = pawnHi & epH;
+    if ((bL & pinL) | (bH & pinH)) { tL &= PIN_LO[p]; tH &= PIN_HI[p]; eL &= PIN_LO[p]; eH &= PIN_HI[p]; }
+    tL &= evL; tH &= evH;
+    // en passant answers a check by the double-stepped pawn too
+    if ((eL | eH) && checks) {
+      const vL = mw ? southLo(eL, eH) : northLo(eL), vH = mw ? southHi(eH) : northHi(eL, eH);
+      if (!((cL & vL) | (cH & vH)) && !((evL & eL) | (evH & eH))) { eL = 0; eH = 0; }
+    }
+    if (tL | tH | eL | eH) return true;
+  }
+  return false;
+}
+
+/** One flagged move written into AFTER_LO / AFTER_HI: from → to by a man of type `type`, which is a
+    man of type `now` on `to` (a promotion), `double` a pawn's double step, `epcap` an en passant
+    capture. Returns: does the mater have a legal move after it? */
+function afterMove(pos, flagged, from, to, type, now, double, epcap) {
+  const mater = flagged ^ WHITE, mw = mater === WHITE;
+  AFTER_LO.set(pos.lo); AFTER_HI.set(pos.hi);
+  const fL = from < 32 ? 1 << from : 0, fH = from >= 32 ? 1 << (from - 32) : 0;
+  const tL = to < 32 ? 1 << to : 0, tH = to >= 32 ? 1 << (to - 32) : 0;
+  AFTER_LO[flagged | type] ^= fL; AFTER_HI[flagged | type] ^= fH; AFTER_LO[flagged] ^= fL; AFTER_HI[flagged] ^= fH;
+  // a capture takes a mater pawn (en passant: the one beside the double-stepped square)
+  let xL, xH;
+  if (epcap) { if (mw) { xL = northLo(tL); xH = northHi(tL, tH); } else { xL = southLo(tL, tH); xH = southHi(tH); } }
+  else { xL = tL & AFTER_LO[mater]; xH = tH & AFTER_HI[mater]; }
+  AFTER_LO[mater | PAWN] &= ~xL; AFTER_HI[mater | PAWN] &= ~xH; AFTER_LO[mater] &= ~xL; AFTER_HI[mater] &= ~xH;
+  AFTER_LO[flagged | now] |= tL; AFTER_HI[flagged | now] |= tH; AFTER_LO[flagged] |= tL; AFTER_HI[flagged] |= tH;
+  return materCanMove(flagged, double ? (from + to) >> 1 : -1);
+}
+
+/** The stuck mater, move by move: with `flagged` to move and the mater a king and pawns, does every
+    legal move of the flagged side leave the mater without a legal move? (No legal move now: true
+    when it is a stalemate, false when a mate.) */
+function stuckEvery(pos, flagged) {
+  if (pos.side !== flagged) return false;
+  const lo = pos.lo, hi = pos.hi, mater = flagged ^ WHITE, mw = mater === WHITE, fw = !mw;
+  const mpL = lo[mater | PAWN], mpH = hi[mater | PAWN], mkL = lo[mater | KING], mkH = hi[mater | KING];
+  if (lo[mater] !== (mpL | mkL) || hi[mater] !== (mpH | mkH)) return false;
+  if (pos.castling & (fw ? 3 : 12)) return false;
+  const occL = lo[0] | lo[8], occH = hi[0] | hi[8];
+  // two mater pawns with an empty square ahead, two flagged men a mater pawn can take: no single move mends either
+  const aL = mw ? northLo(mpL) : southLo(mpL, mpH), aH = mw ? northHi(mpL, mpH) : southHi(mpH);
+  if (popcount(aL & ~occL) + popcount(aH & ~occH) >= 2) return false;
+  pawnAttacks(mpL, mpH, mw);
+  const maL = pawnLo, maH = pawnHi;
+  if (popcount(maL & lo[flagged]) + popcount(maH & hi[flagged]) >= 2) return false;
+  const fkL = lo[flagged | KING], fkH = hi[flagged | KING], fk = firstSquare(fkL, fkH), mk = firstSquare(mkL, mkH);
+  const matL = maL | KING_STEPS[2 * mk], matH = maH | KING_STEPS[2 * mk + 1];
+  // a pawn's check on the flagged king: then its steps and the captures of the checking pawn
+  pawnAttacks(fkL, fkH, fw);
+  const ckL = pawnLo & mpL, ckH = pawnHi & mpH, check = (ckL | ckH) !== 0;
+  if (check && popcount(ckL) + popcount(ckH) >= 2) return false;
+  const mskL = check ? ckL : -1, mskH = check ? ckH : -1;
+  const ownL = lo[flagged], ownH = hi[flagged];
+  let any = false, tL, tH;
+  // the king
+  tL = KING_STEPS[2 * fk] & ~ownL & ~matL; tH = KING_STEPS[2 * fk + 1] & ~ownH & ~matH;
+  while (tL | tH) {
+    let to; if (tL) { to = lowestBit(tL); tL &= tL - 1; } else { to = 32 + lowestBit(tH); tH &= tH - 1; }
+    any = true; if (afterMove(pos, flagged, fk, to, KING, KING, false, false)) return false;
+  }
+  // knights, bishops, rooks, queens
+  for (const type of [KNIGHT, BISHOP, ROOK, QUEEN]) {
+    let sL = lo[flagged | type], sH = hi[flagged | type];
+    while (sL | sH) {
+      let from; if (sL) { from = lowestBit(sL); sL &= sL - 1; } else { from = 32 + lowestBit(sH); sH &= sH - 1; }
+      if (type === KNIGHT) { tL = KNIGHT_STEPS[2 * from]; tH = KNIGHT_STEPS[2 * from + 1]; }
+      else if (type === BISHOP) { bishopRay(from, occL, occH); tL = rayLo; tH = rayHi; }
+      else if (type === ROOK) { rookRay(from, occL, occH); tL = rayLo; tH = rayHi; }
+      else { bishopRay(from, occL, occH); tL = rayLo; tH = rayHi; rookRay(from, occL, occH); tL |= rayLo; tH |= rayHi; }
+      tL &= ~ownL & mskL; tH &= ~ownH & mskH;
+      while (tL | tH) {
+        let to; if (tL) { to = lowestBit(tL); tL &= tL - 1; } else { to = 32 + lowestBit(tH); tH &= tH - 1; }
+        any = true; if (afterMove(pos, flagged, from, to, type, type, false, false)) return false;
+      }
+    }
+  }
+  // the pawns: pushes (none in check), captures, en passant (in check only of the checking pawn)
+  const epL = pos.ep !== NO_SQUARE && pos.ep < 32 ? 1 << pos.ep : 0, epH = pos.ep >= 32 ? 1 << (pos.ep - 32) : 0;
+  let okEpL = epL, okEpH = epH;
+  if (check && (epL | epH)) {
+    const vL = fw ? southLo(epL, epH) : northLo(epL), vH = fw ? southHi(epH) : northHi(epL, epH);
+    if (!((vL & ckL) | (vH & ckH))) { okEpL = 0; okEpH = 0; }
+  }
+  let psL = lo[flagged | PAWN], psH = hi[flagged | PAWN];
+  while (psL | psH) {
+    let from; if (psL) { from = lowestBit(psL); psL &= psL - 1; } else { from = 32 + lowestBit(psH); psH &= psH - 1; }
+    const bL = from < 32 ? 1 << from : 0, bH = from >= 32 ? 1 << (from - 32) : 0;
+    let oneL = 0, oneH = 0, twoL = 0, twoH = 0;
+    if (!check) {
+      if (fw) { oneL = northLo(bL) & ~occL; oneH = northHi(bL, bH) & ~occH; }
+      else { oneL = southLo(bL, bH) & ~occL; oneH = southHi(bH) & ~occH; }
+      if (fw ? (bL & 0x0000ff00) : (bH & 0x00ff0000)) {
+        if (fw) { twoL = northLo(oneL) & ~occL; twoH = northHi(oneL, oneH) & ~occH; }
+        else { twoL = southLo(oneL, oneH) & ~occL; twoH = southHi(oneH) & ~occH; }
+      }
+    }
+    pawnAttacks(bL, bH, fw);
+    const cpL = pawnLo & lo[mater] & mskL, cpH = pawnHi & hi[mater] & mskH;
+    const epcL = pawnLo & okEpL, epcH = pawnHi & okEpH;
+    tL = oneL | twoL | cpL | epcL; tH = oneH | twoH | cpH | epcH;
+    while (tL | tH) {
+      let to; if (tL) { to = lowestBit(tL); tL &= tL - 1; } else { to = 32 + lowestBit(tH); tH &= tH - 1; }
+      any = true;
+      const toL = to < 32 ? 1 << to : 0, toH = to >= 32 ? 1 << (to - 32) : 0;
+      if (to < 8 || to > 55) {
+        for (const now of [QUEEN, ROOK, BISHOP, KNIGHT]) if (afterMove(pos, flagged, from, to, PAWN, now, false, false)) return false;
+      } else if (afterMove(pos, flagged, from, to, PAWN, PAWN, ((toL & twoL) | (toH & twoH)) !== 0, ((toL & epcL) | (toH & epcH)) !== 0)) return false;
+    }
+  }
+  return any || !check;
+}
+
 /* ─── The move rule (the second version) ─────────────────────────────────────────────────
 
    A game ends by itself, drawn, once 75 moves of each side have passed with no capture and no
@@ -10966,9 +11193,9 @@ function secondTier(pos, open, fw, fb) {
    clock lets a line go, cut by a lower bound on the plies to a mate or to an exit. An exit (a
    capture or a pawn move, which puts the clock back to 0) is judged by the searches above,
    without the rule, with the caller's limits. It runs where the rule can end a line within
-   REGION_REACH (40) plies, or within the deeper of the first two tiers' ply ceilings if that is
-   more, or the third's when it ran, with a budget of at least DOMINO_RULE_BUDGET (200,000) nodes
-   (or the third tier's, when it ran), which pays for the exits' searches too. Further from the rule a mate in time is all but certain, and the search would
+   REGION_REACH (40) plies, or within the deeper of the two tiers' ply ceilings if that is more,
+   with a budget of at least DOMINO_RULE_BUDGET (200,000) nodes, which pays for the exits'
+   searches too. Further from the rule a mate in time is all but certain, and the search would
    only find one. A game comes that close to the rule rarely (in chasolver's 201,060 Lichess rows,
    one flag fell with the clock above 99, none above 139). King and queen against king
    (k7/3Q4/8/8/8/8/8/K7 w, a helpmate of 9 plies at the shortest) under the 50-move rule: up to
@@ -11025,34 +11252,32 @@ function repetitionSet(repetition, history) {
     of the tiers' and DOMINO_RULE_BUDGET; with only a repetition set, the Domino search with it, its
     budget the first tier's, or the second tier's where it was allowed without the rules. Returns
     { r, nodes }, or null when no rule can end a line. */
-function ruleSearch(pos, flagged, moveRule, repeat, failure, maxPly, budget, deepPly, deepBudget, third = null) {
-  // third: the third tier's [ply ceiling, node budget] when it ran, else null
-  const ply = Math.max(deepBudget > 0 ? Math.max(maxPly, deepPly) : maxPly, third ? third[0] : 0);
+function ruleSearch(pos, flagged, moveRule, repeat, failure, maxPly, budget, deepPly, deepBudget) {
+  const ply = deepBudget > 0 ? Math.max(maxPly, deepPly) : maxPly;
   const near = moveRule > 0 && pos.halfmove + Math.max(ply, REGION_REACH) >= moveRule;
   if (!near && !repeat) return null;
   if (near) {
-    const nodes = Math.max(budget, deepBudget, third ? third[1] : 0, DOMINO_RULE_BUDGET);
+    const nodes = Math.max(budget, deepBudget, DOMINO_RULE_BUDGET);
     const r = sharedClock.run(pos, flagged, moveRule, nodes, repeat,
-                              (p, f) => exitProof(p, f, maxPly, budget, deepPly, deepBudget, third));
+                              (p, f) => exitProof(p, f, maxPly, budget, deepPly, deepBudget));
     return { r, nodes: nodes - r.budgetLeft };
   }
-  const nodes = Math.max(budget, deepBudget > 0 && deepAllowed(pos, failure) ? deepBudget : 0, third ? third[1] : 0);
+  const nodes = Math.max(budget, deepBudget > 0 && deepAllowed(pos, failure) ? deepBudget : 0);
   const r = sharedSearch.run(pos, flagged, ply, nodes, { rootStatic: false, repeat });
   return { r, nodes: nodes - r.budgetLeft };
 }
 
 /** The ladder without the rules at an exit of the clock search (a position after a capture or a
-    pawn move): the static tests, the first tier, the second where it is allowed. Returns
-    { proven, nodes }. */
-function exitProof(pos, flagged, maxPly, budget, deepPly, deepBudget, third) {
+    pawn move): the static tests, the first search, then where it fails without a mate the stuck
+    mater and the second tier. Returns { proven, nodes }. */
+function exitProof(pos, flagged, maxPly, budget, deepPly, deepBudget) {
   if (cannotMate(pos, flagged)) return { proven: true, nodes: 0 };
   let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft;
-  if (!r.proven && deepBudget > 0 && deepAllowed(pos, r.failure)) {
-    r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
-    nodes += deepBudget - r.budgetLeft;
-    if (!r.proven && third && deepAllowed(pos, r.failure)) {
-      r = sharedSearch.run(pos, flagged, third[0], third[1], { rootStatic: false });
-      nodes += third[1] - r.budgetLeft;
+  if (!r.proven && deepAllowed(pos, r.failure)) {
+    if (stuckEvery(pos, flagged)) return { proven: true, nodes };
+    if (deepBudget > 0) {
+      r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
+      nodes += deepBudget - r.budgetLeft;
     }
   }
   return { proven: r.proven, nodes };
@@ -11067,83 +11292,78 @@ function checkRepetition(repetition) {
 }
 
 /** Can `flagged` never be mated? The static tests at the root, then the Domino search (by
-    default 6 plies, 100 nodes) and, where it allows, its second tier (9 plies, 10,000 nodes;
-    deepBudget 0: none) and, with a moveRule or a repetition (and the game's history: { keys, n },
-    see repetitionSet), the searches under the rules (see above); after a failure of the second
-    tier without a mate, the third (thirdPly, thirdBudget, by default 150 plies and 5,000,000
-    nodes; thirdBudget 0: none). Returns
-    { proven, staticProof, failure, foundBy, nodes, deep, ruled }: staticProof says the static
-    tests proved it at the root; failure is 'mate', 'horizon' or 'budget' when nothing was proven
-    ('mate' with foundBy 'search': the search played a line that mates, under the rule when it
-    ran: then a mate before the rule ends the game); nodes counts the moves the searches played;
-    deep is how many tiers after the first ran (0, 1 or 2); ruled says the searches under the rule
-    ran, and the answer is theirs. */
+    default 3 plies, 10 nodes) and, where it fails without a mate, the stuck mater move by move and
+    the search's second tier (9 plies, 5,000 nodes; deepBudget 0: none) and, with a moveRule or a
+    repetition (and the game's history: { keys, n }, see repetitionSet), the searches under the
+    rules (see above). Returns { proven, staticProof, failure, foundBy, nodes, deep, stuck, ruled }:
+    staticProof says the static tests proved it at the root; failure is 'mate', 'horizon' or
+    'budget' when nothing was proven ('mate' with foundBy 'search': the search played a line that
+    mates, under the rule when it ran: then a mate before the rule ends the game); nodes counts
+    the moves the searches played; deep says the second tier ran; stuck says the stuck mater proved
+    it; ruled says the searches under the rule ran, and the answer is theirs. */
 function proveCannotBeMated(pos, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
                                                    deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET,
-                                                   thirdPly = DOMINO_THIRD_PLY, thirdBudget = DOMINO_THIRD_BUDGET,
                                                    moveRule = 0, repetition = 0, history = null } = {}) {
   checkMoveRule(moveRule); checkRepetition(repetition);
-  if (cannotMate(pos, flagged)) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: 0, ruled: false };
-  let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft, deep = 0, third = null;
+  if (cannotMate(pos, flagged)) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false, stuck: false, ruled: false };
+  let r = sharedSearch.run(pos, flagged, maxPly, budget, { rootStatic: false }), nodes = budget - r.budgetLeft, deep = false;
   const firstFailure = r.failure;
-  if (!r.proven && deepBudget > 0 && deepAllowed(pos, r.failure)) {
-    r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
-    nodes += deepBudget - r.budgetLeft; deep = 1;
-    if (!r.proven && thirdBudget > 0 && deepAllowed(pos, r.failure)) {
-      r = sharedSearch.run(pos, flagged, thirdPly, thirdBudget, { rootStatic: false });
-      nodes += thirdBudget - r.budgetLeft; deep = 2; third = [thirdPly, thirdBudget];
+  if (!r.proven && deepAllowed(pos, r.failure)) {
+    if (stuckEvery(pos, flagged))
+      return { proven: true, staticProof: false, failure: null, foundBy: null, nodes, deep: false, stuck: true, ruled: false };
+    if (deepBudget > 0) {
+      r = sharedSearch.run(pos, flagged, deepPly, deepBudget, { rootStatic: false });
+      nodes += deepBudget - r.budgetLeft; deep = true;
     }
   }
   let ruled = false;
   if (!r.proven && (moveRule > 0 || repetition > 0)) {
-    const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), firstFailure, maxPly, budget, deepPly, deepBudget, third);
+    const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), firstFailure, maxPly, budget, deepPly, deepBudget);
     if (u) { r = u.r; nodes += u.nodes; ruled = true; }
   }
-  return { proven: r.proven, staticProof: false, failure: r.failure, foundBy: r.failure === 'mate' ? 'search' : null, nodes, deep, ruled };
+  return { proven: r.proven, staticProof: false, failure: r.failure, foundBy: r.failure === 'mate' ? 'search' : null, nodes, deep, stuck: false, ruled };
 }
 
 /** proveCannotBeMated for both sides at once: one pass of the static tests, then one walk of the
-    search (Domino.run2) for the sides they leave open, and one more of the second tier for the
-    sides it is allowed for, then, with a moveRule or a repetition, the searches under the rules
-    for each side still open. Returns [White flagged, Black flagged], each the same proof as
-    proveCannotBeMated gives. */
+    search (Domino.run2) for the sides they leave open, the stuck mater for the side to move, one
+    more walk of the second tier for the sides it is allowed for, then, with a moveRule or a
+    repetition, the searches under the rules for each side still open. Returns [White flagged,
+    Black flagged], each the same proof as proveCannotBeMated gives. */
 function proveBoth(pos, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                 deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET,
-                                 thirdPly = DOMINO_THIRD_PLY, thirdBudget = DOMINO_THIRD_BUDGET, moveRule = 0,
+                                 deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
                                  repetition = 0, history = null } = {}) {
   checkMoveRule(moveRule); checkRepetition(repetition);
   const both = FLAGGED_WHITE | FLAGGED_BLACK, st = cannotMate2(pos, both);
   const r = st !== both ? sharedSearch.run2(pos, both & ~st, maxPly, budget, { rootStatic: false }) : null;
-  let deepAsk = 0;
-  if (r && deepBudget > 0) for (let i = 0; i < 2; i++)
-    if (!((st >> i) & 1) && !r[i].proven && deepAllowed(pos, r[i].failure)) deepAsk |= 1 << i;
+  let stuck = 0, deepAsk = 0;
+  if (r) for (let i = 0; i < 2; i++) {
+    if (((st >> i) & 1) || r[i].proven || !deepAllowed(pos, r[i].failure)) continue;
+    if (pos.side === (i ? BLACK : WHITE) && stuckEvery(pos, pos.side)) stuck |= 1 << i;
+    else if (deepBudget > 0) deepAsk |= 1 << i;
+  }
   const d = deepAsk ? sharedSearch.run2(pos, deepAsk, deepPly, deepBudget, { rootStatic: false }) : null;
-  let thirdAsk = 0;
-  if (d && thirdBudget > 0) for (let i = 0; i < 2; i++)
-    if (((deepAsk >> i) & 1) && !d[i].proven && deepAllowed(pos, d[i].failure)) thirdAsk |= 1 << i;
-  const t = thirdAsk ? sharedSearch.run2(pos, thirdAsk, thirdPly, thirdBudget, { rootStatic: false }) : null;
   const proof = i => {
-    if ((st >> i) & 1) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: 0, ruled: false };
-    const first = budget - r[i].budgetLeft, deep = ((deepAsk >> i) & 1) === 1, th = ((thirdAsk >> i) & 1) === 1;
-    let x = th ? t[i] : deep ? d[i] : r[i], nodes = deep ? first + deepBudget - d[i].budgetLeft : first, ruled = false;
-    if (th) nodes += thirdBudget - t[i].budgetLeft;
+    if ((st >> i) & 1) return { proven: true, staticProof: true, failure: null, foundBy: null, nodes: 0, deep: false, stuck: false, ruled: false };
+    const first = budget - r[i].budgetLeft, deep = ((deepAsk >> i) & 1) === 1;
+    if ((stuck >> i) & 1) return { proven: true, staticProof: false, failure: null, foundBy: null, nodes: first, deep: false, stuck: true, ruled: false };
+    let x = deep ? d[i] : r[i], nodes = deep ? first + deepBudget - d[i].budgetLeft : first, ruled = false;
     if (!x.proven && (moveRule > 0 || repetition > 0)) {
-      const u = ruleSearch(pos, i ? BLACK : WHITE, moveRule, repetitionSet(repetition, history), r[i].failure, maxPly, budget, deepPly, deepBudget,
-                           th ? [thirdPly, thirdBudget] : null);
+      const u = ruleSearch(pos, i ? BLACK : WHITE, moveRule, repetitionSet(repetition, history), r[i].failure, maxPly, budget, deepPly, deepBudget);
       if (u) { x = u.r; nodes += u.nodes; ruled = true; }
     }
     return { proven: x.proven, staticProof: false, failure: x.failure, foundBy: x.failure === 'mate' ? 'search' : null,
-             nodes, deep: th ? 2 : deep ? 1 : 0, ruled };
+             nodes, deep, stuck: false, ruled };
   };
   return [proof(0), proof(1)];
 }
 
-/** One side's searches for isDeadPosition: the first tier, then the second where it allows, then,
-    with rules, both again under them. */
+/** One side's searches for isDeadPosition: the first search, then where it fails without a mate
+    the stuck mater and the second tier, then, with rules, the searches again under them. */
 function searchProves(pos, flagged, moveRule, repetition, history) {
   const r = sharedSearch.run(pos, flagged, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
   if (r.proven) return true;
   const deep = deepAllowed(pos, r.failure);
+  if (deep && stuckEvery(pos, flagged)) return true;
   if (deep && sharedSearch.run(pos, flagged, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, { rootStatic: false }).proven) return true;
   if (!moveRule && !repetition) return false;
   const u = ruleSearch(pos, flagged, moveRule, repetitionSet(repetition, history), r.failure, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET);
@@ -11257,9 +11477,10 @@ class Flags {
       const r = sharedSearch.run2(pos, open & ~proven, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
       if (r[0].proven) proven |= FLAGGED_WHITE;
       if (r[1].proven) proven |= FLAGGED_BLACK;
-      // The second tier: only after a failure on the budget, or on the horizon with no knight, rook
-      // or queen on the board (in a game, almost never: one look at the piece sets).
+      // After a failure without a mate: the stuck mater for the side to move, then the second tier.
       const fw = r[0].failure, fb = r[1].failure;
+      const me = pos.side === WHITE ? FLAGGED_WHITE : FLAGGED_BLACK;
+      if ((open & ~proven & me) && deepAllowed(pos, me === FLAGGED_WHITE ? fw : fb) && stuckEvery(pos, pos.side)) proven |= me;
       if ((fw === 'budget' || fb === 'budget' || fw === 'horizon' || fb === 'horizon') && (open & ~proven))
         proven |= secondTier(pos, open & ~proven, fw, fb);
       // Under the rules, the searches again with them, only where a rule can end a line.
@@ -11357,9 +11578,9 @@ function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = 
     opponent can never mate, otherwise a win for the opponent. In a game, Game.flagVerdict reads
     the flags instead. */
 function flagVerdict(pos, side, { resigned = false, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, thirdPly = DOMINO_THIRD_PLY, thirdBudget = DOMINO_THIRD_BUDGET, moveRule = 0,
+                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
                                          repetition = 0, history = null } = {}) {
-  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget, thirdPly, thirdBudget, moveRule, repetition, history }).proven, resigned);
+  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget, moveRule, repetition, history }).proven, resigned);
 }
 
 function verdictCode(side, draw, resigned) {
@@ -11465,12 +11686,12 @@ return Object.freeze({
   isAttacked, inCheck, makeMove, legalMoves, hasLegalMove, perft, positionKey,
   // the arbiter
   materialCannotMate, lockCannotMate, cannotMate, FLAGGED_WHITE, FLAGGED_BLACK, cannotMate2,
-  DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, DOMINO_THIRD_PLY, DOMINO_THIRD_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
+  DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
   // internals exposed for tests
   _internal: Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
                              lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
                              FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS,
-                             ClockSearch, REGION_REACH, readFen }),
+                             ClockSearch, REGION_REACH, readFen, stuckEvery }),
 });
 });
 </script>
@@ -13880,7 +14101,7 @@ function judge(fen, ply, bud, forced, hist) {
              why: lk ? '' : 'nolock', castle: castleText(pos), lockOnly: true };
   }
   const t0 = performance.now();
-  const proof = E.proveCannotBeMated(pos, flagged, limits);
+  const proof = prove(pos, flagged, limits);
   const ms = performance.now() - t0;
   let reason;
   if (proof.proven) reason = proof.nodes > 0 ? 'domino' : E.materialCannotMate(pos, flagged) ? 'material' : proof.staticProof ? 'lock' : 'stalemate';
@@ -13888,10 +14109,10 @@ function judge(fen, ply, bud, forced, hist) {
   /* the other side, for a dead position, with the game's own limits (and rules): what a game would have
      found. With the reader's limits it cost a search to the ply ceiling in every position where the other
      side can still mate, for nothing: the verdict is the flagged side's. */
-  const dead = proof.proven && E.proveCannotBeMated(pos, other, Object.assign({ thirdBudget: 0 }, rules)).proven;
+  const dead = proof.proven && E.proveCannotBeMated(pos, other, rules).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
-    draw: proof.proven, dead, reason, used: proof.nodes, deep: proof.deep || 0, ruled: !!proof.ruled, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, deep: proof.deep || 0, stuck: !!proof.stuck, ruled: !!proof.ruled, ms,
     why: proof.proven ? '' : proof.failure,
     castle: castleText(pos),
   };
@@ -13916,7 +14137,7 @@ function bothSides(fen, P, B) {
   for (let g = 0; g < 2; g++) {
     const flagged = g ? E.BLACK : E.WHITE;          /* can g mate? = can its opponent never be mated? */
     if (LOCKONLY) { const lk = E.lockCannotMate(pos, flagged); out.push({ cannot: lk, reason: lk ? 'lock' : 'nolock' }); continue; }
-    const proof = E.proveCannotBeMated(pos, flagged, limits);
+    const proof = prove(pos, flagged, limits);
     out.push({ cannot: proof.proven,
                reason: proof.proven ? (proof.ruled ? 'rule' : proof.nodes > 0 ? 'domino' : E.materialCannotMate(pos, flagged) ? 'material' : proof.staticProof ? 'lock' : 'stalemate')
                                     : proof.failure === 'mate' ? 'mate' : 'open' });
@@ -13924,8 +14145,8 @@ function bothSides(fen, P, B) {
   return out;
 }
 /* The figures of info3: chasolver's list of 2026-11-19 with the default limits (3 plies, 10 nodes; the
-   full version through its three tiers, under the 75-move rule). */
-var LIST_ROWS = 204484, LIST_OPEN = [656, 0];
+   full version with its own ladder, the third tier unticked, with or without the 75-move rule). */
+var LIST_ROWS = 204484, LIST_OPEN = [656, 2];
 
 var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
 var $ = function (id) { return document.getElementById(id) }, ROOT = document.getElementById('tab-arbiter');
@@ -13954,7 +14175,19 @@ var DT = [];
 function readDeep() {
   DT = VER !== 2 ? [] : [[limitOf('g2p'), limitOf('g2b')]].concat($('g3on').checked ? [[limitOf('g3p'), limitOf('g3b')]] : []) }
 function deepOf() {
-  return VER !== 2 ? {} : { deepPly: DT[0][0], deepBudget: DT[0][1], thirdPly: DT[1] ? DT[1][0] : 150, thirdBudget: DT[1] ? DT[1][1] : 0 } }
+  return VER !== 2 ? {} : { deepPly: DT[0][0], deepBudget: DT[0][1] } }
+/* The ladder as the page runs it: the engine's own (for the full version the static tests, the first
+   search, the stuck mater move by move, the second tier and the rules), then, only when the third
+   tier's box is ticked and that ladder failed without a mate, one search of the third tier's size,
+   under the same rules. The third tier is this page's, for analysis after the game: no engine has
+   it (not mateless.js, nor its Rust port or WebAssembly build), and a game never runs it.
+   deep: how many tiers after the first ran (0, 1 or 2). */
+function prove(pos, flagged, limits) {
+  const r = E.proveCannotBeMated(pos, flagged, limits), deep = r.deep ? 1 : 0;
+  if (VER !== 2 || !DT[1] || r.proven || r.failure === 'mate') return Object.assign(r, { deep: deep });
+  const t = E.proveCannotBeMated(pos, flagged, Object.assign({}, limits, { maxPly: DT[1][0], budget: DT[1][1], deepBudget: 0 }));
+  return Object.assign(t, { nodes: r.nodes + t.nodes, deep: deep + 1, stuck: false, ruled: !!(r.ruled || t.ruled) });
+}
 /* "lock detector only": the positions are judged by the chosen version's lock detector alone, to see
    which of them it catches; the games (PGN) keep the whole ladder */
 var LOCKONLY = false;
@@ -13977,7 +14210,7 @@ en: {
  sp2n: "~17–18×",
  sp2t: "faster than the nearest known method, on all of the data: detection at the level of bits, as far as we know the fastest",
  sp3n: "99.68%",
- sp3t: "of chasolver’s 204,484 Lichess games lost on time that should have been drawn, proven by the fast version; the full one proves them all",
+ sp3t: "of chasolver’s 204,484 Lichess games lost on time that should have been drawn, proven by the fast version; the full one leaves 2, and with its third tier, in analysis after the game, none",
  hPos: "Positions",
  posHint: "One FEN per line. A line may start with a chasolver label (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) to give the expected answer; lines starting with <code>#</code> are skipped. A FEN the engine puts right (castling rights the board does not allow, an en passant square no last move left, the move counters) is written as it reads it when you leave the box. Ctrl+Enter judges.",
  hFiles: "Files",
@@ -14000,17 +14233,17 @@ en: {
  lblPly: "ply ceiling",
  lblBud: "node budget",
  limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move; so does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for",
- limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move and, where that fails without a mate, a second tier of {2} plies and {3} nodes; so does the check, after a draw, of whether the other side cannot mate either (a dead position). Your tiers are for the side the flag fell for; the third runs when its box is ticked, after a second that fails without a mate",
+ limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move and, where that fails without a mate, looks for the stuck mater move by move, then runs a second tier of {2} plies and {3} nodes; so does the check, after a draw, of whether the other side cannot mate either (a dead position). Your tiers are for the side the flag fell for. The third tier is not in the engine: it is this page’s, for analysis after the game, off unless its box is ticked, and runs after a ladder that fails without a mate",
  lblGate1: "gate 1",
  lblGate2: "gate 2",
- lblGate3: "gate 3",
+ lblGate3: "gate 3 (analysis)",
  lblPlies: "plies",
  lblNodes: "nodes",
  lblVer: "version",
  ver1: "fast (the first version)",
  ver2: "full (the second version)",
  verNote1: "the rules proposed to Lichess: material, the lock detector of kings, pawns and bishops, the Domino search",
- verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); and two more tiers to the Domino search (9 plies and 5,000 nodes, then 150 and 5,000,000), each where the one before fails without a mate; not complete either, and a little slower",
+ verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); and, where the Domino search fails without a mate, the stuck mater move by move (whatever the flagged side plays, the other side, left with its king and pawns, has no move) and a second tier of the search (9 plies and 5,000 nodes); not complete either, and a little slower. The third tier (150 plies and 5,000,000 nodes) is this page’s, for analysis after the game, not the engine’s",
  verTag: " · full version",
  lblLockOnly: "lock detector only",
  lockOnlyNote: "positions are judged by the lock detector alone, no material test and no search; the games below still use the whole ladder",
@@ -14046,7 +14279,7 @@ en: {
  rs_bad: "Invalid FEN",
  rd_material: "the other side has too little material to mate at all",
  rd_lock: "pawns, kings and bishops that no series of moves can open",
- rd_domino: "every line the Domino search followed ended without mate",
+ rd_domino: "every line the Domino search followed ended without mate (or, after it, the stuck mater move by move)",
  rd_stalemate: "no legal move and no check: no mate can follow",
  rd_mate: "a series of legal moves that ends in mate: the win is proven",
  rd_open: "the search hit the ply ceiling or the node budget first: the win stands by default",
@@ -14133,6 +14366,7 @@ en: {
  st2Skip: "Not needed: material settled it.",
  st3Ok: "Followed every line until mate became impossible, {0} in all: {1} cannot mate. Draw by the Domino effect.",
  st3Deep: "The first search ({0}) ended without a proof and without a mate, so the next tiers ran: {1}.",
+ st3Stuck: "The first search ({0}) ended without a proof and without a mate; then the stuck mater, move by move: whatever {1} plays, {2}, left with its king and pawns, has no move. {2} cannot mate. Draw.",
  st3Mate: "Found a line in which {0} mates. Win on time, proven.",
  st3Hor: "A line reached the ply ceiling ({0}) without a proof. Nothing proven: the win for {1} stands by default.",
  st3Bud: "The node budget ({0}) ran out without a proof. Nothing proven: the win for {1} stands by default.",
@@ -14207,7 +14441,7 @@ en: {
  infoH: "What the two answers mean",
  info1: "If neither side can mate, the game can end in a draw at once. Nothing is lost by ending it (FIDE 5.2.2, dead position).",
  info2: "If one side can mate and the other cannot, the game goes on. But the side that can still mate does not lose even if its time runs out: the game must end in a draw (FIDE 6.9).",
- info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.6% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1} with its default limits (3 plies, 10 nodes), and the full version, through its three tiers and under the 75-move rule, every one.",
+ info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.6% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1} with its default limits (3 plies, 10 nodes), and the full version all but {2}. So in play even the full version may, very rarely, leave unproven a position that cannot be mated; the analysis after the game catches it: with the third tier ticked (and, if need be, a larger budget), under the 75-move rule, the full version proves every one of the {0}.",
  flagToMove: "{0}, the side to move",
  flagForced: "{0}, by “judge both flags”; {1} is to move",
  kMoves: "legal moves",
@@ -14361,7 +14595,7 @@ en: {
  pk_moves: "Moves",
  secEngine: "The engine on this page",
  engineNote: "<code>mateless.js</code>, exactly as it runs here ({0} bytes): a reference board, the material test, the lock detector, the Domino search and a flag per side that a game keeps move by move. The same engine is in the repository, with its Rust port and WebAssembly build.",
- engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, two more tiers of the Domino search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too.",
+ engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, after a Domino search that fails without a mate the stuck mater move by move and a second tier of the search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too. The third tier is not in it: it is this page’s own, for analysis after the game.",
  foot: "Mateless never declares a draw without a proof: a position it cannot prove falls to the win and is left to a complete solver after the game. Its verdicts were checked against chasolver’s labels, and every flag that came down in thousands of games against chasolver’s full analysis, with no false draw. MIT License, © 2026 Cüneyt İnan. Source, Rust port and data: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess data: Miguel Ambrona’s <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a>.",
 },
 tr: {
@@ -14376,7 +14610,7 @@ tr: {
  sp2n: "~17–18×",
  sp2t: "verinin tamamında bilinen en yakın yöntemden hızlı: bit düzeyinde tespit, bildiğimiz en hızlısı",
  sp3n: "%99,68",
- sp3t: "chasolver’ın berabere bitmesi gerekirken süreden kaybedilmiş 204.484 Lichess oyununda hızlı sürümün ispatladığı pay; tam sürüm hepsini ispatlıyor",
+ sp3t: "chasolver’ın berabere bitmesi gerekirken süreden kaybedilmiş 204.484 Lichess oyununda hızlı sürümün ispatladığı pay; tam sürüm 2 tanesini bırakıyor, oyun sonrası analizde 3. kapıyla hiçbirini",
  hPos: "Pozisyonlar",
  posHint: "Her satıra bir FEN. Satır, beklenen cevabı vermek için bir chasolver etiketiyle (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) başlayabilir; <code>#</code> ile başlayan satırlar atlanır. Motorun düzelttiği bir FEN (tahtanın izin vermediği rok hakları, hiçbir son hamlenin bırakmadığı geçerken alma karesi, sayaçlar) kutudan çıkınca motorun okuduğu gibi yazılır. Ctrl+Enter hüküm verir.",
  hFiles: "Dosyalar",
@@ -14399,17 +14633,17 @@ tr: {
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
  limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için",
- limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar, bu arama mat bulmadan başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle. Senin kademelerin bayrağı düşen taraf için; üçüncüsü, kutusu işaretliyse, mat bulmadan başarısız olan bir ikinciden sonra çalışır",
+ limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar, bu arama mat bulmadan başarısız olursa hamle hamle hamlesiz rakibe bakar, sonra {2} ply ve {3} düğümlük ikinci bir kademe çalıştırır; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle. Senin kademelerin bayrağı düşen taraf için. 3. kapı motorda yok: bu sayfanın, oyun sonrası analiz için; kutusu işaretlenmedikçe kapalı, mat bulmadan başarısız olan bir merdivenden sonra çalışır",
  lblGate1: "1. kapı",
  lblGate2: "2. kapı",
- lblGate3: "3. kapı",
+ lblGate3: "3. kapı (analiz)",
  lblPlies: "ply",
  lblNodes: "düğüm",
  lblVer: "sürüm",
  ver1: "hızlı (ilk sürüm)",
  ver2: "tam (ikinci sürüm)",
  verNote1: "Lichess’e önerilen kurallar: materyal, şah, piyon ve fillerin kilit dedektörü, Domino araması",
- verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım), Domino aramasına da iki kademe daha (9 ply ve 5.000 düğüm, sonra 150 ve 5.000.000) ekler, her biri öncekinin mat bulmadan başarısız olduğu yerde; o da tam değil ve biraz daha yavaş",
+ verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım) ekler; Domino aramasının mat bulmadan başarısız olduğu yerde de hamle hamle hamlesiz rakibi (bayrağı düşen ne oynarsa oynasın, şahı ve piyonlarıyla kalan öbür tarafın hamlesi yok) ve aramanın ikinci bir kademesini (9 ply ve 5.000 düğüm); o da tam değil ve biraz daha yavaş. 3. kapı (150 ply ve 5.000.000 düğüm) motorun değil, bu sayfanın: oyun sonrası analiz için",
  verTag: " · tam sürüm",
  lblLockOnly: "yalnız kilit dedektörü",
  lockOnlyNote: "pozisyonlar yalnızca kilit dedektörüyle yargılanır, materyal testi ve arama yok; aşağıdaki oyunlar yine bütün merdiveni kullanır",
@@ -14445,7 +14679,7 @@ tr: {
  rs_bad: "Geçersiz FEN",
  rd_material: "öbür tarafın mat edecek kadar materyali hiç yok",
  rd_lock: "piyon, şah ve fillerden hiçbir hamle dizisinin açamayacağı bir yapı",
- rd_domino: "Domino aramasının izlediği her hat matsız bitti",
+ rd_domino: "Domino aramasının izlediği her hat matsız bitti (ya da ardından hamle hamle hamlesiz rakip)",
  rd_stalemate: "legal hamle yok, şah da yok: ardından mat gelemez",
  rd_mate: "matla biten bir legal hamle dizisi: galibiyet ispatlı",
  rd_open: "arama önce ply tavanına ya da düğüm bütçesine çarptı: galibiyet varsayılan olarak kalıyor",
@@ -14532,6 +14766,7 @@ tr: {
  st2Skip: "Gerek yok: materyal çözdü.",
  st3Ok: "Her hat mat imkânsızlaşana dek izlendi, toplam {0}: {1} mat edemez. Domino etkisiyle berabere.",
  st3Deep: "İlk arama ({0}) ispatsız ve matsız bitti; sonraki kademeler çalıştı: {1}.",
+ st3Stuck: "İlk arama ({0}) ispatsız ve matsız bitti; ardından hamle hamle hamlesiz rakip: {1} ne oynarsa oynasın, şahı ve piyonlarıyla kalan {2} hamlesiz kalıyor. {2} mat edemez. Berabere.",
  st3Mate: "{0} tarafının mat ettiği bir hat bulundu. Süreden galibiyet, ispatlı.",
  st3Hor: "Bir hat ispat olmadan ply tavanına ({0}) ulaştı. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
  st3Bud: "Düğüm bütçesi ({0}) ispat olmadan tükendi. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
@@ -14606,7 +14841,7 @@ tr: {
  infoH: "İki cevap ne demek",
  info1: "İki taraf da mat edemiyorsa oyun hemen berabere bitebilir. Bitmesinde sakınca yok (FIDE 5.2.2, ölü pozisyon).",
  info2: "Bir taraf mat edebiliyor, öbürü edemiyorsa oyun sürer. Ama mat edebilen taraf süresi bitse de kaybetmez: oyun berabere bitmeli (FIDE 6.9).",
- info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,6’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm kendi varsayılan sınırlarıyla (3 ply, 10 düğüm) ispatlıyor; tam sürüm ise üç kademesiyle ve 75 hamle kuralı altında hepsini.",
+ info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,6’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm kendi varsayılan sınırlarıyla (3 ply, 10 düğüm) ispatlıyor; tam sürüm ise {2} tanesi dışında hepsini. Yani oyun içinde tam sürüm de, çok nadiren, mat edilemeyen bir pozisyonu ispatsız bırakabilir; oyun sonrası analiz onu yakalar: 3. kapı işaretliyken (gerekirse daha büyük bir bütçeyle), 75 hamle kuralı altında tam sürüm {0} oyunun hepsini ispatlıyor.",
  flagToMove: "{0}, sırası gelen",
  flagForced: "{0}, “iki bayrağı da dene” ile; sıra {1} tarafında",
  kMoves: "legal hamle",
@@ -14760,7 +14995,7 @@ tr: {
  pk_moves: "Hamleler",
  secEngine: "Bu sayfadaki motor",
  engineNote: "<code>mateless.js</code>, burada çalıştığı haliyle ({0} bayt): bir referans tahta, materyal testi, kilit dedektörü, Domino araması ve bir oyunun hamle hamle tuttuğu taraf başına bir bayrak. Aynı motor, Rust çevirisi ve WebAssembly derlemesiyle birlikte repoda.",
- engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında iki kademe daha ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor.",
+ engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, mat bulmadan başarısız olan bir Domino aramasından sonra hamle hamle hamlesiz rakip ve aramanın ikinci bir kademesi ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor. 3. kapı onda yok: bu sayfanın kendisinin, oyun sonrası analiz için.",
  foot: "Mateless ispatı olmadan hiçbir zaman beraberlik demez: ispatlayamadığı pozisyon galibiyete düşer ve oyundan sonra tam bir çözücüye kalır. Hükümleri chasolver’ın etiketlerine, binlerce oyunda düşen her bayrak da chasolver’ın tam analizine karşı denetlendi; hiç yanlış beraberlik çıkmadı. MIT Lisansı, © 2026 Cüneyt İnan. Kaynak, Rust çevirisi ve veri: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess verisi: Miguel Ambrona’nın <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a> sayfası.",
 }};
 var lang = 'en';
@@ -15006,7 +15241,7 @@ function warmTime(w, P, B) {
   var setup = E.fromFen(w.fen); if (setup.error) return null;
   var pos = setup.position, g = w.g === 0 || w.g === 1 ? w.g : (pos.side === E.WHITE ? 1 : 0), flagged = g ? E.WHITE : E.BLACK, lim = Object.assign({ maxPly: P, budget: B }, deepOf(), rulesOf(null));
   var block = LOCKONLY ? function (k) { for (var i = 0; i < k; i++) E.lockCannotMate(pos, flagged) }
-                       : function (k) { for (var i = 0; i < k; i++) E.proveCannotBeMated(pos, flagged, lim) };
+                       : function (k) { for (var i = 0; i < k; i++) prove(pos, flagged, lim) };
   /* a block of calls between two readings of the clock; the first ~15 ms only warm the JIT up */
   var t0 = performance.now(), k = 1, n = 0, t;
   while (performance.now() - t0 < 15 && k < 1 << 16) { block(k); k *= 2 }
@@ -15210,6 +15445,7 @@ function detailHTML(k) {
   var rl = results.rule || 0, rn = '';
   if (r.ruled) { c3 += ' · moveRule ' + rl; rn = ' ' + F(r.draw ? 'st3Rule' : r.reason == 'mate' ? 'st3RuleMate' : 'st3RuleNo', rl / 2); dn += rn }
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
+  else if (r.stuck) s += stepRow('dec', T('s3n'), c3 + ' → stuck(' + who + ')', F('st3Stuck', F('limits', P, num(B)), fl, op));
   else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op) + dn);
   else if (r.reason == 'stalemate') s += stepRow('dec', T('s3n'), c3, T('st3SM'));
   else if (r.reason == 'mate') s += stepRow('win', T('s3n'), c3, (r.used ? F('st3Mate', op) : T('st3Mated')) + dn);

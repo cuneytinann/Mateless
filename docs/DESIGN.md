@@ -170,8 +170,10 @@ to July. The default is now 3 plies and 10 nodes: in a game almost every search 
 line, at the ceiling, so half the ceiling is half the cost (real game positions: 320 ns a position
 in Rust against 625). It leaves more unproven: on chasolver's list of 19 November (204,484 rows)
 656, against 36 at 6 plies and 100 nodes. They are for a complete solver after the game, or for the
-full version, whose further tiers (9 plies and 5,000 nodes, then 150 and 5,000,000, each where the
-one before fails without a mate) leave none under the 75-move rule.
+full version, which, where the first search fails without a mate, tries the stuck mater move by move
+and a second tier (9 plies and 5,000 nodes) and leaves 2; the arbiter page's third tier (150 plies
+and 5,000,000 nodes, for analysis after the game, in no engine) proves those two under the 75-move
+rule.
 
 The search plays the same nodes in the same order in every port (JS, Rust, WebAssembly, Scala):
 that is what makes their outputs comparable byte for byte, node counts included. Every speedup kept

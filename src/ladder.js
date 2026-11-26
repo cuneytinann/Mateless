@@ -22,7 +22,7 @@ import { DOMINO_BUDGET, DOMINO_PLY, Domino } from './domino.js';
 const sharedSearch = new Domino();
 
 /** Can `flagged` never be mated? The static tests at the root, then the Domino search (by
-    default 6 plies, 100 nodes). Returns { proven, staticProof, failure, foundBy, nodes }:
+    default 3 plies, 10 nodes). Returns { proven, staticProof, failure, foundBy, nodes }:
     staticProof says the static tests proved it at the root; failure is 'mate', 'horizon' or
     'budget' when nothing was proven ('mate' with foundBy 'search': the search played a line
     that mates); nodes counts the moves the search played. */

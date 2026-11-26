@@ -62,9 +62,22 @@
           </fieldset>
           <p class="hint" data-i="ruleNote"></p>
         </div>
-        <div class="engrow">
-          <label><span data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="60" min="1" max="1500" step="1" inputmode="numeric"></label>
-          <label><span data-i="lblBud">node budget</span> <input type="number" id="bud" value="10000" min="1" max="1000000000" step="1" inputmode="numeric"></label>
+        <div id="gatebox">
+          <div class="gatehead hide" id="gatehead" aria-hidden="true"><span></span><span data-i="lblPlies">plies</span><span data-i="lblNodes">nodes</span></div>
+          <div class="engrow gaterow"><span class="gatelab hide" id="g1lab" data-i="lblGate1">gate 1</span>
+            <label><span class="glab" data-i="lblPly">ply ceiling</span> <input type="number" id="ply" value="3" min="1" max="1500" step="1" inputmode="numeric"></label>
+            <label><span class="glab" data-i="lblBud">node budget</span> <input type="number" id="bud" value="10" min="1" max="1000000000" step="1" inputmode="numeric"></label>
+          </div>
+          <div id="gaterows" class="hide">
+            <div class="engrow gaterow"><span class="gatelab" data-i="lblGate2">gate 2</span>
+              <label><span class="glab" data-i="lblPly">ply ceiling</span> <input type="number" id="g2p" value="9" min="1" max="1500" step="1" inputmode="numeric"></label>
+              <label><span class="glab" data-i="lblBud">node budget</span> <input type="number" id="g2b" value="5000" min="1" max="1000000000" step="1" inputmode="numeric"></label>
+            </div>
+            <div class="engrow gaterow"><label class="gatelab"><input type="checkbox" id="g3on" checked> <span data-i="lblGate3">gate 3</span></label>
+              <label><span class="glab" data-i="lblPly">ply ceiling</span> <input type="number" id="g3p" value="150" min="1" max="1500" step="1" inputmode="numeric"></label>
+              <label><span class="glab" data-i="lblBud">node budget</span> <input type="number" id="g3b" value="5000000" min="1" max="1000000000" step="1" inputmode="numeric"></label>
+            </div>
+          </div>
         </div>
         <p class="hint" id="limnote"></p>
       </div>

@@ -21,7 +21,7 @@ One line per game, newest first, with a header:
 |---|---|
 | `gameId` | the Lichess game id |
 | `date` | the date the game was played |
-| `mateless` | the first rung that proves the flagged side's opponent can never mate: `lock` (a locked position), `domino` (a forced line, the Domino search at 6 plies / 100 nodes) or `unproven` |
+| `mateless` | the first rung that proves the flagged side's opponent can never mate: `lock` (a locked position), `domino` (a forced line, the Domino search at 6 plies / 100 nodes, its default until 26 November 2026) or `unproven` |
 | `scalachess_18_0_1` | 1 if Lichess today draws it: scalachess 18.0.1's `opponentHasInsufficientMaterial` (with #821's one-move lookahead), which lila asks when a flag falls |
 | `with_lock_patch` | 1 if it is drawn with mateless-scalachess's `a-lock` patch, the alternative (the lock detector when a flag falls, at the position and in #821's lookahead) |
 | `dead_position` | 1 if the final position is already dead: Mateless proves that neither side can mate (FIDE 5.2.2) |

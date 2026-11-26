@@ -27,7 +27,10 @@ Yapının bütününe bir kerede, bit düzeyinde bakıyor: bir tarafın bütün 
 şah tek bir erişim kümesi; 64 bitlik kümeler üzerinde birkaç işlem bütün yapıyı bir sabit noktaya
 taşıyor. Bildiğimiz kadarıyla bu, onu türünün en hızlı yöntemi yapıyor: dedektörün arkasındaki
 kısa aramayla Mateless, aşağıdaki Lichess verisinin **%99,98'ini** bilinen en yakın yöntemden
-**~17–18 kat hızlı** kapsıyor (Rust'a karşı Rust).
+**~17–18 kat hızlı** kapsıyor (Rust'a karşı Rust); bu ölçümlerde arama 6 ply ve 100 düğümdü. 26
+Kasım 2026'dan beri arama 3 ply ve 10 düğüm: gerçek oyun pozisyonlarında yaklaşık iki kat hızlı,
+süre kayıplarında aynı hızda; chasolver'ın 19 Kasım listesinin %99,68'ini (204.484 satırın
+203.828'ini; 6 ve 100 ile 204.448'ini) ispatlıyor, aşağıdaki tam sürüm hepsini.
 
 Alanın referansı [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022)
 tam bir çözücü: Mateless'in denemediği bestelenmiş problemleri de çözüyor. Mateless böyle bir
@@ -63,7 +66,7 @@ ortancası; `rust/examples/vs_chasolver.rs`):
 | iki taraf birden, bütün satırlar | 201.060 | 6,52 µs (iki çağrı) | 0,41 µs | **~16×** |
 | gerçek oyun pozisyonları (chasolver'ın `lichess.txt`'i, iki taraf) | 131.072 | 2,41 µs | 0,563 µs | ~4,3× |
 
-chasolver 201.060 satırın hepsini, Mateless 201.024'ünü ispatlıyor. Kapsam yalnızca chasolver'ın
+chasolver 201.060 satırın hepsini, Mateless 201.024'ünü ispatlıyor (tablonun tamamı gibi, 6 ply ve 100 düğümle). Kapsam yalnızca chasolver'ın
 listesinde sayılıyor: ağustos–eylül taramasının 3.000 satırı, hem chasolver'ın hem Mateless'in
 ispatladığı satırlar olarak seçildi. Tarayıcı aynı motoru
 çalıştırıyor: hakem sayfası kilitli bir pozisyonu bir mikrosaniyenin altında ispatlıyor;
@@ -80,7 +83,7 @@ hiç mat edemeyeceğini ispatlayan ilk basamak bayrağını indiriyor, kalıcı 
 |---|---|---|---|
 | **1. malzeme testi** | alıştan ya da piyon hamlesinden sonra (aramada: alış ya da terfiden sonra) | mat için malzeme hiç yetmiyor | ~0,1 µs |
 | **2. kilit dedektörü** | alıştan, piyon hamlesinden, en passant hakkının düşmesinden ya da şahın piyon şahından çıkmasından sonra | piyon, şah ve fil yapısı hiçbir yasal hamle dizisiyle açılamıyor (tahtada at, kale ya da vezir varsa hemen düşüyor) | ~0,3–0,8 µs |
-| **3. Domino araması** | her hamleden sonra | 6 ply ve 100 düğümlük bir helpmate araması mat bulmuyor; her dizi görülmüş bir pozisyonda, statik bir ispatta ya da patta bitiyor | ~1–5 µs |
+| **3. Domino araması** | her hamleden sonra | 3 ply ve 10 düğümlük (26 Kasım 2026'ya kadar 6 ve 100) bir helpmate araması mat bulmuyor; her dizi görülmüş bir pozisyonda, statik bir ispatta ya da patta bitiyor | ~1–5 µs |
 
 - **İki bayrak da düştüyse** pozisyon ölü (FIDE 5.2.2): oyun berabere biter.
 - **Süre bitince ya da bir taraf terk edince** hesap yapılmaz: rakibin bayrağı düşmüşse
@@ -147,7 +150,7 @@ Oyun içi kontrolün göremediklerini berabere veriyor: yalnızca bir tarafın k
 süre bittikten bir hamle sonra geldiği 238 satır. Toplam: 190.719 satır (%97,7). Yalnızca süre
 bitince sorulsaydı ölü bir oyun başka bir yoldan bitene kadar oynanmaya devam ederdi: ağustos ve
 eylülde 8.718 berabere oyun, böyle bir kilit oluştuktan sonra ortanca 14 ply daha sürdü. Merdivenin
-tamamı, Mateless'in kendisi ya da o repodaki `c-ladder` yaması, 195.251 satırı (%99,98) berabere
+tamamı, Mateless'in kendisi ya da o repodaki `c-ladder` yaması, 195.251 satırı (%99,98; Mateless'in araması 26 Kasım 2026'ya kadarki varsayılanıyla, 6 ply ve 100 düğümle) berabere
 veriyor.
 
 Satırların 117.455'inde (%60) son pozisyon zaten ölüydü, iki taraf da mat edemiyordu: FIDE 5.2.2'ye
@@ -201,9 +204,10 @@ gelir). Varsayılan dil İngilizce; Türkçe seçilebilir. Beş sekme:
   olan (`second-version` dalı, aşağıda), seçilebilir bir hamle sınırı (75 ya da 50 hamle) ve tekrar kuralıyla
   (beşli ya da üçlü) ve Chess960'la (rok onun kurallarıyla, tahtanın rok sütunları bir başlangıç pozisyonunun
   numarasından, 0–959); bir kutu, seçili sürümün kilit dedektörünü tek başına çalıştırıp
-  hangi pozisyonları yakaladığını gösteriyor. Her sürüm kendi varsayılan sınırlarıyla gelir, tahtanın
-  yanındaki motor ayarlarında: hızlı olan 6 ply ve 100 düğüm, tam olan 60 ply ve 10.000 düğüm;
-  gösterilen sınırların ötesinde hiçbir şey aranmaz.
+  hangi pozisyonları yakaladığını gösteriyor. Aramanın sınırları tahtanın yanındaki motor
+  ayarlarında: ilk arama iki sürümde de 3 ply ve 10 düğüm; tam olan buna 9 ply ve 5.000 düğümlük
+  ikinci bir kademe ile 150 ply ve 5.000.000 düğümlük bir üçüncüsünü (kutusu varsayılan olarak
+  işaretli) ekliyor, her biri öncekinin mat bulmadan başarısız olduğu yerde; hepsi ayarlanabilir.
 - **Kilit dedektörü**: ikinci basamak, en basitten başlayarak. Lichess kilitlerinde ne var, at,
   kale, vezir ve ikiz filler neden dışarıda; sonra bitboard'larla piyonlar ve şahlar (alış varsa
   kilit yok; koniler; duvarlar, sabit piyonlar, şah erişimleri ve alım karelerinin sabit noktası;
@@ -419,7 +423,7 @@ söylüyor.
 |---|---|---|
 | `src/material.js` | **1. basamak:** malzeme testi | taş kümeleri; hamle üretmiyor |
 | `src/lock.js` | **2. basamak:** kilit dedektörü; iki statik test birlikte | taş kümeleri, en passant karesi, birkaç kaydırma; hamle üretmiyor |
-| `src/domino.js` | **3. basamak:** Domino araması (6 ply / 100 düğüm) | taş taş, sabit sırada legal hamleler, yerinde yapıp geri alma, "yasal hamle var mı?", pozisyonun birebir kodu |
+| `src/domino.js` | **3. basamak:** Domino araması (3 ply / 10 düğüm) | taş taş, sabit sırada legal hamleler, yerinde yapıp geri alma, "yasal hamle var mı?", pozisyonun birebir kodu |
 | `src/ladder.js` | **merdiven:** basamakların ne zaman sorulduğu, tek pozisyon için ispatlar, bir oyunun iki bayrağı (`Flags`) | yarım hamle sayacı ve en passant karesi |
 | `src/board.js` | referans tahta: bitboard, magic bitboard, legal hamleler, FEN, Chess960 | — |
 | `src/fen.js` | **dış katman:** FEN'i bir oyunun ulaşabileceği konum olarak okumak (`fromFen`): neyi düzelttiği, neyi reddettiği | tahtanın FEN okuyucusu ve saldırı testi |
@@ -482,14 +486,15 @@ Bu sürüm, hızlı olanı, bir oyun sunucusu için yapılan katman: sağlam, k�
 çalışmak için yapıldı. Yanında `second-version` dalında tam sürüm duruyor; hakem sayfası, seçilince
 onu çalıştırıyor. O da tam değil; "tam" hedefinin adı ve yeni kurallar eklendikçe büyüyor: önü açık
 piyon çiftleri, kutulu at, kale ve vezir, ikiz filler, şah ve piyonlu bir oyunun pata gidiş yolları
-için dört kural, varsayılan olarak daha derin bir Domino araması (60 ply, 10.000 düğüm; bu sürümün
-ispatlayamadığı 36 satırın 35'ini ispatlıyor) ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da
-üçlü tekrar (JavaScript, Rust ve WebAssembly'de). Hamle sınırına yakınken matın zamanında gelip
-gelemeyeceğine, saatin kendisiyle sınırlı ve mata ya da bir alışa veya piyon hamlesine kalan yarım
-hamlelerin alt sınırıyla budanan bir arama, ötekilerle aynı sınırlarla karar veriyor: üç ile beş
-taşlı oyun sonlarında, kural uzaklıklarının çevresinde, zamanında mat edilemeyen durumların
-%97,9'unu ispatlıyor, edilebilenlerden hiçbirini değil. Bu sürüm Lichess verisinin %99,98'ini zaten
-karşılıyor; bu yüzden tam sürüm pratikte en çok meraklıları ve araştırmayı ilgilendiriyor, aceleye
+için dört kural, Domino aramasına iki kademe daha (9 ply ve 5.000 düğüm, sonra 150 ve 5.000.000),
+her biri öncekinin mat bulmadan başarısız olduğu yerde, ve istenirse 75 ya da 50 hamle kuralı ile
+beşli ya da üçlü tekrar (JavaScript, Rust ve WebAssembly'de). chasolver'ın 19 Kasım listesinde
+(204.484 satır) bu sürüm 656 satırı ispatsız bırakıyor, tam olan 75 hamle kuralı altında hiçbirini.
+Hamle sınırına yakınken matın zamanında gelip gelemeyeceğine, saatin kendisiyle sınırlı ve mata ya
+da bir alışa veya piyon hamlesine kalan yarım hamlelerin alt sınırıyla budanan bir arama karar
+veriyor: üç ile beş taşlı oyun sonlarında, kural uzaklıklarının çevresinde, zamanında mat
+edilemeyen durumların %99,8'ini ispatlıyor, edilebilenlerden hiçbirini değil (yerine geçtiği, ply
+tavanlı arama %85,6'sını ispatlıyordu). Bu sürüm o listenin %99,68'ini zaten ispatlıyor; bu yüzden tam sürüm pratikte en çok meraklıları ve araştırmayı ilgilendiriyor, aceleye
 getirilmiyor.
 
 ## Lisans ve teşekkür

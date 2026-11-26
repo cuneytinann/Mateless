@@ -165,6 +165,14 @@ median 1, 90% ≤ 4, 99% ≤ 8, 99.9% ≤ 33, at most 1,354.
 Above 6 plies the budget, not the ceiling, ends the proofs; a failing search in an open position
 runs its first line down to the ceiling, so the cost grows linearly with the plies.
 
+**3 plies, 10 nodes (since 26 November 2026).** The figures above are those of chasolver's rows up
+to July. The default is now 3 plies and 10 nodes: in a game almost every search fails on its first
+line, at the ceiling, so half the ceiling is half the cost (real game positions: 320 ns a position
+in Rust against 625). It leaves more unproven: on chasolver's list of 19 November (204,484 rows)
+656, against 36 at 6 plies and 100 nodes. They are for a complete solver after the game, or for the
+full version, whose further tiers (9 plies and 5,000 nodes, then 150 and 5,000,000, each where the
+one before fails without a mate) leave none under the 75-move rule.
+
 The search plays the same nodes in the same order in every port (JS, Rust, WebAssembly, Scala):
 that is what makes their outputs comparable byte for byte, node counts included. Every speedup kept
 that order: moves recorded in the search's own frame, a set of positions met that starts at 256

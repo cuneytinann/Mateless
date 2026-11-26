@@ -1,4 +1,4 @@
-//! Rung 3, the Domino search (`src/domino.js`): a helpmate search of 6 plies and 100 nodes, with
+//! Rung 3, the Domino search (`src/domino.js`): a helpmate search of 3 plies and 10 nodes, with
 //! no move-count rules, that asks at its nodes the static tests the move just made can have changed
 //! (lock::tests_after), while no en passant square is set. From the board it needs the legal
 //! moves one piece at a time in a fixed order, moves made and taken back in place, "is there a
@@ -11,8 +11,8 @@ use crate::lock::{flagged_bit, FLAGGED_BLACK, FLAGGED_WHITE, pawn_check, static_
     static_tests2, tests_after, TESTS_BOTH};
 
 /// The Domino search's defaults: ply ceiling and node budget.
-pub const DOMINO_PLY: u32 = 6;
-pub const DOMINO_BUDGET: i64 = 100;
+pub const DOMINO_PLY: u32 = 3;
+pub const DOMINO_BUDGET: i64 = 10;
 
 
 /// A set of positions: open addressing, linear probing, cleared in constant time by a generation

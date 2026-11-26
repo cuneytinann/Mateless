@@ -1,4 +1,4 @@
-//! The ladder at its defaults (static tests, then the Domino search, 6 plies / 100 nodes) on a file
+//! The ladder at its defaults (static tests, then the Domino search, 3 plies / 10 nodes) on a file
 //! of positions, timed over several rounds (median), with the number proven and the nodes played as
 //! a checksum: a faster build must print the same two numbers.
 //!   cargo run --release --example dominobench -- <positions> [rounds]     (lines "<fen>\t<w|b>")

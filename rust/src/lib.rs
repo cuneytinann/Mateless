@@ -9,7 +9,7 @@
 //! The modules are the layers of the JavaScript sources (`src/`). Mateless itself:
 //!   - [`material`]  rung 1: the material test
 //!   - [`lock`]      rung 2: the lock detector, and the two static tests together
-//!   - [`domino`]    rung 3: the Domino search, 6 plies and 100 nodes, no move-count rules
+//!   - [`domino`]    rung 3: the Domino search, 3 plies and 10 nodes, no move-count rules
 //!   - [`ladder`]    the rungs put together: [`prove_cannot_be_mated`] and [`prove_both`] for one
 //!                   position, [`Flags`] for the two flags of a game played move by move
 //!

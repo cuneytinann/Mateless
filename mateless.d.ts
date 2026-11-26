@@ -185,9 +185,9 @@ declare namespace Mateless {
   /** The static tests for both sides at once: of the sides in `ask`, those that cannot be mated (cannotMate for each). */
   function cannotMate2(pos: Position, ask: number): FlaggedSides;
 
-  /** The ply ceiling of the Domino search (6). */
+  /** The ply ceiling of the Domino search (3). */
   const DOMINO_PLY: number;
-  /** The node budget of the Domino search (100); every move played counts, each promotion separately. */
+  /** The node budget of the Domino search (10); every move played counts, each promotion separately. */
   const DOMINO_BUDGET: number;
 
   /** Why a search proved nothing: a line mates the flagged king, a line still has moves at the ply ceiling, or the budget ran out. */
@@ -232,7 +232,7 @@ declare namespace Mateless {
     budget?: number;
   }
 
-  /** Can `flagged` never be mated? The static tests, then the Domino search (6 plies, 100 nodes by default). */
+  /** Can `flagged` never be mated? The static tests, then the Domino search (3 plies, 10 nodes by default). */
   function proveCannotBeMated(pos: Position, flagged: Color, options?: ProofOptions): Proof;
   /** proveCannotBeMated for both sides in one pass: [White flagged, Black flagged]. */
   function proveBoth(pos: Position, options?: ProofOptions): [Proof, Proof];

@@ -175,6 +175,16 @@ details.fold[open]>summary::before{content:"−"}
 .engrow label{display:flex;gap:8px;align-items:center}
 .engrow input[type=number]{width:110px;padding:6px 8px}
 #rulerow{display:flex;flex-direction:column;gap:10px}
+#gatebox{display:flex;flex-direction:column;gap:10px}
+#gaterows{display:flex;flex-direction:column;gap:10px}
+.gatelab,.gatehead{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600}
+label.gatelab{display:flex;gap:6px;align-items:center;cursor:pointer}
+/* the full version's tiers: one row each, under a head that names the two columns */
+#gatebox.gated .gaterow,#gatebox.gated .gatehead{display:grid;grid-template-columns:104px minmax(56px,90px) minmax(84px,130px);gap:8px 14px;align-items:center}
+#gatebox.gated .gatehead{margin-bottom:-4px}
+#gatebox.gated .gaterow input[type=number]{width:100%}
+#gatebox.gated .gaterow input[type=number]:disabled{opacity:.45}
+#gatebox.gated .glab{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 fieldset.mrule{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;font-size:14.5px}
 fieldset.mrule legend{padding:0;margin:0 0 4px}
 fieldset.mrule label{display:flex;gap:8px;align-items:center}

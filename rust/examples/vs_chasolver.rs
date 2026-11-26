@@ -7,7 +7,7 @@
 //! <positions>: lines "<fen>\t<w|b>", the second field the side that should be unable to mate
 //! (chasolver's intended winner; Mateless's flagged side is its opponent).
 //! Engines: chasolver fast check; Mateless static tests only; Mateless static tests + Domino search at its
-//! defaults (6 plies, 100 nodes); the same with a larger search (9 plies, 2,000 nodes).
+//! defaults (3 plies, 10 nodes; 6 and 100 until 26 November 2026); the same with a larger search (9 plies, 2,000 nodes).
 //! BOTH=1: both sides of every position (a dead position, a game's two flags; the side field is
 //! ignored): chasolver's fast check called for each colour; Mateless for each side alone; Mateless both at
 //! once (prove_both). "proven" then counts the positions proven for both sides.
@@ -53,7 +53,7 @@ fn main() {
     ] } else { vec![
         ("chasolver fast", Box::new(|i: usize| chasolver::is_unwinnable_fast(&cha[i].0, cha[i].1))),
         ("Mateless static only", Box::new(|i: usize| mateless::cannot_mate(&lx[i].0, lx[i].1))),
-        ("Mateless static + Domino 6/100", Box::new(move |i: usize| mateless::cannot_mate(&lxr[i].0, lxr[i].1)
+        ("Mateless static + Domino 3/10", Box::new(move |i: usize| mateless::cannot_mate(&lxr[i].0, lxr[i].1)
             || s1.run(&lxr[i].0, lxr[i].1, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET, false).proven)),
         ("Mateless static + Domino 9/2000", Box::new(move |i: usize| mateless::cannot_mate(&lxr[i].0, lxr[i].1)
             || s2.run(&lxr[i].0, lxr[i].1, 9, 2000, false).proven)),

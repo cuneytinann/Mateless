@@ -45,14 +45,14 @@ function castleText(pos) {
 function judge(fen, ply, bud, forced, hist) {
   const setup = readFen(fen);
   if (!setup) return null;
-  const pos = setup.position, rules = rulesOf(hist), limits = Object.assign({ maxPly: ply, budget: bud }, rules);
+  const pos = setup.position, rules = rulesOf(hist), limits = Object.assign({ maxPly: ply, budget: bud }, deepOf(), rules);
   const side = forced === 0 || forced === 1 ? forced : (pos.side === E.WHITE ? 1 : 0);
   const flagged = side ? E.WHITE : E.BLACK, other = side ? E.BLACK : E.WHITE;
   const moves = E.legalMoves(pos).length;
   if (LOCKONLY) {
     const t1 = performance.now(), lk = E.lockCannotMate(pos, flagged), ms1 = performance.now() - t1;
     return { side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
-             draw: lk, dead: lk && E.lockCannotMate(pos, other), reason: lk ? 'lock' : 'open', used: 0, ms: ms1,
+             draw: lk, dead: lk && E.lockCannotMate(pos, other), reason: lk ? 'lock' : 'open', used: 0, deep: 0, ms: ms1,
              why: lk ? '' : 'nolock', castle: castleText(pos), lockOnly: true };
   }
   const t0 = performance.now();
@@ -64,10 +64,10 @@ function judge(fen, ply, bud, forced, hist) {
   /* the other side, for a dead position, with the game's own limits (and rules): what a game would have
      found. With the reader's limits it cost a search to the ply ceiling in every position where the other
      side can still mate, for nothing: the verdict is the flagged side's. */
-  const dead = proof.proven && E.proveCannotBeMated(pos, other, rules).proven;
+  const dead = proof.proven && E.proveCannotBeMated(pos, other, Object.assign({ thirdBudget: 0 }, rules)).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
-    draw: proof.proven, dead, reason, used: proof.nodes, ruled: !!proof.ruled, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, deep: proof.deep || 0, ruled: !!proof.ruled, ms,
     why: proof.proven ? '' : proof.failure,
     castle: castleText(pos),
   };
@@ -88,7 +88,7 @@ function inspect(fen, side) {
 function bothSides(fen, P, B) {
   const setup = E.fromFen(fen);
   if (setup.error) return null;
-  const pos = setup.position, limits = Object.assign({ maxPly: P, budget: B }, rulesOf(null)), out = [];
+  const pos = setup.position, limits = Object.assign({ maxPly: P, budget: B }, deepOf(), rulesOf(null)), out = [];
   for (let g = 0; g < 2; g++) {
     const flagged = g ? E.BLACK : E.WHITE;          /* can g mate? = can its opponent never be mated? */
     if (LOCKONLY) { const lk = E.lockCannotMate(pos, flagged); out.push({ cannot: lk, reason: lk ? 'lock' : 'nolock' }); continue; }
@@ -99,16 +99,16 @@ function bothSides(fen, P, B) {
   }
   return out;
 }
-/* The figures of info3: chasolver's list of 2026-11-19, each version with its own default limits
-   (the fast one 6 plies and 100 nodes, the full one 60 plies and 10,000 nodes). */
-var LIST_ROWS = 204484, LIST_OPEN = [36, 1];
+/* The figures of info3: chasolver's list of 2026-11-19 with the default limits (3 plies, 10 nodes; the
+   full version through its three tiers, under the 75-move rule). */
+var LIST_ROWS = 204484, LIST_OPEN = [656, 0];
 
 var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
 var $ = function (id) { return document.getElementById(id) }, ROOT = document.getElementById('tab-arbiter');
 var ENGINE_FILE = 'mateless.js';
 /* Two versions, one engine each. 1: mateless.js, the fast layer, the rules proposed to Lichess; it is
    window.Mateless. 2: the second version (the second-version branch), which adds open pawn pairs and boxed
-   knights, rooks and queens to the lock detector and searches deeper by default. Its engine is
+   knights, rooks and queens to the lock detector and a second tier to the Domino search. Its engine is
    kept as text and run only the first time it is picked, so a reader who never picks it runs exactly
    the first; its wrapper sees a `module` and leaves window.Mateless alone. */
 /* the rules of the second version: the move rule, 150 (the 75-move rule) or 100 (the 50-move rule),
@@ -122,7 +122,15 @@ function engineOf(v) {
   if (!ENGINES[v]) { var m = { exports: {} }; new Function('module', 'exports', $(ENGINE_IDS[v]).textContent)(m, m.exports); ENGINES[v] = m.exports }
   return ENGINES[v] }
 var ENGINE_BYTES = new Blob([$('mateless-engine').textContent]).size;
-var LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET];     /* the chosen version's own Domino search: plies, nodes */
+var LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET];     /* the game's own Domino search: plies, nodes */
+var DEEP = [0, 0];                                /* the second version's second tier: plies, nodes */
+/* the full version's further tiers in the boxes, read when a run starts: the second, and the third
+   when its box is ticked ([ply ceiling, node budget] each); the fast version has none */
+var DT = [];
+function readDeep() {
+  DT = VER !== 2 ? [] : [[limitOf('g2p'), limitOf('g2b')]].concat($('g3on').checked ? [[limitOf('g3p'), limitOf('g3b')]] : []) }
+function deepOf() {
+  return VER !== 2 ? {} : { deepPly: DT[0][0], deepBudget: DT[0][1], thirdPly: DT[1] ? DT[1][0] : 150, thirdBudget: DT[1] ? DT[1][1] : 0 } }
 /* "lock detector only": the positions are judged by the chosen version's lock detector alone, to see
    which of them it catches; the games (PGN) keep the whole ladder */
 var LOCKONLY = false;
@@ -144,8 +152,8 @@ en: {
  sp1t: "to prove a locked position in Rust (0.3–0.8 µs in this page’s JavaScript)",
  sp2n: "~17–18×",
  sp2t: "faster than the nearest known method, on all of the data: detection at the level of bits, as far as we know the fastest",
- sp3n: "99.98%",
- sp3t: "of the 195,287 Lichess games lost on time that should have been drawn, proven",
+ sp3n: "99.68%",
+ sp3t: "of chasolver’s 204,484 Lichess games lost on time that should have been drawn, proven by the fast version; the full one proves them all",
  hPos: "Positions",
  posHint: "One FEN per line. A line may start with a chasolver label (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) to give the expected answer; lines starting with <code>#</code> are skipped. A FEN the engine puts right (castling rights the board does not allow, an en passant square no last move left, the move counters) is written as it reads it when you leave the box. Ctrl+Enter judges.",
  hFiles: "Files",
@@ -168,12 +176,17 @@ en: {
  lblPly: "ply ceiling",
  lblBud: "node budget",
  limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move; so does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for",
- limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move, and with a move or repetition rule the search under it has the same limits; so does the check, after a draw, of whether the other side cannot mate either (a dead position): your limits are for the side the flag fell for. Nothing is searched beyond the limits",
+ limNote2: "in a game, Mateless searches {0} plies and {1} nodes after every move and, where that fails without a mate, a second tier of {2} plies and {3} nodes; so does the check, after a draw, of whether the other side cannot mate either (a dead position). Your tiers are for the side the flag fell for; the third runs when its box is ticked, after a second that fails without a mate",
+ lblGate1: "gate 1",
+ lblGate2: "gate 2",
+ lblGate3: "gate 3",
+ lblPlies: "plies",
+ lblNodes: "nodes",
  lblVer: "version",
  ver1: "fast (the first version)",
  ver2: "full (the second version)",
  verNote1: "the rules proposed to Lichess: material, the lock detector of kings, pawns and bishops, the Domino search",
- verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); its Domino search goes deeper by default (60 plies, 10,000 nodes); not complete either, and a little slower",
+ verNote2: "adds to the lock detector open pawn pairs, boxed knights, rooks and queens, twin bishops, and four rules for the ways a game of kings and pawns runs into a stalemate (the stalemate guard, the check seed, the stuck mater, the forced step); and two more tiers to the Domino search (9 plies and 5,000 nodes, then 150 and 5,000,000), each where the one before fails without a mate; not complete either, and a little slower",
  verTag: " · full version",
  lblLockOnly: "lock detector only",
  lockOnlyNote: "positions are judged by the lock detector alone, no material test and no search; the games below still use the whole ladder",
@@ -295,6 +308,7 @@ en: {
  st2Ep: "No lock while an en passant square ({0}) stands.",
  st2Skip: "Not needed: material settled it.",
  st3Ok: "Followed every line until mate became impossible, {0} in all: {1} cannot mate. Draw by the Domino effect.",
+ st3Deep: "The first search ({0}) ended without a proof and without a mate, so the next tiers ran: {1}.",
  st3Mate: "Found a line in which {0} mates. Win on time, proven.",
  st3Hor: "A line reached the ply ceiling ({0}) without a proof. Nothing proven: the win for {1} stands by default.",
  st3Bud: "The node budget ({0}) ran out without a proof. Nothing proven: the win for {1} stands by default.",
@@ -369,7 +383,7 @@ en: {
  infoH: "What the two answers mean",
  info1: "If neither side can mate, the game can end in a draw at once. Nothing is lost by ending it (FIDE 5.2.2, dead position).",
  info2: "If one side can mate and the other cannot, the game goes on. But the side that can still mate does not lose even if its time runs out: the game must end in a draw (FIDE 6.9).",
- info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.9% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1} with its default limits (6 plies, 100 nodes), the full version all but {2} with its own (60 plies, 10,000 nodes).",
+ info3: "“Cannot mate” is always a proof, so it is always right. “Can mate” means that within the limits nothing proved the opposite: mate may still be impossible, and the answer falls on the safe side. In practice it is right more than 99.6% of the time: of the {0} Lichess games lost on time that should have been drawn, the fast version proves all but {1} with its default limits (3 plies, 10 nodes), and the full version, through its three tiers and under the 75-move rule, every one.",
  flagToMove: "{0}, the side to move",
  flagForced: "{0}, by “judge both flags”; {1} is to move",
  kMoves: "legal moves",
@@ -395,7 +409,6 @@ en: {
  nodesN: "{0} nodes",
  node1: "1 node",
  usedOf: "{0} of {1}",
- limitsRule: "(the search under the rule: the same limits, a budget of its own)",
  kTime: "time",
  kStop: "search stopped by",
  rHorizon: "the ply ceiling",
@@ -524,7 +537,7 @@ en: {
  pk_moves: "Moves",
  secEngine: "The engine on this page",
  engineNote: "<code>mateless.js</code>, exactly as it runs here ({0} bytes): a reference board, the material test, the lock detector, the Domino search and a flag per side that a game keeps move by move. The same engine is in the repository, with its Rust port and WebAssembly build.",
- engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, a deeper Domino search by default (60 plies, 10,000 nodes), and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too.",
+ engineNote2: "The full version’s engine, exactly as it runs here ({0} bytes): <code>mateless.js</code> with open pawn pairs, boxed knights, rooks and queens, twin bishops, the stalemate guard, the check seed, the stuck mater and the forced step in the lock detector, two more tiers of the Domino search, and, on request, the move and repetition rules, with the search bounded by the clock under the move rule. It is built on the repository’s <code>second-version</code> branch, where its Rust port and WebAssembly build give the same answers, node counts included, the rules too.",
  foot: "Mateless never declares a draw without a proof: a position it cannot prove falls to the win and is left to a complete solver after the game. Its verdicts were checked against chasolver’s labels, and every flag that came down in thousands of games against chasolver’s full analysis, with no false draw. MIT License, © 2026 Cüneyt İnan. Source, Rust port and data: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess data: Miguel Ambrona’s <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a>.",
 },
 tr: {
@@ -538,8 +551,8 @@ tr: {
  sp1t: "Rust’ta kilitli bir pozisyonu ispatlama süresi (bu sayfanın JavaScript’inde 0,3–0,8 µs)",
  sp2n: "~17–18×",
  sp2t: "verinin tamamında bilinen en yakın yöntemden hızlı: bit düzeyinde tespit, bildiğimiz en hızlısı",
- sp3n: "%99,98",
- sp3t: "berabere bitmesi gerekirken süreden kaybedilmiş 195.287 Lichess oyununun ispatlanan payı",
+ sp3n: "%99,68",
+ sp3t: "chasolver’ın berabere bitmesi gerekirken süreden kaybedilmiş 204.484 Lichess oyununda hızlı sürümün ispatladığı pay; tam sürüm hepsini ispatlıyor",
  hPos: "Pozisyonlar",
  posHint: "Her satıra bir FEN. Satır, beklenen cevabı vermek için bir chasolver etiketiyle (<code>WB</code>, <code>W-</code>, <code>-B</code>, <code>--</code>) başlayabilir; <code>#</code> ile başlayan satırlar atlanır. Motorun düzelttiği bir FEN (tahtanın izin vermediği rok hakları, hiçbir son hamlenin bırakmadığı geçerken alma karesi, sayaçlar) kutudan çıkınca motorun okuduğu gibi yazılır. Ctrl+Enter hüküm verir.",
  hFiles: "Dosyalar",
@@ -562,12 +575,17 @@ tr: {
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
  limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için",
- limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; hamle ya da tekrar kuralı seçiliyse kural altındaki arama da aynı sınırlarla. Bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle: senin sınırların bayrağı düşen taraf için. Sınırların ötesinde hiçbir şey aranmaz",
+ limNote2: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar, bu arama mat bulmadan başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe; bir beraberlikten sonra öbür tarafın da mat edemediği (ölü pozisyon) kontrolü de böyle. Senin kademelerin bayrağı düşen taraf için; üçüncüsü, kutusu işaretliyse, mat bulmadan başarısız olan bir ikinciden sonra çalışır",
+ lblGate1: "1. kapı",
+ lblGate2: "2. kapı",
+ lblGate3: "3. kapı",
+ lblPlies: "ply",
+ lblNodes: "düğüm",
  lblVer: "sürüm",
  ver1: "hızlı (ilk sürüm)",
  ver2: "tam (ikinci sürüm)",
  verNote1: "Lichess’e önerilen kurallar: materyal, şah, piyon ve fillerin kilit dedektörü, Domino araması",
- verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım) ekler; Domino araması varsayılan olarak daha derin (60 ply, 10.000 düğüm); o da tam değil ve biraz daha yavaş",
+ verNote2: "kilit dedektörüne önü açık piyon çiftlerini, kutulu at, kale ve vezirleri, ikiz filleri ve şah ve piyonlu bir oyunun pata gidiş yolları için dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zorunlu adım), Domino aramasına da iki kademe daha (9 ply ve 5.000 düğüm, sonra 150 ve 5.000.000) ekler, her biri öncekinin mat bulmadan başarısız olduğu yerde; o da tam değil ve biraz daha yavaş",
  verTag: " · tam sürüm",
  lblLockOnly: "yalnız kilit dedektörü",
  lockOnlyNote: "pozisyonlar yalnızca kilit dedektörüyle yargılanır, materyal testi ve arama yok; aşağıdaki oyunlar yine bütün merdiveni kullanır",
@@ -689,6 +707,7 @@ tr: {
  st2Ep: "Geçerken alma karesi ({0}) dururken kilit olmaz.",
  st2Skip: "Gerek yok: materyal çözdü.",
  st3Ok: "Her hat mat imkânsızlaşana dek izlendi, toplam {0}: {1} mat edemez. Domino etkisiyle berabere.",
+ st3Deep: "İlk arama ({0}) ispatsız ve matsız bitti; sonraki kademeler çalıştı: {1}.",
  st3Mate: "{0} tarafının mat ettiği bir hat bulundu. Süreden galibiyet, ispatlı.",
  st3Hor: "Bir hat ispat olmadan ply tavanına ({0}) ulaştı. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
  st3Bud: "Düğüm bütçesi ({0}) ispat olmadan tükendi. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
@@ -763,7 +782,7 @@ tr: {
  infoH: "İki cevap ne demek",
  info1: "İki taraf da mat edemiyorsa oyun hemen berabere bitebilir. Bitmesinde sakınca yok (FIDE 5.2.2, ölü pozisyon).",
  info2: "Bir taraf mat edebiliyor, öbürü edemiyorsa oyun sürer. Ama mat edebilen taraf süresi bitse de kaybetmez: oyun berabere bitmeli (FIDE 6.9).",
- info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,9’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm kendi varsayılan sınırlarıyla (6 ply, 100 düğüm), {2} tanesi dışında hepsini tam sürüm kendi sınırlarıyla (60 ply, 10.000 düğüm) ispatlıyor.",
+ info3: "“Mat edemez” her zaman bir ispattır, yani her zaman doğrudur. “Mat edebilir”, sınırlar içinde aksinin ispatlanamadığı demek: mat yine de imkânsız olabilir, cevap güvenli tarafa düşer. Pratikte %99,6’dan fazla doğrudur: süreden kaybedilmiş ama berabere bitmesi gereken {0} Lichess oyununun {1} tanesi dışında hepsini hızlı sürüm kendi varsayılan sınırlarıyla (3 ply, 10 düğüm) ispatlıyor; tam sürüm ise üç kademesiyle ve 75 hamle kuralı altında hepsini.",
  flagToMove: "{0}, sırası gelen",
  flagForced: "{0}, “iki bayrağı da dene” ile; sıra {1} tarafında",
  kMoves: "legal hamle",
@@ -789,7 +808,6 @@ tr: {
  nodesN: "{0} düğüm",
  node1: "1 düğüm",
  usedOf: "{1} düğümün {0} tanesi",
- limitsRule: "(kural altındaki arama: aynı sınırlar, kendi bütçesiyle)",
  kTime: "süre",
  kStop: "aramayı durduran",
  rHorizon: "ply tavanı",
@@ -918,7 +936,7 @@ tr: {
  pk_moves: "Hamleler",
  secEngine: "Bu sayfadaki motor",
  engineNote: "<code>mateless.js</code>, burada çalıştığı haliyle ({0} bayt): bir referans tahta, materyal testi, kilit dedektörü, Domino araması ve bir oyunun hamle hamle tuttuğu taraf başına bir bayrak. Aynı motor, Rust çevirisi ve WebAssembly derlemesiyle birlikte repoda.",
- engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, varsayılan olarak daha derin bir Domino araması (60 ply, 10.000 düğüm) ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor.",
+ engineNote2: "Tam sürümün motoru, burada çalıştığı haliyle ({0} bayt): kilit dedektöründe önü açık piyon çiftleri, kutulu at, kale ve vezirler, ikiz filler, pat bekçisi, piyon şahı tohumu, hamlesiz rakip ve zorunlu adım, Domino aramasında iki kademe daha ve istenirse hamle ve tekrar kuralları (hamle kuralında saatle sınırlı arama) olan <code>mateless.js</code>. Reponun <code>second-version</code> dalında derleniyor; oradaki Rust çevirisi ve WebAssembly derlemesi, kurallar dahil, düğüm sayılarına kadar aynı cevapları veriyor.",
  foot: "Mateless ispatı olmadan hiçbir zaman beraberlik demez: ispatlayamadığı pozisyon galibiyete düşer ve oyundan sonra tam bir çözücüye kalır. Hükümleri chasolver’ın etiketlerine, binlerce oyunda düşen her bayrak da chasolver’ın tam analizine karşı denetlendi; hiç yanlış beraberlik çıkmadı. MIT Lisansı, © 2026 Cüneyt İnan. Kaynak, Rust çevirisi ve veri: <a href=\"" + REPO + "\">github.com/cuneytinann/Mateless</a>. Lichess verisi: Miguel Ambrona’nın <a href=\"" + UNFAIR + "\">chasolver.org/unfair-games</a> sayfası.",
 }};
 var lang = 'en';
@@ -975,8 +993,9 @@ var editor = function (f) { return 'https://lichess.org/editor/' + f.replace(/ /
 /* chasolver's page, asked whether the flagged side's opponent can mate */
 var askCha = function (f, side) { return '#chasolver?fen=' + encodeURIComponent(f) + '&side=' + (side ? 'black' : 'white') };
 /* the limits: whole numbers, the ply ceiling 1 to 1,500, the node budget 1 to 1,000,000,000 */
-/* the limits' range and default; the default is the chosen version's (useVersion) */
-var LIM = { ply: [1, 1500, E.DOMINO_PLY], bud: [1, 1000000000, E.DOMINO_BUDGET] };
+var LIM = { ply: [1, 1500, 3], bud: [1, 1000000000, 10],
+            g2p: [1, 1500, 9], g2b: [1, 1000000000, 5000], g3p: [1, 1500, 150], g3b: [1, 1000000000, 5000000] };
+var LIM_IDS = ['ply', 'bud', 'g2p', 'g2b', 'g3p', 'g3b'];
 function limitOf(id) { var L = LIM[id], v = Math.floor(+$(id).value); return v >= L[0] ? Math.min(v, L[1]) : v === v && $(id).value !== '' ? L[0] : L[2] }
 function ply() { return limitOf('ply') } function bud() { return limitOf('bud') }
 /* the engine's options for a proof: the second version's rules, and a game's history for the repetition rule */
@@ -1126,7 +1145,8 @@ dropEl.ondrop = function (ev) { ev.preventDefault(); dropEl.classList.remove('ov
 /* ═══════════════════════════════ running ═══════════════════════════════ */
 var results = null, busy = false, cancel = false, page = 0;
 function lock(on) { busy = on; cancel = false;
-  ['ver', 'lockonly', 'ply', 'bud', 'rowA', 'rowB', 'bothdir', 'fen', 'example', 'edGo'].forEach(function (id) { $(id).disabled = on });
+  ['ver', 'lockonly', 'ply', 'bud', 'g2p', 'g2b', 'g3on', 'rowA', 'rowB', 'bothdir', 'fen', 'example', 'edGo'].forEach(function (id) { $(id).disabled = on });
+  $('g3p').disabled = $('g3b').disabled = on || !$('g3on').checked;
   Array.prototype.forEach.call(ROOT.querySelectorAll('input[name=mrule],input[name=mrep]'), function (x) { x.disabled = on });
   Array.prototype.forEach.call(ROOT.querySelectorAll('.labf,#flist select,#flist button'), function (x) { x.disabled = on });
   dropEl.classList.toggle('off', on);
@@ -1151,7 +1171,7 @@ function go() {
   if (PGN.busy) return;
   if (busy) { cancel = true; return }
   var work = workset(); if (!work.length) return;
-  var P = ply(), B = bud();
+  var P = ply(), B = bud(); readDeep();
   results = null; showResults();
   lock(true);
   runBatch(work, P, B, function (res, secs, stopped) { finish(work, res, secs, P, B, stopped) }) }
@@ -1160,7 +1180,7 @@ $('go').onclick = go;
    JIT, so the proof is repeated for ~30 ms and the time divided by the number of runs. */
 function warmTime(w, P, B) {
   var setup = E.fromFen(w.fen); if (setup.error) return null;
-  var pos = setup.position, g = w.g === 0 || w.g === 1 ? w.g : (pos.side === E.WHITE ? 1 : 0), flagged = g ? E.WHITE : E.BLACK, lim = Object.assign({ maxPly: P, budget: B }, rulesOf(null));
+  var pos = setup.position, g = w.g === 0 || w.g === 1 ? w.g : (pos.side === E.WHITE ? 1 : 0), flagged = g ? E.WHITE : E.BLACK, lim = Object.assign({ maxPly: P, budget: B }, deepOf(), rulesOf(null));
   var block = LOCKONLY ? function (k) { for (var i = 0; i < k; i++) E.lockCannotMate(pos, flagged) }
                        : function (k) { for (var i = 0; i < k; i++) E.proveCannotBeMated(pos, flagged, lim) };
   /* a block of calls between two readings of the clock; the first ~15 ms only warm the JIT up */
@@ -1170,13 +1190,14 @@ function warmTime(w, P, B) {
   do { block(k); n += k; t = performance.now() - t0 } while (t < 40);
   return t / n }
 function finish(work, res, secs, P, B, stopped) {
-  results = { rows: work.slice(0, res.length), total: work.length, res: res, secs: secs, P: P, B: B, stopped: stopped, ver: VER, lockOnly: LOCKONLY, rule: VER === 2 ? RULE : 0, rep: VER === 2 ? REPN : 0 };
+  results = { rows: work.slice(0, res.length), total: work.length, res: res, secs: secs, P: P, B: B, D: DT, stopped: stopped, ver: VER, lockOnly: LOCKONLY, rule: VER === 2 ? RULE : 0, rep: VER === 2 ? REPN : 0 };
   page = 0; filt = { show: '', set: '', why: '' }; renderBrowse.touched = false;
   lock(false);
   showResults() }
 function showResults() {
   if (!results) { $('solo').classList.add('hide'); $('out').classList.add('hide'); return }
   var R = results, single = R.total === 1 && R.res.length === 1, s;
+  if (R) DT = R.D || [];
   if (single) {
     $('out').classList.add('hide'); $('solo').classList.remove('hide');
     $('solo').innerHTML = detailHTML(0);
@@ -1328,7 +1349,8 @@ function stepRow(state, name, call, text) {
   var tag = { dec: 'tDec', win: 'tDec', no: 'tNo', also: 'tAlso', skip: 'tSkip', open: 'tOpen', dead: 'tDead', live: 'tLive' }[state];
   return '<li class="st-' + state + '"><div class="sh"><b>' + name + '</b> <code>' + call + '</code> <span class="stag">' + T(tag) + '</span></div><p>' + text + '</p></li>' }
 function detailHTML(k) {
-  var w = results.rows[k], r = results.res[k], P = results.P, B = results.B;
+  var w = results.rows[k], r = results.res[k], P = results.P, B = results.B, D = results.D || [];
+  DT = D;
   if (!r) return '<div class="detail"><div></div><div><p class="vword k-bad">' + T('rs_bad') + '</p><p class="note bad">' + F('badFen', badText(w.bad)) + ' ' + T('badNec') + '</p>' + srcBlock(w, null) + '</div></div>';
   var ins = inspect(w.fen, r.side) || { status: 0, material: false, lock: false };
   var A = String(w.fen).trim().split(/\s+/), tm = A[1] == 'w' ? 1 : 0, o = outcome(r), fl = sideName(r.side), op = sideName(1 - r.side), c = refCat(w, r);
@@ -1357,7 +1379,10 @@ function detailHTML(k) {
   else if (ins.lock) { s += stepRow('dec', T('s2n'), c2, F('st2Yes', op)); done = true }
   else s += stepRow('no', T('s2n'), c2, ep ? F('st2Ep', ep) : F('st2No', op));
   var c3 = 'Domino(' + who + ', ' + P + ', ' + num(B) + ')';
-  var dp = P, db = B, dn = '';
+  /* the second version's further tiers, those that ran: the last one's limits are the ones the last search reached */
+  var k3 = Math.min(r.deep || 0, D.length), last = k3 ? D[k3 - 1] : [P, B];
+  var dp = last[0], db = last[1], dn = k3 ? ' ' + F('st3Deep', F('limits', P, num(B)), D.slice(0, k3).map(function (g) { return F('limits', g[0], num(g[1])) }).join(' → ')) : '';
+  for (var j = 0; j < k3; j++) c3 += ' → Domino(' + who + ', ' + D[j][0] + ', ' + num(D[j][1]) + ')';
   var rl = results.rule || 0, rn = '';
   if (r.ruled) { c3 += ' · moveRule ' + rl; rn = ' ' + F(r.draw ? 'st3Rule' : r.reason == 'mate' ? 'st3RuleMate' : 'st3RuleNo', rl / 2); dn += rn }
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
@@ -1391,10 +1416,10 @@ function detailHTML(k) {
      (r.fixed && r.fixed.length ? '<dt>' + T('kFixed') + '</dt><dd>' + r.fixed.map(function (f) { return T('fx_' + f.replace(' ', '')) }).join('; ') + '</dd>' : '') + '</dl>';
   /* the proof */
   h += '<h4>' + T('hRun') + '</h4><dl class="kv">' +
-     /* under a rule, a second search with the same limits: its nodes count against a budget of its own */
-     '<dt>' + T('kLimits') + '</dt><dd>' + (r.lockOnly ? T('lblLockOnly') : F('limits', P, num(B)) + (r.ruled ? ' ' + T('limitsRule') : '')) + '</dd>' +
+     /* with the further tiers, a search each: the limits of those that ran, and their nodes against their budgets */
+     '<dt>' + T('kLimits') + '</dt><dd>' + (r.lockOnly ? T('lblLockOnly') : [F('limits', P, num(B))].concat(D.slice(0, k3).map(function (g) { return F('limits', g[0], num(g[1])) })).join(' → ')) + '</dd>' +
      '<dt>' + T('kRule') + '</dt><dd>' + (results.rule ? F('ruleVal', results.rule / 2, results.rule) : T('ruleNone')) + '</dd>' +
-     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(r.ruled ? 2 * B : B)) + '</dd>' +
+     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(D.slice(0, k3).reduce(function (t, g) { return t + g[1] }, B))) + '</dd>' +
      '<dt>' + T('kTime') + '</dt><dd>' + (r.warm === undefined ? (r.warm = warmTime(w, P, B)) : r.warm, us(r.warm)) + ' µs</dd>' +
      (r.why ? '<dt>' + T('kStop') + '</dt><dd>' + T({ horizon: 'rHorizon', budget: 'rBudget', mate: 'rMate', nolock: 'rNoLock' }[r.why]) + '</dd>' : '') + '</dl>';
   h += srcBlock(w, r) + '</div></div>';
@@ -1621,7 +1646,7 @@ function pgnRun() {
   if (PGN.busy) { PGN.cancel = true; return }
   if (busy) return;
   var games = pgnAll(); if (!games.length) return;
-  var P = ply(), B = bud();
+  var P = ply(), B = bud(); readDeep();
   PGN.busy = true; PGN.cancel = false; PGN.res = null; pgnLock(true); pgnRender();
   var res = [], i = 0, T0 = performance.now();
   $('pbar').classList.toggle('hide', games.length < 2);
@@ -1725,7 +1750,7 @@ $('pgnexp').onclick = function () { if (!PGN.res) return;
 
 /* ═══════════════════════════════ wiring ═══════════════════════════════ */
 function limNote() {
-  $('limnote').textContent = F(VER === 2 ? 'limNote2' : 'limNote', LIMITS[0], num(LIMITS[1]));
+  $('limnote').textContent = VER === 2 ? F('limNote2', LIMITS[0], num(LIMITS[1]), DEEP[0], num(DEEP[1])) : F('limNote', LIMITS[0], num(LIMITS[1]));
   $('vernote').textContent = T('verNote' + VER) + (LOCKONLY ? '; ' + T('lockOnlyNote') : '') }
 $('fold-engine').addEventListener('toggle', function () {
   if (this.open && !$('srcbox').textContent) $('srcbox').textContent = $(ENGINE_IDS[VER]).textContent.trim() });
@@ -1739,13 +1764,11 @@ $('lockonly').onchange = function () {
   applyI18n() };
 function useVersion(v) {
   VER = v; E = engineOf(VER);
-  LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET]; LIM.ply[2] = E.DOMINO_PLY; LIM.bud[2] = E.DOMINO_BUDGET;
+  DEEP = VER === 2 ? [E.DOMINO_DEEP_PLY, E.DOMINO_DEEP_BUDGET] : [0, 0];
   ENGINE_BYTES = new Blob([$(ENGINE_IDS[VER]).textContent]).size }
 $('ver').onchange = function () {
   if (busy || PGN.busy) { this.value = String(VER); return }
   useVersion(+this.value);
-  /* each version's own default limits in the boxes */
-  $('ply').value = LIM.ply[2]; $('bud').value = LIM.bud[2];
   if (!$('lb').classList.contains('hide')) lbClose();
   results = null; showResults(); say('');
   PGN.res = null; pgnRender();
@@ -1874,13 +1897,16 @@ function edSide() {
 /* The two bars: can each side mate? Black above the board, White below, unless the board is flipped. */
 var ED_CAP = 1000000;     /* nodes per side for the board's live answer */
 function edJudge() {
+  var keep = DT; readDeep(); var dcap = DT.some(function (g) { return g[1] > ED_CAP });
+  DT = DT.map(function (g) { return [g[0], Math.min(g[1], ED_CAP)] });
   var fen = edFen(), setup = readFen(fen), B = bud(), sd = setup ? bothSides(fen, ply(), Math.min(B, ED_CAP)) : null, why = setup ? '' : badText(badReason);
+  DT = keep;
   var top = ED.flip ? 1 : 0;
   edBar($('vbarTop'), top, sd); edBar($('vbarBot'), 1 - top, sd);
   $('edBad').textContent = why ? F('edInvalid', why) : ''; $('edBad').classList.toggle('hide', !why);
   var n = canCount(sd);
   $('edSum').textContent = !sd ? '' : n === 0 ? T('sdDead') : n === 1 ? F('sdOne', sideName(sd[1].cannot ? 0 : 1)) : T('sdBoth');
-  $('edInfo').innerHTML = (B > ED_CAP && sd ? '<p class="hint">' + F('edCap', num(ED_CAP)) + '</p>' : '') + infoHTML(sd);
+  $('edInfo').innerHTML = ((B > ED_CAP || dcap) && sd ? '<p class="hint">' + F('edCap', num(ED_CAP)) + '</p>' : '') + infoHTML(sd);
   $('edGo').disabled = !sd || busy || PGN.busy; $('edAdd').disabled = !setup }
 function edBar(el, g, sd) {
   var who = '<span class="who"><i class="' + (g ? 'w' : 'b') + '"></i>' + sideName(g) + '</span>';
@@ -1983,8 +2009,8 @@ $('edPaste').onclick = function () {
 /* "How it was decided": the flag of the side to move, in the detail view below the positions */
 $('edGo').onclick = function () {
   if (busy || PGN.busy) return;
-  var fen = edFen(), P = ply(), B = bud(), r = judge(fen, P, B), w = { set: T('edSet'), id: '—', fen: fen, bad: r ? null : badReason };
-  results = { rows: [w], total: 1, res: [r], secs: 0, P: P, B: B, stopped: false, ver: VER, lockOnly: LOCKONLY, rule: VER === 2 ? RULE : 0, rep: VER === 2 ? REPN : 0 };
+  readDeep(); var fen = edFen(), P = ply(), B = bud(), r = judge(fen, P, B), w = { set: T('edSet'), id: '—', fen: fen, bad: r ? null : badReason };
+  results = { rows: [w], total: 1, res: [r], secs: 0, P: P, B: B, D: DT, stopped: false, ver: VER, lockOnly: LOCKONLY, rule: VER === 2 ? RULE : 0, rep: VER === 2 ? REPN : 0 };
   page = 0; filt = { show: '', set: '', why: '' };
   showResults(); $('solo').scrollIntoView({ behavior: 'smooth', block: 'start' }) };
 $('edAdd').onclick = function () {
@@ -1997,7 +2023,7 @@ ROOT.addEventListener('click', function (ev) {
   if (!$('lb').classList.contains('hide')) lbClose();
   edUpdate(); $('ed').scrollIntoView({ behavior: 'smooth', block: 'start' }) });
 /* the limits: whole numbers only, kept in range as they are typed; the board is judged again */
-['ply', 'bud'].forEach(function (id) {
+LIM_IDS.forEach(function (id) {
   var el = $(id), L = LIM[id];
   el.addEventListener('keydown', function (ev) {
     if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length > 1) return;    /* shortcuts, arrows, Backspace, Tab */
@@ -2040,9 +2066,10 @@ Array.prototype.forEach.call(ROOT.querySelectorAll('input[name=mrule],input[name
 edLoad(ED_EXAMPLE);
 RULE = +(ROOT.querySelector('input[name=mrule]:checked') || { value: 150 }).value;
 REPN = +(ROOT.querySelector('input[name=mrep]:checked') || { value: 5 }).value;
+LIM_IDS.forEach(function (id) { $(id).value = limitOf(id) });
+/* the third tier: off unless its box is ticked */
+$('g3on').onchange = function () { $('g3p').disabled = $('g3b').disabled = !this.checked; edUpdate() };
 if (+$('ver').value !== VER) useVersion(+$('ver').value);
-/* the chosen version's own default limits in the boxes (a reload may have kept other values) */
-$('ply').value = LIM.ply[2]; $('bud').value = LIM.bud[2];
 
 function applyI18n() {
   var els = ROOT.querySelectorAll('[data-i]'), i, el, k;
@@ -2051,6 +2078,9 @@ function applyI18n() {
   ROOT.querySelector('[data-i="engineNote"]').innerHTML = F(VER === 2 ? 'engineNote2' : 'engineNote', num(ENGINE_BYTES));
   limNote(); inputChanged();
   $('rulerow').classList.toggle('hide', VER !== 2);
+  $('gaterows').classList.toggle('hide', VER !== 2); $('g1lab').classList.toggle('hide', VER !== 2);
+  $('gatehead').classList.toggle('hide', VER !== 2); $('gatebox').classList.toggle('gated', VER === 2);
+  $('g3p').disabled = $('g3b').disabled = !$('g3on').checked || busy || PGN.busy;
   $('c960idl').classList.toggle('hide', !C960); $('c960arr').classList.toggle('hide', !C960); $('c960note').classList.toggle('hide', !C960);
   $('c960arr').textContent = E.chess960Arrangement(C960_ID);
   edUpdate();

@@ -5,7 +5,7 @@
  * (5.2.2), flag fall (6.9) and resignation (5.1.2).
  *
  * After every move Mateless climbs a ladder for each side: the material test, the lock detector,
- * then a short helpmate search of 6 plies and 100 nodes (the Domino search). A side proven unable
+ * then a short helpmate search of 3 plies and 10 nodes (the Domino search). A side proven unable
  * to mate keeps that flag for the rest of the game; a flag fall is judged from the flags, with
  * nothing to compute. It never declares a draw where a mate is possible: it acts only on a proof,
  * and what it cannot prove it leaves to a complete solver.
@@ -2051,18 +2051,19 @@ class PositionSet {
    rule (after a capture or a pawn move and one ply later) they do too. At the root they are asked
    unless the caller has settled them already (rootStatic: false, see ladder.js).
 
-   The ply ceiling and node budget default to 6 and 100 (DOMINO_PLY, DOMINO_BUDGET). With them
-   the ladder proves 201,024 of chasolver's 201,060 wrongly decided Lichess timeouts; a proof
-   takes 1 node at the median, at most 8 nodes in 99% of the rows, and a ceiling above 6 plies
-   proves no more rows. In an open position the first line runs to the ceiling and fails there,
-   after about as many nodes as plies. The budget pays for every move played, each promotion
-   separately.
+   The ply ceiling and node budget default to 3 and 10 (DOMINO_PLY, DOMINO_BUDGET; 6 and 100
+   until 26 November 2026). With them the ladder proves 203,828 of the 204,484 wrongly decided
+   Lichess timeouts of chasolver's list of 19 November 2026 (99.68%; at 6 and 100, 204,448); a
+   proof takes 1 node at the median, at most 8 nodes in 99% of the rows. The rest is for the full
+   version, whose further gates (8 plies and 500 nodes, 25 and 10,000, 150 and 5,000,000) leave 1.
+   In an open position the first line runs to the ceiling and fails there, after about as many
+   nodes as plies. The budget pays for every move played, each promotion separately.
 
    Moves are generated lazily, one piece at a time, in the generator's order (from a1, b1, …
    to h8): a node plays the first piece's moves before it works out the second piece's, and so
    on. Most searches that fail, fail on their first line, and then the other moves of the nodes
    on that line are never generated. */
-const DOMINO_PLY = 6, DOMINO_BUDGET = 100;
+const DOMINO_PLY = 3, DOMINO_BUDGET = 10;
 
 /** The static tests the move of a piece of type `type` to `to` (with `flags`) from `pos` can
     change (testsAfter in lock.js); checked: the side to move is in a pawn's check. */
@@ -2290,7 +2291,7 @@ class Domino {
 const sharedSearch = new Domino();
 
 /** Can `flagged` never be mated? The static tests at the root, then the Domino search (by
-    default 6 plies, 100 nodes). Returns { proven, staticProof, failure, foundBy, nodes }:
+    default 3 plies, 10 nodes). Returns { proven, staticProof, failure, foundBy, nodes }:
     staticProof says the static tests proved it at the root; failure is 'mate', 'horizon' or
     'budget' when nothing was proven ('mate' with foundBy 'search': the search played a line
     that mates); nodes counts the moves the search played. */

@@ -4,6 +4,24 @@ Measured on a shared cloud machine (2 vCPU Xeon 2.8 GHz, Node 22, rustc 1.97, on
 separate runs move by ±5–10%, so ranges are given where runs differed. How the engine works is in
 [DESIGN.md](DESIGN.md).
 
+## The search at 3 plies and 10 nodes (26 November 2026)
+
+The figures below were measured with the Domino search at 6 plies and 100 nodes, its default
+until 26 November 2026. Since then it is 3 plies and 10 nodes, in both versions; the full version
+(the `second-version` branch) adds two tiers after it, each where the one before fails without a
+mate. On chasolver's list of 19 November 2026 (204,484 rows), the flagged side's opponent:
+
+| | unproven | Rust, the ladder (ns a row) |
+|---|---|---|
+| this version, 6 plies / 100 nodes | 36 | 149 |
+| this version, 3 plies / 10 nodes | 656 | 157 |
+| the full version (second tier 9 plies / 5,000 nodes, third 150 / 5,000,000), under the 75-move rule | 0 | |
+
+On real game positions (chasolver's `lichess.txt`, 65,536) the ladder takes 320 ns a position at
+3 plies and 10 nodes against 625 at 6 and 100, with the same 10 proofs: a search that cannot prove
+fails on its first line, at its ply ceiling. In the arbiter page (Chrome, page included) the
+204,484 rows take 3.3 s with this version and 4.0 s with the full one, its third tier ticked.
+
 ## 1. The Lichess data
 
 Miguel Ambrona's [chasolver](https://github.com/miguel-ambrona/chasolver) project scans the Lichess

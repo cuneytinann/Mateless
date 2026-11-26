@@ -1,7 +1,7 @@
 # Mateless in Rust
 
 A port of `mateless.js` to Rust: the same rules, the same static tests (material test, lock
-detector) and the same Domino search (6 plies, 100 nodes, no move-count rules), with the game's
+detector) and the same Domino search (3 plies, 10 nodes, no move-count rules), with the game's
 two flags (`Flags`). Legal moves are generated in the same order as in the JavaScript engine, so a
 search plays the same nodes: on chasolver's 201,060 Lichess rows and the 3,000 of the August and
 September scan, on chasolver's labelled test
@@ -77,7 +77,7 @@ The search plays the same nodes in the same order as before every speedup; the p
 nodes played are its checksum:
 
 ```sh
-cargo run --release --example dominobench -- positions.txt   # the ladder at 6/100: proven, nodes, ns per position
+cargo run --release --example dominobench -- positions.txt   # the ladder at its defaults (3/10): proven, nodes, ns per position
 ```
 
 ```rust

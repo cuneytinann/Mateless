@@ -27,7 +27,10 @@ It looks at the whole structure at once, at the level of bits: all the pawns of 
 cone, a king has one reach, and a few operations on 64-bit sets take the whole structure to a
 fixed point. As far as we know that makes it the fastest method of its kind: with the short
 search behind the detector, Mateless covers **99.98%** of the Lichess data below **~17–18×
-faster** than the nearest known method (Rust against Rust).
+faster** than the nearest known method (Rust against Rust), measured with the search at 6 plies and
+100 nodes. Since 26 November 2026 the search is 3 plies and 10 nodes: about twice as fast in real
+game positions, as fast on the timeouts, and it proves 99.68% of chasolver's list of 19 November
+(203,828 of 204,484 rows; at 6 and 100, 204,448); the full version, below, proves them all.
 
 [chasolver](https://github.com/miguel-ambrona/chasolver) (Miguel Ambrona, FUN 2022) is the
 reference in this field, and a complete solver: it settles composed problems that Mateless does
@@ -64,7 +67,7 @@ Against chasolver's fast check, both in Rust, in one binary with chasolver's own
 | both sides at once, all rows | 201,060 | 6.52 µs (two calls) | 0.41 µs | **~16×** |
 | real game positions (chasolver's `lichess.txt`, both sides) | 131,072 | 2.41 µs | 0.563 µs | ~4.3× |
 
-chasolver proves all 201,060 rows, Mateless 201,024. Coverage is counted on chasolver's list
+chasolver proves all 201,060 rows, Mateless 201,024 (at 6 plies and 100 nodes, as the whole table). Coverage is counted on chasolver's list
 alone: the 3,000 rows of the August–September scan were chosen as rows that both chasolver and
 Mateless prove. The browser runs the same engine: the
 arbiter page proves a locked position in under a microsecond, and WebAssembly is 2.5–4× faster
@@ -80,7 +83,7 @@ side can never mate brings its flag down, for good.
 |---|---|---|---|
 | **1. material test** | after a capture or a pawn move (in the search: after a capture or a promotion) | the side lacks the material to mate at all | ~0.1 µs |
 | **2. lock detector** | after a capture, a pawn move, the lapse of an en passant right, or a king's step out of a pawn's check | pawns, kings and bishops form a structure no series of legal moves can open (any knight, rook or queen fails it at once) | ~0.3–0.8 µs |
-| **3. Domino search** | after every move | a helpmate search of 6 plies and 100 nodes finds no mate, and every line ends in a position already seen, a static proof or a stalemate | ~1–5 µs |
+| **3. Domino search** | after every move | a helpmate search of 3 plies and 10 nodes (6 and 100 until 26 November 2026) finds no mate, and every line ends in a position already seen, a static proof or a stalemate | ~1–5 µs |
 
 - **Both flags down** means a dead position (FIDE 5.2.2): the game ends in a draw.
 - **When a flag falls, or a player resigns,** nothing is computed: if the opponent's flag is
@@ -145,7 +148,7 @@ mate, so it is the flag's question, FIDE 6.9) and 238 rows where the lock comes 
 flag. Together: 190,719 rows (97.7%). Asked only at the flag, a dead game would still be played on
 until it ended some other way: in August and September, 8,718 drawn games went on for a median of
 14 plies after such a lock had appeared. The whole ladder, Mateless itself or that repository's
-`c-ladder` patch, draws 195,251 rows (99.98%).
+`c-ladder` patch, draws 195,251 rows (99.98%; Mateless with its search at 6 plies and 100 nodes, the default until 26 November 2026).
 
 In 117,455 rows (60%) the final position was already dead, neither side able to mate: under
 FIDE 5.2.2 those games had ended in a draw before the flag fell.
@@ -200,9 +203,10 @@ Turkish to choose. Five tabs:
   (the `second-version` branch, below), with a move rule (75 or 50 moves) and a repetition rule
   (fivefold or threefold) to choose, and Chess960 (castling by its rules, the board's castling
   files from a start position's number, 0–959); a box runs the chosen version's lock detector alone, to see which
-  positions it catches. Each version comes with its own default limits, in the engine's settings
-  beside the board: the fast one 6 plies and 100 nodes, the full one 60 plies and 10,000 nodes;
-  nothing is searched beyond the limits shown.
+  positions it catches. The search's limits are in the engine's settings beside the board: the
+  first search is 3 plies and 10 nodes in both versions; the full one adds a second tier of 9 plies
+  and 5,000 nodes and a third of 150 plies and 5,000,000 (its box ticked by default), each where
+  the one before fails without a mate, every one adjustable.
 - **Lock detector**: rung 2 from the simplest up. What the Lichess locks hold, and why knights,
   rooks, queens and twin bishops are left out; then pawns and kings on bitboards (a capture means
   no lock; the cones; the fixed point of walls, fixed pawns, king reaches and take squares; one wall
@@ -421,7 +425,7 @@ the board.
 |---|---|---|
 | `src/material.js` | **rung 1:** the material test | the piece sets; no move generation |
 | `src/lock.js` | **rung 2:** the lock detector; the two static tests together | the piece sets, the en passant square, a few shifts; no move generation |
-| `src/domino.js` | **rung 3:** the Domino search (6 plies / 100 nodes) | legal moves piece by piece in a fixed order, made and taken back in place, "is there a legal move?", an exact code of a position |
+| `src/domino.js` | **rung 3:** the Domino search (3 plies / 10 nodes) | legal moves piece by piece in a fixed order, made and taken back in place, "is there a legal move?", an exact code of a position |
 | `src/ladder.js` | **the ladder:** when each rung is asked, the proofs for one position, a game's two flags (`Flags`) | the halfmove clock and the en passant square |
 | `src/board.js` | a reference board: bitboards, magic bitboards, legal moves, FEN, Chess960 | — |
 | `src/fen.js` | **the outer layer:** reading a FEN into a position some game can reach (`fromFen`): what it puts right, what it refuses | the board's FEN reader and attack test |
@@ -484,15 +488,16 @@ This version, the fast one, is the layer for a game server: sound, small, and me
 every move. The full version stands beside it, on the `second-version` branch, and the arbiter page
 runs it when it is chosen. It is not complete either; "full" names its goal, and it keeps growing as
 new rules are added: open pawn pairs, boxed knights, rooks and queens, twin bishops, four rules for
-the ways a game of kings and pawns runs into a stalemate, a deeper Domino search by default (60
-plies, 10,000 nodes; of the 36 rows this version leaves unproven, it proves 35), and, on request,
-the 75- or 50-move rule and fivefold or threefold repetition (in JavaScript, Rust and
-WebAssembly). Near the move rule a search bounded by the clock itself, cut by a lower bound on the
-plies to a mate or to a capture or pawn move, decides whether a mate can still come in time, with
-the same limits as the rest: on endings of three to five men around their rule distances it proves
-97.9% of the cases that cannot be mated in time, and none that can. This version already covers
-99.98% of the Lichess data, so in practice the full one matters mostly to the curious and to
-research; it is not rushed.
+the ways a game of kings and pawns runs into a stalemate, two more tiers of the Domino search (9
+plies and 5,000 nodes, then 150 and 5,000,000), each where the one before fails without a mate,
+and, on request, the 75- or 50-move rule and fivefold or threefold repetition (in JavaScript, Rust
+and WebAssembly). Of chasolver's list of 19 November (204,484 rows) this version leaves 656
+unproven, the full one none under the 75-move rule. Near the move rule a search bounded by the
+clock itself, cut by a lower bound on the plies to a mate or to a capture or pawn move, decides
+whether a mate can still come in time: on endings of three to five men around their rule distances
+it proves 99.8% of the cases that cannot be mated in time, and none that can (the search it
+replaced, with a ply ceiling, proved 85.6%). This version already proves 99.68% of that list, so in
+practice the full one matters mostly to the curious and to research; it is not rushed.
 
 ## License and credits
 

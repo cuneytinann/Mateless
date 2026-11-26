@@ -3,7 +3,7 @@
  * (5.2.2), flag fall (6.9) and resignation (5.1.2).
  *
  * After every move Mateless climbs a ladder for each side: the material test, the lock detector,
- * then a short helpmate search of 6 plies and 100 nodes (the Domino search). A side proven unable
+ * then a short helpmate search of 3 plies and 10 nodes (the Domino search). A side proven unable
  * to mate keeps that flag for the rest of the game; a flag fall is judged from the flags, with
  * nothing to compute. It never declares a draw where a mate is possible: it acts only on a proof,
  * and what it cannot prove it leaves to a complete solver.

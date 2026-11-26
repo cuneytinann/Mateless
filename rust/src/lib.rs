@@ -13,11 +13,11 @@
 //!   - [`clock`]     the search under a move rule, bounded by the clock (the second version)
 //!   - [`ladder`]    the rungs put together: [`prove_cannot_be_mated`], [`prove_both`] and
 //!                   [`is_dead_position`] for one position, [`Flags`] for the two flags of a game
-//!                   played move by move; and rung 4, the search's further tiers (the second version)
+//!                   played move by move; and rung 4, the stuck mater (`stuck`) and the search's second tier (the second version)
 //!
 //! Both versions are here: the first version's lock detector and search, and the second version's
 //! rules (open pawn pairs, boxed knights, rooks and queens, twin bishops, the four rules of kings and
-//! pawns: the stalemate guard, the check seed, the stuck mater, the forced step; the further tiers),
+//! pawns: the stalemate guard, the check seed, the stuck mater, the forced step; the stuck mater move by move and the second tier),
 //! each run only when its own situation is on the board.
 //!
 //! and under it [`board`], a reference board (bitboards, magic bitboards, legal moves, FEN). Every
@@ -35,6 +35,7 @@ pub mod lock;
 pub mod domino;
 pub mod clock;
 pub mod ladder;
+pub mod stuck;
 
 pub use board::*;
 pub use fen::*;

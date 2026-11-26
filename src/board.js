@@ -124,7 +124,7 @@ function stepTable(steps) {
   }
   return table;
 }
-const KNIGHT_STEPS = stepTable([[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]]);
+export const KNIGHT_STEPS = stepTable([[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]]);
 export const KING_STEPS = stepTable([[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]);
 /** The squares a pawn of each colour attacks from each square. */
 const WHITE_PAWN_ATTACKS = stepTable([[-1, 1], [1, 1]]);
@@ -132,7 +132,7 @@ const BLACK_PAWN_ATTACKS = stepTable([[-1, -1], [1, -1]]);
 
 /** BETWEEN[2 * (64 * a + b)] (and + 1): the squares strictly between a and b when they share a
     rank, file or diagonal; empty otherwise. LINE: the whole line through a and b, edge to edge. */
-const BETWEEN = new Int32Array(64 * 64 * 2), LINE = new Int32Array(64 * 64 * 2);
+export const BETWEEN = new Int32Array(64 * 64 * 2), LINE = new Int32Array(64 * 64 * 2);
 for (let a = 0; a < 64; a++) {
   for (let b = 0; b < 64; b++) {
     const df = fileOf(b) - fileOf(a), dr = rankOf(b) - rankOf(a);
@@ -285,6 +285,11 @@ function rookIndex(sq, occLo, occHi) {
 function bishopIndex(sq, occLo, occHi) {
   return B_BASE[sq] + ((Math.imul(occLo & B_MASK_LO[sq], B_MAGIC_LO[sq]) ^ Math.imul(occHi & B_MASK_HI[sq], B_MAGIC_HI[sq])) >>> B_SHIFT[sq]);
 }
+/** The attacks of a bishop or a rook from sq, the board occupied as (occLo, occHi), returned
+    through rayLo / rayHi (the second version's stuck mater, ladder.js). */
+export let rayLo = 0, rayHi = 0;
+export function bishopRay(sq, occLo, occHi) { const b = bishopIndex(sq, occLo, occHi); rayLo = BISHOP_LO[b]; rayHi = BISHOP_HI[b]; }
+export function rookRay(sq, occLo, occHi) { const r = rookIndex(sq, occLo, occHi); rayLo = ROOK_LO[r]; rayHi = ROOK_HI[r]; }
 /** The rays of a rook and a bishop on an empty board, used to find pinning pieces. */
 const ROOK_EMPTY_LO = new Int32Array(64), ROOK_EMPTY_HI = new Int32Array(64);
 const BISHOP_EMPTY_LO = new Int32Array(64), BISHOP_EMPTY_HI = new Int32Array(64);

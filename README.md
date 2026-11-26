@@ -16,7 +16,7 @@ prove it leaves to the platform's rule (the flag loses) and to a complete solver
 It comes in two versions, side by side in one library. The **fast** version (the first) is the
 layer proposed for Lichess: the lock detector of [`lock/`](lock/) and of the scalachess patch, and
 a short search. The **full** version (the second) adds rules that see more: open pawn pairs, boxed
-knights, rooks and queens, two more tiers of the search, and, on request, the move and repetition
+knights, rooks and queens, the stuck mater move by move and a second tier of the search, and, on request, the move and repetition
 rules, with a search bounded by the clock near the move rule. It is not complete either; its name
 is its goal, and each of its rules runs only when its own situation is on the board, so every
 other position goes through the fast version's code ([the second version](#the-second-version)).
@@ -100,7 +100,7 @@ side can never mate brings its flag down, for good.
 | **1. material test** | after a capture or a pawn move (in the search: after a capture or a promotion) | the side lacks the material to mate at all | ~0.1 µs |
 | **2. lock detector** | after a capture, a pawn move, the lapse of an en passant right, or a king's step out of a pawn's check | pawns, kings and bishops form a structure no series of legal moves can open (first version: any knight, rook or queen fails it at once; the second version lets boxed ones stay and splits open pawn pairs) | ~0.3–0.8 µs |
 | **3. Domino search** | after every move | a helpmate search of 3 plies and 10 nodes (6 and 100 until 26 November 2026) finds no mate, and every line ends in a position already seen, a static proof or a stalemate | ~1–5 µs |
-| **4. further tiers** (second version) | after the Domino search fails without a mate, and the second tier so: each tier where the one before it did | the same search at 9 plies and 5,000 nodes, then at 150 and 5,000,000 (the third for a single position's verdict; a game's flags stop at the second) | up to 5,000 nodes in a game; a search ends when its lines do |
+| **4. stuck mater, second tier** (second version) | after the Domino search fails without a mate (budget or horizon) | first the stuck mater move by move: the flagged side is to move, the mater has only its king and pawns, and after every move of the flagged side the mater has no legal move (read from the bitboards; no node); then the same search at 9 plies and 5,000 nodes. That is the whole ladder: a third tier (150 plies, 5,000,000 nodes) is the arbiter page's, for analysis after the game, and in no engine | the stuck mater: bit work, no search; the second tier up to 5,000 nodes; a search ends when its lines do |
 
 - **Both flags down** means a dead position (FIDE 5.2.2): the game ends in a draw.
 - **When a flag falls, or a player resigns,** nothing is computed: if the opponent's flag is
@@ -187,11 +187,16 @@ the rest locked), and 1 a knight boxed in by its own pawns. They, and whatever a
 rules leave, are what a refund after the game would cover: a complete solver (chasolver) judges
 them once the game is over. With the whole ladder that is 36 rows of 195,287; with the lock
 detector alone on top of today's Lichess, 4,822 (`in-game` alone) or 4,568 (`a-lock`, and #916,
-which does both). The second version proves 35 of the 36: the search 28 of the cages (27 with its
-second tier, the last, bKHPqNEw, with its third), the stalemate guard 3 more, the open-pair rule
-the 3 pairs, the boxed rule the knight. The one left, RwnQJq1k, a bishop's cage, falls to the
-75-move rule. (At 3 plies and 10 nodes, the default since 26 November 2026, the first version leaves
-656 of chasolver's 204,484-row list of 19 November, the second none under the 75-move rule.)
+which does both). The second version proves 34 of the 36: the search 27 of the cages (with its
+second tier), the stalemate guard 3 more, the open-pair rule the 3 pairs, the boxed rule the knight.
+Two are left, both bishops' cages: bKHPqNEw, which the arbiter page's third tier proves (150 plies,
+5,000,000 nodes: analysis after the game), and RwnQJq1k, which falls to the 75-move rule once the
+search reaches the rule's end (in the game's position, clock 11, with the page's third tier; by
+itself from clock 120 on). (At 3 plies and 10 nodes, the default since 26 November 2026, the first
+version leaves 656 of chasolver's 204,484-row list of 19 November, the second 2, those same two,
+with the 75-move rule or without it; with the page's third tier and the 75-move rule, none.) So in
+play even the full version may, very rarely, leave a position unproven that cannot be mated; the
+analysis after the game, with the third tier and if need be a larger budget, catches it.
 
 **Soundness.** There is no written proof yet; there is strong test evidence.
 - No false draw against chasolver's labels (its 68,950 labelled positions, both sides;
@@ -459,7 +464,7 @@ the board.
 | `src/material.js` | **rung 1:** the material test | the piece sets; no move generation |
 | `src/lock.js` | **rung 2:** the lock detector; the two static tests together | the piece sets, the en passant square, a few shifts; no move generation |
 | `src/domino.js` | **rung 3:** the Domino search (3 plies / 10 nodes) | legal moves piece by piece in a fixed order, made and taken back in place, "is there a legal move?", an exact code of a position |
-| `src/ladder.js` | **the ladder:** when each rung is asked, the further tiers (rung 4), the proofs for one position, a game's two flags (`Flags`) | the halfmove clock and the en passant square |
+| `src/ladder.js` | **the ladder:** when each rung is asked, the stuck mater move by move and the second tier (rung 4), the proofs for one position, a game's two flags (`Flags`) | the halfmove clock and the en passant square |
 | `src/board.js` | a reference board: bitboards, magic bitboards, legal moves, FEN, Chess960 | — |
 | `src/fen.js` | **the outer layer:** reading a FEN into a position some game can reach (`fromFen`): what it puts right, what it refuses | the board's FEN reader and attack test |
 | `src/game.js` | a reference game: result codes, repetitions, the 75-move rule, fivefold repetition, `Game` | — |
@@ -538,7 +543,7 @@ measured, and only where its own situation is on the board.
 |---|---|---|---|
 | **open pawn pairs**: a white and a black pawn on a file with one square between them, the rest locked; the reachable positions split into three families by what the pair's pawns have done (neither moved, the white one stepped into the gap, the black one did), each an ordinary level with walls of its own, up to 3 pairs | the pawns hold such a pair (two shifts tell) | 3 (and the death of 5 drawn games of August and September at the ply it happens) | none measurable |
 | **boxed knights, rooks and queens**: a piece whose every step square holds its own fixed pawn or boxed piece never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history); its king is never a wall, so castling, Chess960's too, never moves a boxed rook (`test/chess960_boxed_check.js`). A rook beside its own king may look boxed and still castle: `8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1` is dead, and with the castling right (`w K`, Chess960) it has a mate in four (1.O-O exf1=N 2.Bb2 Ne3 3.dxe3 d2 4.Kh1 dxe1=Q#); no test claims it, and the same check keeps it so | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
-| **two more tiers of the Domino search**: 9 plies and 5,000 nodes, then 150 and 5,000,000 | the search failed without a mate (budget or horizon), and for the third the second did too; a game's flags and `isDeadPosition` stop at the second | 28 (27 by the second, bKHPqNEw by the third); on the list of 19 November, of the 656 rows the first search leaves, all but RwnQJq1k (the 75-move rule's) | a game's failing searches go on to 9 plies: ~6 µs a move in JavaScript, both sides |
+| **after the Domino search, the stuck mater move by move and a second tier**: the flagged side is to move and the mater has only its king and pawns; after each of the flagged side's moves, made on the bitboards, the mater has no legal move (no pins are possible against the flagged side; the mater's pawns are tried with their pins and checks). Then the search again at 9 plies and 5,000 nodes | the search failed without a mate (budget or horizon); the stuck mater only with the flagged side to move, the mater left with king and pawns, and no castling right for the flagged side | 27 (the second tier); on the list of 19 November, of the 645 rows the full version's first search leaves without a mate, the stuck mater 345 and the second tier all but 2 of the other 300 (bKHPqNEw and RwnQJq1k) | a game's failing searches go on to 9 plies: ~6 µs a move in JavaScript, both sides; the stuck mater is bit work |
 | **the stalemate guard**: a pawn the enemy king may take stays a wall if taking it always stalemates its owner (its king, wherever it may stand, defends the pawn or has no square left; nothing else of the owner's moves; the capture uncovers no bishop's check) | the cycle meets a takeable fixed pawn of a side without bishops | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
 | **the stuck mater**: the flagged side is to move and, whatever it plays, the mater has no legal move (the game ends at the mater's turn); read from the bitboards, no move is made | kings and pawns, the flagged side to move, the lock found nothing | | |
@@ -547,8 +552,12 @@ measured, and only where its own situation is on the board.
 
 In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
 is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
-lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the further tiers out,
-`{ thirdBudget: 0 }` the third.
+lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out (the
+stuck mater still runs), and `_internal.stuckEvery(pos, side)` is the stuck mater rule alone. A
+proof says which ran: `deep` (the second tier) and `stuck`. The third tier is in no engine: the
+arbiter page runs it, when its box is ticked, as one more call after a ladder that fails without a
+mate, `proveCannotBeMated(pos, side, { maxPly: 150, budget: 5000000, deepBudget: 0 })`, under the
+same rules.
 
 **The move rules, on request.** A game ends by itself, drawn, after 75 moves of
 each side with no capture and no pawn move (FIDE 9.6.2) and when a position occurs for the fifth

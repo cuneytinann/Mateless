@@ -30,11 +30,9 @@ for (const file of process.argv.slice(2)) {
       for (let i = 0; i < 2; i++) {
         const p = alone[i], q = both[i];
         if (p.proven !== q.proven || p.staticProof !== q.staticProof || p.failure !== q.failure || p.foundBy !== q.foundBy ||
-            p.nodes !== q.nodes || p.deep !== q.deep) report('proveBoth', pos);
+            p.nodes !== q.nodes || p.deep !== q.deep || p.stuck !== q.stuck || p.ruled !== q.ruled) report('proveBoth', pos);
       }
-      // isDeadPosition, like a game's flags, stops at the second tier
-      const game = [E.proveCannotBeMated(pos, W, { thirdBudget: 0 }), E.proveCannotBeMated(pos, B, { thirdBudget: 0 })];
-      if (E.isDeadPosition(pos) !== (game[0].proven && game[1].proven)) report('isDeadPosition', pos);
+      if (E.isDeadPosition(pos) !== (alone[0].proven && alone[1].proven)) report('isDeadPosition', pos);
       const limits = [[6, 100]];
       if (n % 64 === 0) { limits.push([9, 2000]); big++; }
       for (const [ply, budget] of limits) {

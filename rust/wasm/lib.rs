@@ -134,6 +134,7 @@ fn write_proof(at: usize, p: &Proof) {
     o[at + 3] = p.nodes as i32;
     o[at + 4] = p.deep as i32;
     o[at + 5] = p.ruled as i32;
+    o[at + 6] = p.stuck as i32;
 }
 
 /// Where to write the codes of `n` positions of a game's history, nine i32 words each (writeKey in
@@ -166,36 +167,35 @@ pub extern "C" fn history_clear() { state().history.clear(); }
 #[no_mangle]
 pub extern "C" fn history_push(h: i32) { let k = position_key(position(h)); state().history.push(k); }
 
-/// The ladder for `flagged`, the second tier of size deep_ply / deep_budget (0: no further tier) and
-/// the third of size third_ply / third_budget (0: none), under the rules given (0, 0: none; the
-/// history set before): out[0..6] = proven, static proof, failure, nodes, how many tiers after the
-/// first ran, the searches under the rules ran. Returns proven.
+/// The ladder for `flagged`, with the second tier of size deep_ply / deep_budget (0: none), under
+/// the rules given (0, 0: none; the history set before): out[0..7] = proven, static proof, failure,
+/// nodes, the second tier ran, the searches under the rules ran, the stuck mater rule proved it.
+/// Returns proven.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
-pub extern "C" fn prove(h: i32, flagged: i32, max_ply: u32, budget: i32, deep_ply: u32, deep_budget: i32, third_ply: u32, third_budget: i32,
+pub extern "C" fn prove(h: i32, flagged: i32, max_ply: u32, budget: i32, deep_ply: u32, deep_budget: i32,
                         move_rule: u32, repetition: u32) -> i32 {
     let s = state();
     let pos = s.positions.get(h).map(|p| &*p).expect("mateless-wasm: no position with this handle");
-    let tiers = Tiers { deep_ply, deep_budget: deep_budget as i64, third_ply, third_budget: third_budget as i64 };
+    let tiers = Tiers { deep_ply, deep_budget: deep_budget as i64 };
     let p = prove_cannot_be_mated_rules(&mut s.search, pos, flagged as u8, max_ply, budget as i64, &tiers,
                                         &Rules { move_rule, repetition, history: &s.history });
     write_proof(0, &p);
     p.proven as i32
 }
 
-/// The ladder for both sides in one pass: out[0..6] White flagged, out[6..12] Black flagged.
+/// The ladder for both sides in one pass: out[0..7] White flagged, out[7..14] Black flagged.
 /// Returns the sides proven (FLAGGED_* bits).
 #[no_mangle]
-#[allow(clippy::too_many_arguments)]
-pub extern "C" fn prove_both(h: i32, max_ply: u32, budget: i32, deep_ply: u32, deep_budget: i32, third_ply: u32, third_budget: i32,
+pub extern "C" fn prove_both(h: i32, max_ply: u32, budget: i32, deep_ply: u32, deep_budget: i32,
                              move_rule: u32, repetition: u32) -> i32 {
     let s = state();
     let pos = s.positions.get(h).map(|p| &*p).expect("mateless-wasm: no position with this handle");
-    let tiers = Tiers { deep_ply, deep_budget: deep_budget as i64, third_ply, third_budget: third_budget as i64 };
+    let tiers = Tiers { deep_ply, deep_budget: deep_budget as i64 };
     let r = prove_both_rules(&mut s.search, pos, max_ply, budget as i64, &tiers,
                              &Rules { move_rule, repetition, history: &s.history });
     write_proof(0, &r[0]);
-    write_proof(6, &r[1]);
+    write_proof(7, &r[1]);
     (r[0].proven as i32) | ((r[1].proven as i32) << 1)
 }
 

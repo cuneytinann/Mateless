@@ -4,6 +4,41 @@ Measured on a shared cloud machine (2 vCPU Xeon 2.8 GHz, Node 22, rustc 1.97, on
 separate runs move by ±5–10%, so ranges are given where runs differed. How the engine works is in
 [DESIGN.md](DESIGN.md).
 
+## The stuck mater after the first search; the third tier out of the engine (26 November 2026, evening)
+
+The engine's ladder after a first search (3 plies, 10 nodes) that fails without a mate is now the
+stuck mater move by move, then the second tier (9 plies, 5,000 nodes); the third tier of the
+morning (150 plies, 5,000,000 nodes) is out of every engine (JS, Rust, WebAssembly) and is the
+arbiter page's own, a box off by default, for analysis after the game (DESIGN.md, "After the first
+search"). On chasolver's list of 19 November 2026 (204,484 rows):
+
+| | unproven | the stuck mater proves | reach the second tier |
+|---|---|---|---|
+| the second version (JS, Rust, WebAssembly) | 2 (bKHPqNEw, RwnQJq1k) | 345 of the 645 the first search leaves without a mate | 300 |
+| the same under the 75-move rule | 2 | 345 | 300 |
+| the arbiter page, the third tier ticked, under the 75-move rule | 0 | | |
+
+bKHPqNEw: both tiers fail on their horizons (12 nodes); the page's third tier proves it, 8,884
+nodes in all. RwnQJq1k (clock 11): the 75-move rule's search runs only within 40 plies of the
+rule's end (139 plies away), so the ladder leaves it; with the page's third tier the window is 150
+plies and the rule's search proves it in 1,131,402 nodes (1,131,417 with the two tiers before it);
+by itself the ladder proves it from clock 120 on. Of the 36 rows of `data/second_version.tsv` the
+second version proves 34 (the morning's 35 less bKHPqNEw); no node count of the others changed.
+
+Speed (JS, Node): the proof for the side to move, 3,000 positions of real games each,
+
+| | without the rules | under the 75-move and fivefold rules |
+|---|---|---|
+| Lichess positions (`lic_fens`) | 0.024 ms (worst 3.0) | 0.012 ms (worst 3.0) |
+| chasolver's positions.txt | 0.030 ms (worst 6.4) | 0.016 ms (worst 2.5) |
+
+against the morning's engine with its third tier: 2.78 ms a position under the rules (Rust 894
+µs) and 17.4 ms on positions.txt. The arbiter page (Chrome, page included) judges the 204,484 rows
+in 3.8–4.0 s with the full version, 3.1–3.4 s with the third tier ticked, 3.2–3.3 s with the fast
+version (runs move by ±10%); 20,000 rows in 784 ms (full) and 598 ms (fast). Rust and WebAssembly
+give the same answers and node counts as JavaScript, `stuck` included (`test/rust_compare.js`,
+`test/wasm_check.js`, `test/twosided_check.js`); clippy's warnings stay at 19.
+
 ## The search at 3 plies and 10 nodes, and the tiers (26 November 2026)
 
 The figures below were measured with the Domino search at 6 plies and 100 nodes, its default

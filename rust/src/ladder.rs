@@ -1,6 +1,7 @@
 //! The ladder (`src/ladder.js`): the rungs put together, for one position
 //! (`prove_cannot_be_mated`, `prove_both`, `is_dead_position`) and for a game played move by move
-//! (`Flags`). The fourth rung is the Domino search's further tiers (the second version); the fifth,
+//! (`Flags`). The fourth rung, after a first search that fails without a mate, is the stuck mater
+//! move by move (stuck.rs) and the search's second tier (the second version); the fifth,
 //! on request, the searches under the rules a game ends at by itself (`Rules`: the 75- or
 //! 50-move rule, fivefold or threefold repetition with the game's history), the clock search
 //! (clock.rs) near the move rule.
@@ -8,32 +9,27 @@
 use crate::board::{BLACK, Key, NO_SQUARE, Position, WHITE};
 use crate::lock::{cannot_mate, cannot_mate2, FLAGGED_BLACK, FLAGGED_WHITE, pawn_check,
     static_tests2, TEST_LOCK, TESTS_BOTH};
-use crate::domino::{Domino, DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_RULE_BUDGET, DOMINO_THIRD_BUDGET,
-    DOMINO_THIRD_PLY, Failure, SearchResult};
+use crate::domino::{Domino, DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_RULE_BUDGET, Failure, SearchResult};
+use crate::stuck::stuck_every;
 use crate::clock::{ClockSearch, REGION_REACH};
 
-/// A proof or its failure; `deep`: how many tiers after the first ran (0, 1 or 2); `ruled`: the
-/// searches under the rules ran, and the answer is theirs.
+/// A proof or its failure; `deep`: the second tier ran; `stuck`: the stuck mater proved it (after a
+/// first search that failed without a mate); `ruled`: the searches under the rules ran, and the
+/// answer is theirs.
 #[derive(Clone, Copy, Debug)]
-pub struct Proof { pub proven: bool, pub static_proof: bool, pub failure: Failure, pub nodes: i64, pub deep: u32, pub ruled: bool }
+pub struct Proof { pub proven: bool, pub static_proof: bool, pub failure: Failure, pub nodes: i64, pub deep: bool, pub stuck: bool, pub ruled: bool }
 
-/// The tiers after the first search (the second version): the second's ply ceiling and node budget
-/// (deep_budget 0: no further tier), and the third's (third_budget 0: no third tier). Each runs
-/// after a failure of the one before it without a mate.
+/// The second tier of the search (the second version): its ply ceiling and node budget
+/// (deep_budget 0: none). It runs after a first search that fails without a mate, where the stuck
+/// mater does not prove the side.
 #[derive(Clone, Copy, Debug)]
-pub struct Tiers { pub deep_ply: u32, pub deep_budget: i64, pub third_ply: u32, pub third_budget: i64 }
+pub struct Tiers { pub deep_ply: u32, pub deep_budget: i64 }
 
 impl Tiers {
-    /// The second tier, 9 plies and 5,000 nodes, and the third, 150 plies and 5,000,000 nodes.
-    pub const DEFAULT: Tiers = Tiers { deep_ply: DOMINO_DEEP_PLY, deep_budget: DOMINO_DEEP_BUDGET,
-                                       third_ply: DOMINO_THIRD_PLY, third_budget: DOMINO_THIRD_BUDGET };
-    /// The second tier alone: what a game's flags and is_dead_position run.
-    pub const GAME: Tiers = Tiers { deep_ply: DOMINO_DEEP_PLY, deep_budget: DOMINO_DEEP_BUDGET,
-                                    third_ply: DOMINO_THIRD_PLY, third_budget: 0 };
-    /// The second tier at the given size, and no third (deep_budget 0: neither).
-    pub const fn second(deep_ply: u32, deep_budget: i64) -> Tiers {
-        Tiers { deep_ply, deep_budget, third_ply: DOMINO_THIRD_PLY, third_budget: 0 }
-    }
+    /// The second tier, 9 plies and 5,000 nodes.
+    pub const DEFAULT: Tiers = Tiers { deep_ply: DOMINO_DEEP_PLY, deep_budget: DOMINO_DEEP_BUDGET };
+    /// The second tier at the given size (deep_budget 0: none).
+    pub const fn second(deep_ply: u32, deep_budget: i64) -> Tiers { Tiers { deep_ply, deep_budget } }
 }
 
 /// The rules a game ends at by itself (the second version; src/ladder.js): `move_rule` 0 (none), 150
@@ -63,51 +59,44 @@ fn repetition_set(search: &mut Domino, repetition: u32, history: &[Key]) -> bool
     search.repeat.count() > 0
 }
 
-/// The ladder without the rules at an exit of the clock search: the static tests, the first tier,
-/// the second where it is allowed, and the third (`third`: its ply ceiling and budget) when it ran
-/// at the root. Returns (proven, nodes). (exitProof)
-#[allow(clippy::too_many_arguments)]
-fn exit_proof(search: &mut Domino, pos: &Position, flagged: u8, max_ply: u32, budget: i64, deep_ply: u32, deep_budget: i64,
-              third: Option<(u32, i64)>) -> (bool, i64) {
+/// The ladder without the rules at an exit of the clock search: the static tests, the first
+/// search, then where it fails without a mate the stuck mater and the second tier. Returns
+/// (proven, nodes). (exitProof)
+fn exit_proof(search: &mut Domino, pos: &Position, flagged: u8, max_ply: u32, budget: i64, deep_ply: u32, deep_budget: i64) -> (bool, i64) {
     if cannot_mate(pos, flagged) { return (true, 0); }
     let mut r = search.run(pos, flagged, max_ply, budget, false);
     let mut nodes = budget - r.budget_left;
-    if !r.proven && deep_budget > 0 && deep_allowed(r.failure) {
-        r = search.run(pos, flagged, deep_ply, deep_budget, false);
-        nodes += deep_budget - r.budget_left;
-        if let Some((tp, tb)) = third {
-            if !r.proven && deep_allowed(r.failure) {
-                r = search.run(pos, flagged, tp, tb, false);
-                nodes += tb - r.budget_left;
-            }
+    if !r.proven && deep_allowed(r.failure) {
+        if stuck_every(pos, flagged) { return (true, nodes); }
+        if deep_budget > 0 {
+            r = search.run(pos, flagged, deep_ply, deep_budget, false);
+            nodes += deep_budget - r.budget_left;
         }
     }
     (r.proven, nodes)
 }
 
 /// The searches again under the rules, once, for a side the searches without them left unproven
-/// (`failure`: why the first tier failed; `repeat`: the repetition set is filled; `third`: the
-/// third tier's ply ceiling and budget, when it ran). Where the move rule can end a line within
-/// REGION_REACH plies or the ply ceiling, the clock search; with only a repetition set, the Domino
-/// search with it. Returns (result, nodes), or None. (ruleSearch)
+/// (`failure`: why the first tier failed; `repeat`: the repetition set is filled). Where the move
+/// rule can end a line within REGION_REACH plies or the ply ceiling, the clock search; with only a
+/// repetition set, the Domino search with it. Returns (result, nodes), or None. (ruleSearch)
 #[allow(clippy::too_many_arguments)]
 fn rule_search(search: &mut Domino, pos: &Position, flagged: u8, move_rule: u32, repeat: bool, failure: Failure,
-               max_ply: u32, budget: i64, deep_ply: u32, deep_budget: i64, third: Option<(u32, i64)>) -> Option<(SearchResult, i64)> {
-    let (third_ply, third_budget) = third.unwrap_or((0, 0));
-    let ply = (if deep_budget > 0 { max_ply.max(deep_ply) } else { max_ply }).max(third_ply);
+               max_ply: u32, budget: i64, deep_ply: u32, deep_budget: i64) -> Option<(SearchResult, i64)> {
+    let ply = if deep_budget > 0 { max_ply.max(deep_ply) } else { max_ply };
     let near = move_rule > 0 && pos.halfmove + ply.max(REGION_REACH) >= move_rule;
     if !near && !repeat { return None; }
     if near {
-        let nodes = budget.max(deep_budget).max(third_budget).max(DOMINO_RULE_BUDGET);
+        let nodes = budget.max(deep_budget).max(DOMINO_RULE_BUDGET);
         let mut clock = search.clock.take().unwrap_or_else(|| Box::new(ClockSearch::new()));
         let set = if repeat { Some(std::mem::take(&mut search.repeat)) } else { None };
         let r = clock.run(pos, flagged, move_rule, nodes, set.as_ref(),
-                          &mut |p: &Position, f: u8| exit_proof(search, p, f, max_ply, budget, deep_ply, deep_budget, third));
+                          &mut |p: &Position, f: u8| exit_proof(search, p, f, max_ply, budget, deep_ply, deep_budget));
         if let Some(x) = set { search.repeat = x; }
         search.clock = Some(clock);
         return Some((r, nodes - r.budget_left));
     }
-    let nodes = budget.max(if deep_budget > 0 && deep_allowed(failure) { deep_budget } else { 0 }).max(third_budget);
+    let nodes = budget.max(if deep_budget > 0 && deep_allowed(failure) { deep_budget } else { 0 });
     let r = search.run_rules(pos, flagged, ply, nodes, false, 0, true);
     Some((r, nodes - r.budget_left))
 }
@@ -117,13 +106,13 @@ fn rule_search(search: &mut Domino, pos: &Position, flagged: u8, move_rule: u32,
 #[inline]
 fn deep_allowed(failure: Failure) -> bool { matches!(failure, Failure::Budget | Failure::Horizon) }
 
-/// Can `flagged` never be mated? The static tests at the root, then the Domino search and, where
-/// they allow, its further tiers at the default size. (proveCannotBeMated)
+/// Can `flagged` never be mated? The static tests at the root, then the Domino search and, where it
+/// fails without a mate, the stuck mater and the second tier at the default size. (proveCannotBeMated)
 pub fn prove_cannot_be_mated(search: &mut Domino, pos: &Position, flagged: u8, max_ply: u32, budget: i64) -> Proof {
     prove_cannot_be_mated_deep(search, pos, flagged, max_ply, budget, &Tiers::DEFAULT)
 }
 
-/// prove_cannot_be_mated with the further tiers given.
+/// prove_cannot_be_mated with the second tier given.
 pub fn prove_cannot_be_mated_deep(search: &mut Domino, pos: &Position, flagged: u8, max_ply: u32, budget: i64,
                                   tiers: &Tiers) -> Proof {
     prove_cannot_be_mated_rules(search, pos, flagged, max_ply, budget, tiers, &Rules::NONE)
@@ -133,43 +122,41 @@ pub fn prove_cannot_be_mated_deep(search: &mut Domino, pos: &Position, flagged: 
 /// searched again under them, where a rule can end a line (rule_search).
 pub fn prove_cannot_be_mated_rules(search: &mut Domino, pos: &Position, flagged: u8, max_ply: u32, budget: i64,
                                    tiers: &Tiers, rules: &Rules) -> Proof {
-    if cannot_mate(pos, flagged) { return Proof { proven: true, static_proof: true, failure: Failure::None, nodes: 0, deep: 0, ruled: false }; }
+    if cannot_mate(pos, flagged) { return Proof { proven: true, static_proof: true, failure: Failure::None, nodes: 0, deep: false, stuck: false, ruled: false }; }
     let mut r = search.run(pos, flagged, max_ply, budget, false);
     let mut nodes = budget - r.budget_left;
     let first = r.failure;
-    let mut deep = 0;
-    let mut third = None;
-    if !r.proven && tiers.deep_budget > 0 && deep_allowed(r.failure) {
-        r = search.run(pos, flagged, tiers.deep_ply, tiers.deep_budget, false);
-        nodes += tiers.deep_budget - r.budget_left;
-        deep = 1;
-        if !r.proven && tiers.third_budget > 0 && deep_allowed(r.failure) {
-            r = search.run(pos, flagged, tiers.third_ply, tiers.third_budget, false);
-            nodes += tiers.third_budget - r.budget_left;
-            deep = 2;
-            third = Some((tiers.third_ply, tiers.third_budget));
+    let mut deep = false;
+    if !r.proven && deep_allowed(r.failure) {
+        if stuck_every(pos, flagged) {
+            return Proof { proven: true, static_proof: false, failure: Failure::None, nodes, deep: false, stuck: true, ruled: false };
+        }
+        if tiers.deep_budget > 0 {
+            r = search.run(pos, flagged, tiers.deep_ply, tiers.deep_budget, false);
+            nodes += tiers.deep_budget - r.budget_left;
+            deep = true;
         }
     }
     let mut ruled = false;
     if !r.proven && rules.any() {
         let repeat = repetition_set(search, rules.repetition, rules.history);
         if let Some((u, n)) = rule_search(search, pos, flagged, rules.move_rule, repeat, first, max_ply, budget,
-                                          tiers.deep_ply, tiers.deep_budget, third) {
+                                          tiers.deep_ply, tiers.deep_budget) {
             r = u; nodes += n; ruled = true;
         }
     }
-    Proof { proven: r.proven, static_proof: false, failure: r.failure, nodes, deep, ruled }
+    Proof { proven: r.proven, static_proof: false, failure: r.failure, nodes, deep, stuck: false, ruled }
 }
 
 /// prove_cannot_be_mated for both sides at once (a dead position needs both): one pass of the
-/// static tests, then one walk of the search for the sides they leave open, and one of each further
-/// tier for the sides it is allowed for. Index 0: White flagged, 1: Black flagged; each the same
-/// proof as prove_cannot_be_mated gives.
+/// static tests, then one walk of the search for the sides they leave open, the stuck mater for the
+/// side to move, and one walk of the second tier for the sides it is allowed for. Index 0: White
+/// flagged, 1: Black flagged; each the same proof as prove_cannot_be_mated gives.
 pub fn prove_both(search: &mut Domino, pos: &Position, max_ply: u32, budget: i64) -> [Proof; 2] {
     prove_both_deep(search, pos, max_ply, budget, &Tiers::DEFAULT)
 }
 
-/// prove_both with the further tiers given.
+/// prove_both with the second tier given.
 pub fn prove_both_deep(search: &mut Domino, pos: &Position, max_ply: u32, budget: i64, tiers: &Tiers) -> [Proof; 2] {
     prove_both_rules(search, pos, max_ply, budget, tiers, &Rules::NONE)
 }
@@ -182,32 +169,28 @@ pub fn prove_both_rules(search: &mut Domino, pos: &Position, max_ply: u32, budge
     let none = [SearchResult { proven: false, failure: Failure::None, budget_left: budget, ruled: false }; 2];
     let r = if st != both { search.run2(pos, both & !st, max_ply, budget, false) } else { none };
     let (deep_ply, deep_budget) = (tiers.deep_ply, tiers.deep_budget);
-    let mut deep_ask = 0u8;
-    if st != both && deep_budget > 0 {
-        for (i, x) in r.iter().enumerate() { if st & (1 << i) == 0 && !x.proven && deep_allowed(x.failure) { deep_ask |= 1 << i; } }
+    let (mut stuck, mut deep_ask) = (0u8, 0u8);
+    if st != both {
+        for (i, x) in r.iter().enumerate() {
+            if st & (1 << i) != 0 || x.proven || !deep_allowed(x.failure) { continue; }
+            if pos.side == (if i == 1 { BLACK } else { WHITE }) && stuck_every(pos, pos.side) { stuck |= 1 << i; }
+            else if deep_budget > 0 { deep_ask |= 1 << i; }
+        }
     }
     let d = if deep_ask != 0 { search.run2(pos, deep_ask, deep_ply, deep_budget, false) } else { none };
-    let mut third_ask = 0u8;
-    if deep_ask != 0 && tiers.third_budget > 0 {
-        for (i, x) in d.iter().enumerate() { if deep_ask & (1 << i) != 0 && !x.proven && deep_allowed(x.failure) { third_ask |= 1 << i; } }
-    }
-    let t = if third_ask != 0 { search.run2(pos, third_ask, tiers.third_ply, tiers.third_budget, false) } else { none };
     let mut proof = |i: usize| {
-        if st & (1 << i) != 0 { return Proof { proven: true, static_proof: true, failure: Failure::None, nodes: 0, deep: 0, ruled: false }; }
+        if st & (1 << i) != 0 { return Proof { proven: true, static_proof: true, failure: Failure::None, nodes: 0, deep: false, stuck: false, ruled: false }; }
         let first = budget - r[i].budget_left;
-        let mut p = if third_ask & (1 << i) != 0 {
-            Proof { proven: t[i].proven, static_proof: false, failure: t[i].failure,
-                    nodes: first + deep_budget - d[i].budget_left + tiers.third_budget - t[i].budget_left, deep: 2, ruled: false }
-        } else if deep_ask & (1 << i) != 0 {
-            Proof { proven: d[i].proven, static_proof: false, failure: d[i].failure, nodes: first + deep_budget - d[i].budget_left, deep: 1, ruled: false }
+        if stuck & (1 << i) != 0 { return Proof { proven: true, static_proof: false, failure: Failure::None, nodes: first, deep: false, stuck: true, ruled: false }; }
+        let mut p = if deep_ask & (1 << i) != 0 {
+            Proof { proven: d[i].proven, static_proof: false, failure: d[i].failure, nodes: first + deep_budget - d[i].budget_left, deep: true, stuck: false, ruled: false }
         } else {
-            Proof { proven: r[i].proven, static_proof: false, failure: r[i].failure, nodes: first, deep: 0, ruled: false }
+            Proof { proven: r[i].proven, static_proof: false, failure: r[i].failure, nodes: first, deep: false, stuck: false, ruled: false }
         };
         if !p.proven && rules.any() {
             let repeat = repetition_set(search, rules.repetition, rules.history);
-            let third = if third_ask & (1 << i) != 0 { Some((tiers.third_ply, tiers.third_budget)) } else { None };
             if let Some((u, n)) = rule_search(search, pos, if i == 1 { BLACK } else { WHITE }, rules.move_rule, repeat, r[i].failure,
-                                              max_ply, budget, deep_ply, deep_budget, third) {
+                                              max_ply, budget, deep_ply, deep_budget) {
                 p.proven = u.proven; p.failure = u.failure; p.nodes += n; p.ruled = true;
             }
         }
@@ -217,15 +200,16 @@ pub fn prove_both_rules(search: &mut Domino, pos: &Position, max_ply: u32, budge
     [w, proof(1)]
 }
 
-/// One side's searches for is_dead_position: the first tier, then the second where it allows,
-/// then, with rules, the searches under them.
+/// One side's searches for is_dead_position: the first search, then where it fails without a mate
+/// the stuck mater and the second tier, then, with rules, the searches under them.
 fn search_proves(search: &mut Domino, pos: &Position, flagged: u8, rules: &Rules) -> bool {
     let r = search.run(pos, flagged, DOMINO_PLY, DOMINO_BUDGET, false);
     if r.proven { return true; }
+    if deep_allowed(r.failure) && stuck_every(pos, flagged) { return true; }
     if deep_allowed(r.failure) && search.run(pos, flagged, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, false).proven { return true; }
     if !rules.any() { return false; }
     let repeat = repetition_set(search, rules.repetition, rules.history);
-    rule_search(search, pos, flagged, rules.move_rule, repeat, r.failure, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, None)
+    rule_search(search, pos, flagged, rules.move_rule, repeat, r.failure, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET)
         .is_some_and(|(u, _)| u.proven)
 }
 
@@ -323,8 +307,10 @@ impl Flags {
             let r = self.search.run2(pos, open & !proven, DOMINO_PLY, DOMINO_BUDGET, false);
             if r[0].proven { proven |= FLAGGED_WHITE; }
             if r[1].proven { proven |= FLAGGED_BLACK; }
-            // The second tier, for a side left unproven without a mate found (a game's flags stop there).
+            // After a failure without a mate: the stuck mater for the side to move, then the second tier.
             let (fw, fb) = (r[0].failure, r[1].failure);
+            let me = if pos.side == WHITE { FLAGGED_WHITE } else { FLAGGED_BLACK };
+            if open & !proven & me != 0 && deep_allowed(if me == FLAGGED_WHITE { fw } else { fb }) && stuck_every(pos, pos.side) { proven |= me; }
             if (deep_allowed(fw) || deep_allowed(fb)) && open & !proven != 0 {
                 proven |= second_tier(&mut self.search, pos, open & !proven, fw, fb);
             }
@@ -337,7 +323,7 @@ impl Flags {
                     let bit = if i == 1 { FLAGGED_BLACK } else { FLAGGED_WHITE };
                     if open & !proven & bit == 0 { continue; }
                     let u = rule_search(&mut self.search, pos, if i == 1 { BLACK } else { WHITE }, rule, repeat, if i == 1 { fb } else { fw },
-                                        DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, None);
+                                        DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET);
                     if u.is_some_and(|(r, _)| r.proven) { proven |= bit; }
                 }
             }

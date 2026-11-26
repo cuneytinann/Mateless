@@ -32,7 +32,7 @@
 'use strict';
 
 const WHITE = 8, BLACK = 0, FLAGGED_WHITE = 1, FLAGGED_BLACK = 2, DOMINO_PLY = 3, DOMINO_BUDGET = 10,
-      DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 5000, DOMINO_THIRD_PLY = 150, DOMINO_THIRD_BUDGET = 5000000;
+      DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 5000;
 const FEN_ERRORS = ['', 'syntax', 'kings', 'pawnrank', 'oppcheck', 'pawns', 'pieces', 'promo', 'captures', 'checks'];
 const FIXED = [[1, 'castling'], [2, 'en passant'], [8, 'halfmove'], [4, 'fullmove']];
 const FAILURES = [null, 'mate', 'horizon', 'budget'];
@@ -101,7 +101,8 @@ function instantiate(source) {
   }
 
   const proofAt = (o, i) => ({ proven: o[i] === 1, staticProof: o[i + 1] === 1, failure: FAILURES[o[i + 2]],
-                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3], deep: o[i + 4], ruled: o[i + 5] === 1 });
+                               foundBy: o[i + 2] === 1 ? 'search' : null, nodes: o[i + 3], deep: o[i + 4] === 1,
+                               stuck: o[i + 6] === 1, ruled: o[i + 5] === 1 });
 
   /* The rules, checked as mateless.js checks them, and a game's history put into the module: null
      (none), mateless.js's { keys, n } (game.repetitionHistory()), or an array of FENs or Positions
@@ -118,27 +119,26 @@ function instantiate(source) {
     x.history_from_keys(n);
   }
 
-  /** Can `flagged` never be mated? The static tests, then the Domino search and, where they allow,
-      its further tiers, and with moveRule or repetition the searches under the rules; the same
-      { proven, staticProof, failure, foundBy, nodes, deep, ruled } as mateless.js. */
+  /** Can `flagged` never be mated? The static tests, then the Domino search and, where it fails
+      without a mate, the stuck mater move by move and the second tier, and with moveRule or
+      repetition the searches under the rules; the same
+      { proven, staticProof, failure, foundBy, nodes, deep, stuck, ruled } as mateless.js. */
   function proveCannotBeMated(p, flagged, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY,
-                                            deepBudget = DOMINO_DEEP_BUDGET, thirdPly = DOMINO_THIRD_PLY,
-                                            thirdBudget = DOMINO_THIRD_BUDGET, moveRule = 0, repetition = 0, history = null } = {}) {
+                                            deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0, repetition = 0, history = null } = {}) {
     checkRules(moveRule, repetition);
     return withPosition(p, h => {
       setHistory(repetition ? history : null);
-      x.prove(h, flagged, maxPly, budget, deepPly, deepBudget, thirdPly, thirdBudget, moveRule, repetition); return proofAt(out(), 0);
+      x.prove(h, flagged, maxPly, budget, deepPly, deepBudget, moveRule, repetition); return proofAt(out(), 0);
     });
   }
   /** Both sides in one pass: [White flagged, Black flagged]. */
   function proveBoth(p, { maxPly = DOMINO_PLY, budget = DOMINO_BUDGET, deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET,
-                          thirdPly = DOMINO_THIRD_PLY, thirdBudget = DOMINO_THIRD_BUDGET,
                           moveRule = 0, repetition = 0, history = null } = {}) {
     checkRules(moveRule, repetition);
     return withPosition(p, h => {
       setHistory(repetition ? history : null);
-      x.prove_both(h, maxPly, budget, deepPly, deepBudget, thirdPly, thirdBudget, moveRule, repetition);
-      const o = out(); return [proofAt(o, 0), proofAt(o, 6)];
+      x.prove_both(h, maxPly, budget, deepPly, deepBudget, moveRule, repetition);
+      const o = out(); return [proofAt(o, 0), proofAt(o, 7)];
     });
   }
   /** Is the position dead (FIDE 5.2.2)? With moveRule or repetition (and a history), under those rules. */
@@ -179,7 +179,7 @@ function instantiate(source) {
   }
 
   return Object.freeze({
-    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, DOMINO_THIRD_PLY, DOMINO_THIRD_BUDGET,
+    WHITE, BLACK, FLAGGED_WHITE, FLAGGED_BLACK, DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET,
     Position, fromFen,
     materialCannotMate: (p, flagged) => withPosition(p, h => x.material_test(h, flagged) === 1),
     lockCannotMate: (p, flagged) => withPosition(p, h => x.lock_test(h, flagged) === 1),

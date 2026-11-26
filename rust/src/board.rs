@@ -61,8 +61,8 @@ pub(crate) struct Tables {
     pub(crate) king: [u64; 64],
     white_pawn_attacks: [u64; 64],
     black_pawn_attacks: [u64; 64],
-    between: Box<[[u64; 64]; 64]>,
-    line: Box<[[u64; 64]; 64]>,
+    pub(crate) between: Box<[[u64; 64]; 64]>,
+    pub(crate) line: Box<[[u64; 64]; 64]>,
     rook: Vec<Magic>,
     bishop: Vec<Magic>,
     slider_attacks: Vec<u64>,
@@ -204,7 +204,7 @@ fn build_tables() -> Tables {
 
 impl Tables {
     #[inline(always)]
-    fn rook_attacks(&self, sq: usize, occ: u64) -> u64 {
+    pub(crate) fn rook_attacks(&self, sq: usize, occ: u64) -> u64 {
         let m = &self.rook[sq & 63];
         let i = m.offset + ((occ & m.mask).wrapping_mul(m.magic) >> m.shift) as usize;
         debug_assert!(i < self.slider_attacks.len());
@@ -213,7 +213,7 @@ impl Tables {
         unsafe { *self.slider_attacks.get_unchecked(i) }
     }
     #[inline(always)]
-    fn bishop_attacks(&self, sq: usize, occ: u64) -> u64 {
+    pub(crate) fn bishop_attacks(&self, sq: usize, occ: u64) -> u64 {
         let m = &self.bishop[sq & 63];
         let i = m.offset + ((occ & m.mask).wrapping_mul(m.magic) >> m.shift) as usize;
         debug_assert!(i < self.slider_attacks.len());

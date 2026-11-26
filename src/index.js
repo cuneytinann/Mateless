@@ -10,9 +10,9 @@
  *
  * Two versions in one: the first is the fast layer (the lock detector of lock/ and of the
  * scalachess patch); the second adds rules that see more, each run only when its own situation is
- * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and two
- * more tiers of the Domino search (9 plies and 5,000 nodes, then 150 and 5,000,000), each where the
- * one before it fails without finding a mate. Not complete either: wider, with completeness as its goal.
+ * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and, where
+ * the Domino search fails without finding a mate, the stuck mater move by move and a second tier
+ * of the search (9 plies, 5,000 nodes). Not complete either: wider, with completeness as its goal.
  *
  * The source is in layers, one ES module each (src/); tools/build.js joins them into mateless.js,
  * one dependency-free file. Mateless itself, what this library adds:
@@ -62,9 +62,9 @@ import { BISHOP, BLACK, castlingField, CastlingFiles, chess960Arrangement, color
 import { fromFen } from './fen.js';
 import { materialCannotMate, materialTest } from './material.js';
 import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2, materStuck } from './lock.js';
-import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_THIRD_BUDGET, DOMINO_THIRD_PLY, Domino, PositionSet } from './domino.js';
+import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, Domino, PositionSet } from './domino.js';
 import { ClockSearch, REGION_REACH } from './clock.js';
-import { Flags, isDeadPosition, proveBoth, proveCannotBeMated } from './ladder.js';
+import { Flags, isDeadPosition, proveBoth, proveCannotBeMated, stuckEvery } from './ladder.js';
 import { flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
 
 // The public API (tools/build.js turns this list into the object mateless.js returns).
@@ -79,10 +79,10 @@ export {
   isAttacked, inCheck, makeMove, legalMoves, hasLegalMove, perft, positionKey,
   // the arbiter
   materialCannotMate, lockCannotMate, cannotMate, FLAGGED_WHITE, FLAGGED_BLACK, cannotMate2,
-  DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, DOMINO_THIRD_PLY, DOMINO_THIRD_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
+  DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
 };
 // internals exposed for tests
 export const _internal = Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
                                          lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
                                          FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS,
-                                         ClockSearch, REGION_REACH, readFen });
+                                         ClockSearch, REGION_REACH, readFen, stuckEvery });

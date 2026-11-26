@@ -2,15 +2,15 @@
 /* The second version's rules, held to what they were measured to do.
    - data/second_version.tsv: the 36 Lichess timeouts that the first version leaves unproven. The
      ladder must prove each one as the file says (lock, lock-open-pair, lock-boxed, lock-stuck,
-     lock-forced, domino, domino-deep: by the second tier, domino-third: by the third), with the
-     same node count, and leave the cage left unproven (RwnQJq1k, which only the 75-move rule
-     proves); the first version's detector (_internal.coreLockTest) must prove none of the locks, a
-     ladder without the further tiers (deepBudget 0) none of the domino-deep rows, and one without
-     the third (thirdBudget 0) none of the domino-third rows.
+     lock-forced, domino, domino-stuck: by the stuck mater move by move, domino-deep: by the second
+     tier), with the same node count, and leave the two rows marked unproven unproven (RwnQJq1k,
+     which only the 75-move rule proves, and bKHPqNEw, which the arbiter page's third tier proves);
+     the first version's detector (_internal.coreLockTest) must prove none of the locks, and a
+     ladder without the second tier (deepBudget 0) none of the domino-deep rows.
    - A few positions of each rule, with the answer for both sides, and the certificate's shape
      (lockSets: families for an open pair; boxed, the pieces no enemy king or bishop reaches,
      for knights, rooks and queens; stuck for the stuck mater; forced for the forced step).
-   - When the further tiers run: after every failure of the tier before but a mate.
+   - When the stuck mater and the second tier run: after every failure of the first search but a mate.
      node second_version_check.js        (ENGINE: the engine, default ../mateless.js) */
 const fs = require('fs'), path = require('path');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js')), I = E._internal;
@@ -27,12 +27,12 @@ for (const line of rows) {
   kinds[want] = (kinds[want] || 0) + 1;
   const proof = E.proveCannotBeMated(p, fl), lock = E.lockCannotMate(p, fl), sets = I.lockSets(p, fl);
   const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : sets.stuck ? 'lock-stuck' : sets.forced ? 'lock-forced' : 'lock')
-    : proof.proven ? (proof.deep === 2 ? 'domino-third' : proof.deep ? 'domino-deep' : 'domino') : 'unproven';
+    : proof.proven ? (proof.stuck ? 'domino-stuck' : proof.deep ? 'domino-deep' : 'domino') : 'unproven';
   if (got !== want) problem(`${id}: ${got}, the file says ${want}`);
   if (!lock && proof.nodes !== +nodes) problem(`${id}: ${proof.nodes} nodes, the file says ${nodes}`);
   if (I.coreLockTest(p, fl)) problem(`${id}: the first version's detector proves it`);
-  if ((want === 'domino-deep' || want === 'domino-third') && E.proveCannotBeMated(p, fl, { deepBudget: 0 }).proven) problem(`${id}: proven without the further tiers`);
-  if (want === 'domino-third' && E.proveCannotBeMated(p, fl, { thirdBudget: 0 }).proven) problem(`${id}: proven without the third tier`);
+  if (want === 'domino-deep' && E.proveCannotBeMated(p, fl, { deepBudget: 0 }).proven) problem(`${id}: proven without the second tier`);
+  if (want === 'domino-stuck' && !I.stuckEvery(p, fl)) problem(`${id}: the stuck mater rule does not hold`);
 }
 
 // 2. Positions of each rule: [fen, white cannot be mated, black cannot be mated, certificate kind for each proven side].
@@ -91,25 +91,39 @@ for (const [fen, w, b, kind] of CASES) {
   }
 }
 
-// 3. When the further tiers run: after every failure of the tier before but a mate.
+// 3. When the stuck mater and the second tier run: after every failure of the first search but a mate.
 const proofOf = (fen, o) => { const p = E.fromFen(fen, LOOSE).position; return E.proveCannotBeMated(p, p.side, o); };
-const tiers = (fen, o) => { const r = proofOf(fen, o); return r.deep + ' ' + (r.proven ? 'proven' : r.failure); };
+const tiers = (fen, o) => { const r = proofOf(fen, o); return (r.stuck ? 'stuck' : r.deep ? 'second' : 'first') + ' ' + (r.proven ? 'proven' : r.failure); };
 const want3 = (fen, o, want, what) => { const got = tiers(fen, o); if (got !== want) problem(`${what}: ${got}, want ${want}`); };
-// a mate in the first tier: no further tier
-want3('8/8/8/3k4/5qK1/8/7p/8 w - - 4 1', undefined, '0 mate', 'a mate found by the first tier');
-// the start position: the first two tiers fail on their horizons, the third finds the mate
-want3('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', undefined, '2 mate', 'the start position');
-want3('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', { thirdBudget: 0 }, '1 horizon', 'the start position without the third tier');
+// a mate in the first search: nothing after it
+want3('8/8/8/3k4/5qK1/8/7p/8 w - - 4 1', undefined, 'first mate', 'a mate found by the first search');
+// the start position: the first search and the second tier fail on their horizons
+want3('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', undefined, 'second horizon', 'the start position');
+want3('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', { deepBudget: 0 }, 'first horizon', 'the start position without the second tier');
 // a lock: the static tests, no search
-want3('8/8/4k3/8/3PK3/8/8/8 w - - 0 1', undefined, '0 proven', 'an ending the static tests settle');
+want3('8/8/4k3/8/3PK3/8/8/8 w - - 0 1', undefined, 'first proven', 'an ending the static tests settle');
 // a budget failure (WPNvLYdo): the second tier proves it
-want3('8/7p/6k1/7P/8/1q6/2q5/K7 b - - 0 47', undefined, '1 proven', 'WPNvLYdo');
-// bKHPqNEw: the third tier proves it; RwnQJq1k: only the 75-move rule, after the third tier
-want3('1k6/1P5p/BP3p2/1P6/8/8/5PKP/8 b - - 0 41', undefined, '2 proven', 'bKHPqNEw');
-want3('8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - 11 51', undefined, '2 horizon', 'RwnQJq1k');
-const rw = proofOf('8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - 11 51', { moveRule: 150 });
-if (!(rw.proven && rw.ruled)) problem('RwnQJq1k is not proven under the 75-move rule');
-if (proofOf('8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - 11 51', { moveRule: 150, thirdBudget: 0 }).proven) problem('RwnQJq1k proven under the rule without the third tier');
+want3('8/7p/6k1/7P/8/1q6/2q5/K7 b - - 0 47', undefined, 'second proven', 'WPNvLYdo');
+// the first search runs out of nodes, and White (king and pawns, to move after any Black move) has
+// no move: the stuck mater proves it before the second tier, with or without one
+want3('8/8/5k1p/3b1p1P/3n1PpK/6P1/8/8 b - - 0 38', undefined, 'stuck proven', 'a stuck mater');
+want3('8/8/5k1p/3b1p1P/3n1PpK/6P1/8/8 b - - 0 38', { deepBudget: 0 }, 'stuck proven', 'a stuck mater without the second tier');
+// the same with a white a-pawn that can always move: no stuck mater, the second tier runs
+if (proofOf('8/8/5k1p/3b1p1P/3n1PpK/6P1/P7/8 b - - 0 38').stuck) problem('a stuck mater with a free a-pawn');
+// bKHPqNEw: unproven by the ladder; one search of 150 plies and 5,000,000 nodes (the arbiter page's
+// third tier, for analysis after the game) proves it
+want3('1k6/1P5p/BP3p2/1P6/8/8/5PKP/8 b - - 0 41', undefined, 'second horizon', 'bKHPqNEw');
+want3('1k6/1P5p/BP3p2/1P6/8/8/5PKP/8 b - - 0 41', { maxPly: 150, budget: 5000000, deepBudget: 0 }, 'first proven', 'bKHPqNEw with the third tier');
+// RwnQJq1k: only the 75-move rule proves it. In the game (clock 11) the rule search's window of 40
+// plies does not reach the rule's end, 139 plies away; with the third tier it does; at clock 120
+// (30 plies left) the ladder's own rule search proves it
+const RW = '8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - ';
+want3(RW + '11 51', undefined, 'second horizon', 'RwnQJq1k');
+if (proofOf(RW + '11 51', { moveRule: 150 }).proven) problem('RwnQJq1k proven under the rule at clock 11 by the ladder');
+const rw = proofOf(RW + '11 51', { moveRule: 150, maxPly: 150, budget: 5000000, deepBudget: 0 });
+if (!(rw.proven && rw.ruled)) problem('RwnQJq1k is not proven under the 75-move rule with the third tier');
+const rw120 = proofOf(RW + '120 51', { moveRule: 150 });
+if (!(rw120.proven && rw120.ruled)) problem('RwnQJq1k is not proven under the 75-move rule at clock 120');
 
 console.log(`${rows.length} rows (${Object.entries(kinds).map(([k, n]) => n + ' ' + k).join(', ')}), ${CASES.length} positions: ${problems} problems`);
 process.exit(problems ? 1 : 0);

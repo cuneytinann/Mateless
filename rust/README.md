@@ -12,9 +12,13 @@ search owns its memory), so the library can be used from many threads, one `Domi
 
 Both versions are here, as in `mateless.js`: the first version's lock detector and search, and the
 second version's rules, each run only when its own situation is on the board (open pawn pairs and
-boxed knights, rooks and queens in `lock`; the search's further tiers, 9 plies and 5,000 nodes, then
-150 and 5,000,000, in `ladder`: `prove_cannot_be_mated_deep` and `prove_both_deep` take their sizes
-as a `Tiers`, `Tiers::DEFAULT` both, `Tiers::GAME` the second alone, a budget of 0 for none).
+boxed knights, rooks and queens in `lock`; after a first search that fails without a mate, the
+stuck mater move by move in `stuck` (`stuck_every`: pure bit work, no node) and the search's second
+tier, 9 plies and 5,000 nodes, in `ladder`: `prove_cannot_be_mated_deep` and `prove_both_deep` take
+its size as a `Tiers`, `Tiers::DEFAULT` or `Tiers::second(ply, budget)`, a budget of 0 for none; a
+`Proof` says which ran, `deep` and `stuck`). There is no third tier: the arbiter page's third
+(150 plies, 5,000,000 nodes, for analysis after the game) is the page's own, one more call after a
+ladder that fails without a mate.
 
 The rules a game ends at by itself are here too, as in `mateless.js` (the second version's
 README: "The move rules, on request"): `Rules { move_rule, repetition, history }` (150 or 100, 0

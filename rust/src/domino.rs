@@ -17,9 +17,6 @@ pub const DOMINO_BUDGET: i64 = 10;
 /// The second tier (the second version, see ladder.rs): 9 plies, 5,000 nodes.
 pub const DOMINO_DEEP_PLY: u32 = 9;
 pub const DOMINO_DEEP_BUDGET: i64 = 5_000;
-/// The third tier (the second version, src/ladder.js): 150 plies, 5,000,000 nodes.
-pub const DOMINO_THIRD_PLY: u32 = 150;
-pub const DOMINO_THIRD_BUDGET: i64 = 5_000_000;
 /// The search under a move rule (the second version, see ladder.rs): at least 200,000 nodes.
 pub const DOMINO_RULE_BUDGET: i64 = 200_000;
 

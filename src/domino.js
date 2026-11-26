@@ -209,8 +209,6 @@ export class PositionSet {
 export const DOMINO_PLY = 3, DOMINO_BUDGET = 10;
 /** The second tier (the second version, see ladder.js): 9 plies, 5,000 nodes. */
 export const DOMINO_DEEP_PLY = 9, DOMINO_DEEP_BUDGET = 5000;
-/** The third tier (the second version, see ladder.js): 150 plies, 5,000,000 nodes. */
-export const DOMINO_THIRD_PLY = 150, DOMINO_THIRD_BUDGET = 5000000;
 /** The search under a move rule (the second version, see ladder.js): at least 200,000 nodes. Near the
     rule its tree is closed by the rule itself, a tree a few plies deep but wide: with a queen, every
     one of its moves. */

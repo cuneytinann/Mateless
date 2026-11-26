@@ -65,7 +65,7 @@ if (mode === 'fen') {   // per FEN: the strict reading and the loose one (the er
     out.push([flags.whiteDownAt, flags.blackDownAt].join('\t'));
   }
 } else if (mode === 'rules') {
-  const f = r => [+r.proven, +r.staticProof, r.failure || '-', r.nodes, +r.deep, +r.ruled].join('/');
+  const f = r => [+r.proven, +r.staticProof, r.failure || '-', r.nodes, +r.deep, +r.stuck, +r.ruled].join('/');
   fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
     const c = line.split('\t');
     if (c.length < 6) return;

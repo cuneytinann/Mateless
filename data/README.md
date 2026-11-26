@@ -57,7 +57,8 @@ draw, on Lichess scored as a loss).
 
 The 36 rows that Mateless's first version leaves unproven, and what the second version makes of
 each (`test/second_version_check.js` holds the engine to it): `gameId`, `date`, `second_version`
-(`lock-open-pair`, `lock-boxed`, `domino-deep`: the search's second tier, `domino-third`: its third, or `unproven`), `nodes`
+(`lock`, `lock-open-pair`, `lock-boxed`, `domino-deep`: the search's second tier, or `unproven`:
+bKHPqNEw, which the arbiter page's third tier proves, and RwnQJq1k, the 75-move rule's), `nodes`
 (the nodes the searches played) and `fen` (the final position, the flagged side to move). The
 other files keep the first version's classification.
 

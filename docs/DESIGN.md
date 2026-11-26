@@ -36,7 +36,7 @@ solver can judge it after the game.
 | 1. material test | `src/material.js` | the piece sets | ~0.1 µs (JS), 1–3 ns above an empty loop (Rust) |
 | 2. lock detector | `src/lock.js` | pawns, kings, bishops, the en passant square | ~0.3–0.8 µs (JS), ~50–110 ns (Rust) on a lock; a few ns when a knight, rook or queen stands |
 | 3. Domino search | `src/domino.js` | legal moves, made and taken back in place | ~1–5 µs (JS) |
-| 4. further tiers (second version) | `src/ladder.js` | the same, 9 plies and 5,000 nodes, then 150 and 5,000,000, each after a failure of the one before without a mate | up to 5,000 nodes in a game (the third only for a single position's verdict) |
+| 4. stuck mater, second tier (second version) | `src/ladder.js` | after a first search that fails without a mate: the bitboards (the stuck mater move by move), then the same search at 9 plies and 5,000 nodes | bit work; up to 5,000 nodes |
 
 Rungs 2 and 4 carry the second version's rules (section 12); the first version is rungs 1–3 with
 the lock detector's first version.
@@ -173,8 +173,9 @@ runs its first line down to the ceiling, so the cost grows linearly with the pli
 to July. The default is now 3 plies and 10 nodes: in a game almost every search fails on its first
 line, at the ceiling, so half the ceiling is half the cost (real game positions: 320 ns a position
 in Rust against 625). It leaves more unproven: on chasolver's list of 19 November (204,484 rows)
-656, against 36 at 6 plies and 100 nodes; the second version's further tiers (section 12) leave
-none under the 75-move rule.
+656, against 36 at 6 plies and 100 nodes; the second version's stuck mater and second tier
+(section 12) leave 2, and the arbiter page's third tier, for analysis after the game, none under the
+75-move rule.
 
 The search plays the same nodes in the same order in every port (JS, Rust, WebAssembly, Scala):
 that is what makes their outputs comparable byte for byte, node counts included. Every speedup kept
@@ -408,13 +409,42 @@ move changes what it reads (a king or bishop stays inside its reach). Checked: a
 quiet knight, rook and queen moves from boxed and chasolver positions, no lock; `trigger_check.js`
 with boxed and open-pair positions, 57,000 games: no difference from the clock rule.
 
-### The further tiers of the Domino search
+### After the first search: the stuck mater move by move, then the second tier
 
-Where the first search (3 plies, 10 nodes, the first version's) fails without a mate, the same
-search runs again at 9 plies and 5,000 nodes, and where that fails so too, at 150 plies and
-5,000,000 nodes: each position on its own, the moment the tier before it fails. A failure on a mate
-proves nothing can be proven, so no tier runs after one. A budget is a ceiling: a search ends when
-its lines do.
+Where the first search (3 plies, 10 nodes, the first version's) fails without a mate (on its budget
+or its horizon), two things follow, each position on its own, the moment the search fails. A
+failure on a mate proves nothing can be proven, so nothing runs after one.
+
+**The stuck mater, move by move** (`stuckEvery`; Rust `stuck::stuck_every`). The flagged side is to
+move and the mater has only its king and pawns. If after every legal move of the flagged side the
+mater has no legal move, the game ends at the mater's turn, by stalemate or with the mater mated,
+and the mater never mates. It reads the bitboards only and counts no node:
+- quick refusals: the flagged side has a castling right (then `false`: its moves are not read
+  here); two or more mater pawns have an empty square ahead (one flagged move cannot block both);
+  two or more flagged men stand where mater pawns can take them;
+- the flagged side's moves come from the bitboards. No pin against the flagged side is possible
+  (the mater has no slider), so every pseudo-legal move but a king's is legal; the king's steps
+  avoid the mater pawns' attacks and the mater king's zone. In a pawn's check only king steps and
+  captures of the checker (en passant too, when the pawn taken is the checker);
+- for each move the position after it is built on the bitboards, and the mater's moves are read:
+  a king step to a square no flagged man attacks or defends (the sliders see through the mater
+  king's square), and a pawn's push, double push, capture or en passant, with its pins (`BETWEEN`,
+  `LINE`) and, in check, only what answers it (two checks leave no pawn move). An en passant
+  capture is counted as a move even when it is pinned along the rank: an answer on the safe side;
+- with no flagged move at all, stalemate proves it and mate does not.
+
+On chasolver's list of 19 November (204,484 rows) the full version's first search leaves 645 rows
+without a mate; the stuck mater proves 345 of them. Group D of the 331 lock-like rows (the mater
+stalemated whatever the flagged side plays): 175 of 183. A variant that also ran the static tests
+on the positions up to two moves on took 181, but at a cost on every position it is asked for,
+nearly all of which it does not prove; the pure one was kept. Checked against a brute force (the
+moves made, the mater's legal moves counted): no wrong answer in ~430,000 positions and 2,000,000
+mutations of group D (Rust), nor on the 331 rows, the 204,484, chasolver's positions and 300 games
+(JS); the JS and Rust engines and the WebAssembly build agree on `stuck` in every proof their comparisons make.
+
+**The second tier.** Where the stuck mater does not hold, the same search runs again at 9 plies and
+5,000 nodes. A budget is a ceiling: a search ends when its lines do. Of the 300 rows left on the
+list it proves all but 2, bKHPqNEw and RwnQJq1k, with the 75-move rule or without it.
 
 Until 26 November 2026 there was one more tier, of 9 plies and 10,000 nodes after a first search of
 6 plies and 100, and it ran only after a failure on the budget, or on the horizon on a board with no
@@ -422,18 +452,25 @@ knight, rook or queen where some king had no square to step to. In the positions
 first search almost always fails on its horizon at its first line, and the deeper one would fail on
 its horizon too after ~9 nodes, so that condition kept the cost down. With a first search of 3 plies
 it no longer fits: a search of 3 plies fails on its horizon where one of 6 proved, and of
-chasolver's list of 19 November (204,484 rows) the condition left 14 unproven. Without it the first
-search leaves 645 rows to the second tier, 2 of them reach the third, and none is left under the
-75-move rule (without the rule 1, RwnQJq1k, which only the rule's search proves, see below).
+chasolver's list the condition left 14 unproven. So every failure without a mate goes on.
 
-The third tier is for a single position's verdict (proveCannotBeMated, proveBoth, flagVerdict). A
-game's flags (`Flags`) and isDeadPosition stop at the second: they search after every move, for
-both sides, and the rules' search widens its window to the third's 150 plies for a side the third
-ran for; in every game position where a side can mate, but not in 9 plies, that would be a search
-under the 75-move rule of up to 5,000,000 nodes. The arbiter page judges the other side, for a dead
-position, the same way. In a game the second tier is one more walk of `Domino.run2`, for the sides
+**No third tier in the engine.** For one day (26 November 2026, `bee3e0c`) the engine had a third
+tier, 150 plies and 5,000,000 nodes after a second that failed without a mate, for a single
+position's verdict. It proved bKHPqNEw, and under the 75-move rule RwnQJq1k. It came out the same
+day: with it the rules' search widens its window to 150 plies, and in real game positions the
+engine took 2.78 ms a position under the rules (0.05 without the rule, 0.01 without the third tier; Rust
+894 µs), and a search of 150 plies belongs to the analysis after a game, not to the game. It is now
+the arbiter page's own: a box, off by default, and when ticked one more call after a ladder that
+fails without a mate, `proveCannotBeMated(pos, side, { maxPly: 150, budget: 5000000, deepBudget: 0 })`
+under the same rules. With it and the 75-move rule the full version proves the whole list. In play
+even the full version may, very rarely, leave a position unproven that cannot be mated; the analysis
+after the game, with the third tier and if need be a larger budget, catches it.
+
+A game's flags (`Flags`) run the same ladder as a single position's verdict: the stuck mater for the
+side to move whose search failed, and the second tier, one more walk of `Domino.run2` for the sides
 it is asked for (Rust: `second_tier`, out of line, so that the first search stays the one inlined
-into `Flags::update`).
+into `Flags::update`). isDeadPosition and the arbiter page's dead-position check, for the other
+side, use the engine's defaults.
 
 ### The four rules of November
 

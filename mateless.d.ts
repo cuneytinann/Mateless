@@ -193,14 +193,10 @@ declare namespace Mateless {
   const DOMINO_PLY: number;
   /** The node budget of the Domino search (10); every move played counts, each promotion separately. */
   const DOMINO_BUDGET: number;
-  /** The ply ceiling of the Domino search's second tier (9): asked after a failure without a mate. */
+  /** The ply ceiling of the Domino search's second tier (9): asked after a failure without a mate that the stuck mater does not mend. */
   const DOMINO_DEEP_PLY: number;
   /** The node budget of the second tier (5,000). */
   const DOMINO_DEEP_BUDGET: number;
-  /** The ply ceiling of the third tier (150): asked after a failure of the second without a mate. */
-  const DOMINO_THIRD_PLY: number;
-  /** The node budget of the third tier (5,000,000). */
-  const DOMINO_THIRD_BUDGET: number;
 
   /** Why a search proved nothing: a line mates the flagged king, a line still has moves at the ply ceiling, or the budget ran out. */
   type Failure = 'mate' | 'horizon' | 'budget';
@@ -235,10 +231,12 @@ declare namespace Mateless {
     failure: Failure | null;
     /** 'search' when the search played a line that mates. */
     foundBy: 'search' | null;
-    /** The moves the searches played (every tier). */
+    /** The moves the searches played (both tiers). */
     nodes: number;
-    /** How many tiers after the first ran: 0, 1 (the second) or 2 (the third too). */
-    deep: number;
+    /** The second tier ran. */
+    deep: boolean;
+    /** The stuck mater proved it, after a first search that failed without a mate: whatever the flagged side plays, the mater has no legal move. */
+    stuck: boolean;
     /** The searches under the move rule ran, and the answer is theirs. */
     ruled: boolean;
   }
@@ -248,12 +246,8 @@ declare namespace Mateless {
     budget?: number;
     /** The second tier's ply ceiling (default DOMINO_DEEP_PLY). */
     deepPly?: number;
-    /** The second tier's node budget (default DOMINO_DEEP_BUDGET); 0: no further tier. */
+    /** The second tier's node budget (default DOMINO_DEEP_BUDGET); 0: no second tier. */
     deepBudget?: number;
-    /** The third tier's ply ceiling (default DOMINO_THIRD_PLY). */
-    thirdPly?: number;
-    /** The third tier's node budget (default DOMINO_THIRD_BUDGET); 0: no third tier. */
-    thirdBudget?: number;
     /** The halfmove clock at which the game ends by itself: 150 (the 75-move rule), 100 (the 50-move rule) or 0 (default: no rule). */
     moveRule?: MoveRule;
     /** The repetition at which the game ends by itself: 5, 3, or 0 (default: no rule). Needs a history. */
@@ -299,8 +293,6 @@ declare namespace Mateless {
     budget?: number;
     deepPly?: number;
     deepBudget?: number;
-    thirdPly?: number;
-    thirdBudget?: number;
     moveRule?: MoveRule;
     repetition?: Repetition;
     history?: RepetitionHistory | null;
@@ -458,6 +450,8 @@ declare namespace Mateless {
     readonly lockSets: (pos: Position, flagged: Color, first?: boolean) => LockSets | LockFamilies | LockStuck | LockForced | null;
     /** The stuck mater (the second version): the flagged side is to move and, whatever it plays, the mater has no legal move. */
     readonly materStuck: (pos: Position, flagged: Color) => boolean;
+    /** The stuck mater, move by move (ladder.js): with the flagged side to move and the mater a king and pawns, every move of the flagged side leaves the mater without a legal move. */
+    readonly stuckEvery: (pos: Position, flagged: Color) => boolean;
     /** The first version's lock detector alone (lock/, the scalachess patch): no open pairs, no boxed pieces. */
     readonly coreLockTest: (pos: Position, flagged: Color) => boolean;
     readonly SHARED_CONTEXT: MoveContext;

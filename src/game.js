@@ -11,7 +11,7 @@
 import { BLACK, checkPromotion, doMove, fail, findLegalMove, hasLegalMove, KEY_WORDS, keysEqual,
          legalMoves, MOVE_STRIDE, QUEEN, SHARED_CONTEXT, squareName, WHITE, writeKey } from './board.js';
 import { cannotMate } from './lock.js';
-import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_THIRD_BUDGET, DOMINO_THIRD_PLY } from './domino.js';
+import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY } from './domino.js';
 import { Flags, isDeadPosition, proveCannotBeMated } from './ladder.js';
 
 /* The fourteen results the engine decides, as it numbers them; 0 means the game goes on.
@@ -76,9 +76,9 @@ export function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, me
     opponent can never mate, otherwise a win for the opponent. In a game, Game.flagVerdict reads
     the flags instead. */
 export function flagVerdict(pos, side, { resigned = false, maxPly = DOMINO_PLY, budget = DOMINO_BUDGET,
-                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, thirdPly = DOMINO_THIRD_PLY, thirdBudget = DOMINO_THIRD_BUDGET, moveRule = 0,
+                                         deepPly = DOMINO_DEEP_PLY, deepBudget = DOMINO_DEEP_BUDGET, moveRule = 0,
                                          repetition = 0, history = null } = {}) {
-  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget, thirdPly, thirdBudget, moveRule, repetition, history }).proven, resigned);
+  return verdictCode(side, proveCannotBeMated(pos, side, { maxPly, budget, deepPly, deepBudget, moveRule, repetition, history }).proven, resigned);
 }
 
 function verdictCode(side, draw, resigned) {

@@ -54,7 +54,7 @@ if (process.env.FENS) {
   console.log('FEN readers on', n, 'lines of', process.env.FENS);
 }
 
-const proof = p => [p.proven, p.staticProof, p.failure, p.foundBy, p.nodes, p.deep, p.ruled].join(',');
+const proof = p => [p.proven, p.staticProof, p.failure, p.foundBy, p.nodes, p.deep, p.stuck, p.ruled].join(',');
 let positions = 0, searched = 0;
 for (let i = 0; i < fens.length; i++) {
   const fen = fens[i], sa = E.fromFen(fen), sb = W.fromFen(fen);   // the strict reading: error and what it put right
@@ -75,13 +75,13 @@ for (let i = 0; i < fens.length; i++) {
     for (const z of [E.WHITE, E.BLACK]) {
       mine.push(proof(E.proveCannotBeMated(p, z, { maxPly: 9, budget: 2000 })));
       theirs.push(proof(W.proveCannotBeMated(q, z, { maxPly: 9, budget: 2000 })));
-      // the tiers given: smaller ones, and none after the second
-      const t = { deepPly: 5, deepBudget: 300, thirdPly: 20, thirdBudget: 3000 };
-      mine.push(proof(E.proveCannotBeMated(p, z, t)), proof(E.proveCannotBeMated(p, z, { thirdBudget: 0 })));
-      theirs.push(proof(W.proveCannotBeMated(q, z, t)), proof(W.proveCannotBeMated(q, z, { thirdBudget: 0 })));
+      // a smaller second tier, and none
+      const t = { deepPly: 5, deepBudget: 300 };
+      mine.push(proof(E.proveCannotBeMated(p, z, t)), proof(E.proveCannotBeMated(p, z, { deepBudget: 0 })));
+      theirs.push(proof(W.proveCannotBeMated(q, z, t)), proof(W.proveCannotBeMated(q, z, { deepBudget: 0 })));
     }
-    mine.push(...E.proveBoth(p, { deepPly: 5, deepBudget: 300, thirdPly: 20, thirdBudget: 3000 }).map(proof));
-    theirs.push(...W.proveBoth(q, { deepPly: 5, deepBudget: 300, thirdPly: 20, thirdBudget: 3000 }).map(proof));
+    mine.push(...E.proveBoth(p, { deepPly: 5, deepBudget: 300 }).map(proof));
+    theirs.push(...W.proveBoth(q, { deepPly: 5, deepBudget: 300 }).map(proof));
     searched++;
   }
   if (i % 512 === 0) { mine.push(E.perft(p, 3)); theirs.push(W.perft(q, 3)); }

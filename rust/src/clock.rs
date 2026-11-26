@@ -21,6 +21,9 @@ use crate::domino::{Failure, PositionSet, SearchResult};
 
 /// No bound: more plies than any rule allows. (CLOCK_INF)
 const INF: i16 = 1000;
+/// The search under a move rule runs where the rule can end a line within this many plies (or the
+/// caller's ply ceiling, if higher): 20 moves of each side. (REGION_REACH)
+pub const REGION_REACH: u32 = 40;
 /// More of the mater's pieces than this, and a net's cover is only its dearest single target.
 const EXACT_PIECES: usize = 4;
 

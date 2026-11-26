@@ -1,15 +1,16 @@
 'use strict';
 /* The second version's rules, held to what they were measured to do.
    - data/second_version.tsv: the 36 Lichess timeouts that the first version leaves unproven. The
-     ladder, with its default limits (60 plies, 10,000 nodes), must prove each one as the file says
-     (lock, lock-open-pair, lock-boxed, lock-stuck, lock-forced, domino), with the same node count,
-     and leave the one cage left unproven; the first version's detector (_internal.coreLockTest)
-     must prove none of the locks.
+     ladder must prove each one as the file says (lock, lock-open-pair, lock-boxed, lock-stuck,
+     lock-forced, domino, domino-deep: by the second tier, domino-third: by the third), with the
+     same node count, and leave the cage left unproven (RwnQJq1k, which only the 75-move rule
+     proves); the first version's detector (_internal.coreLockTest) must prove none of the locks, a
+     ladder without the further tiers (deepBudget 0) none of the domino-deep rows, and one without
+     the third (thirdBudget 0) none of the domino-third rows.
    - A few positions of each rule, with the answer for both sides, and the certificate's shape
      (lockSets: families for an open pair; boxed, the pieces no enemy king or bishop reaches,
      for knights, rooks and queens; stuck for the stuck mater; forced for the forced step).
-   - Nothing beyond the limits: a proof without a rule plays at most the budget's nodes, and an
-     option the ladder does not know (the old second tier's deepPly, deepBudget) changes nothing.
+   - When the further tiers run: after every failure of the tier before but a mate.
      node second_version_check.js        (ENGINE: the engine, default ../mateless.js) */
 const fs = require('fs'), path = require('path');
 const E = require(path.resolve(__dirname, process.env.ENGINE || '../mateless.js')), I = E._internal;
@@ -26,10 +27,12 @@ for (const line of rows) {
   kinds[want] = (kinds[want] || 0) + 1;
   const proof = E.proveCannotBeMated(p, fl), lock = E.lockCannotMate(p, fl), sets = I.lockSets(p, fl);
   const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : sets.stuck ? 'lock-stuck' : sets.forced ? 'lock-forced' : 'lock')
-    : proof.proven ? 'domino' : 'unproven';
+    : proof.proven ? (proof.deep === 2 ? 'domino-third' : proof.deep ? 'domino-deep' : 'domino') : 'unproven';
   if (got !== want) problem(`${id}: ${got}, the file says ${want}`);
   if (!lock && proof.nodes !== +nodes) problem(`${id}: ${proof.nodes} nodes, the file says ${nodes}`);
   if (I.coreLockTest(p, fl)) problem(`${id}: the first version's detector proves it`);
+  if ((want === 'domino-deep' || want === 'domino-third') && E.proveCannotBeMated(p, fl, { deepBudget: 0 }).proven) problem(`${id}: proven without the further tiers`);
+  if (want === 'domino-third' && E.proveCannotBeMated(p, fl, { thirdBudget: 0 }).proven) problem(`${id}: proven without the third tier`);
 }
 
 // 2. Positions of each rule: [fen, white cannot be mated, black cannot be mated, certificate kind for each proven side].
@@ -88,19 +91,25 @@ for (const [fen, w, b, kind] of CASES) {
   }
 }
 
-// 3. Nothing beyond the limits: the defaults are 60 plies and 10,000 nodes; a proof without a rule
-// plays at most the budget's nodes, at any limits; the old second tier's options change nothing.
-if (E.DOMINO_PLY !== 60 || E.DOMINO_BUDGET !== 10000) problem(`defaults ${E.DOMINO_PLY}/${E.DOMINO_BUDGET}, want 60/10000`);
-for (const line of rows) {
-  const fen = line.split('\t')[4], p = E.fromFen(fen, LOOSE).position, fl = p.side;
-  for (const [maxPly, budget] of [[4, 8], [6, 100], [9, 2000], [60, 10000]]) {
-    const r = E.proveCannotBeMated(p, fl, { maxPly, budget });
-    if (r.nodes > budget) problem(`${fen}: ${r.nodes} nodes at ${maxPly}/${budget}`);
-    const q = E.proveCannotBeMated(p, fl, { maxPly, budget, deepPly: 9, deepBudget: 10000 });
-    if (JSON.stringify(q) !== JSON.stringify(r)) problem(`${fen}: deepPly/deepBudget changed the proof at ${maxPly}/${budget}`);
-    if ('deep' in r) problem('a proof still has a "deep" field');
-  }
-}
+// 3. When the further tiers run: after every failure of the tier before but a mate.
+const proofOf = (fen, o) => { const p = E.fromFen(fen, LOOSE).position; return E.proveCannotBeMated(p, p.side, o); };
+const tiers = (fen, o) => { const r = proofOf(fen, o); return r.deep + ' ' + (r.proven ? 'proven' : r.failure); };
+const want3 = (fen, o, want, what) => { const got = tiers(fen, o); if (got !== want) problem(`${what}: ${got}, want ${want}`); };
+// a mate in the first tier: no further tier
+want3('8/8/8/3k4/5qK1/8/7p/8 w - - 4 1', undefined, '0 mate', 'a mate found by the first tier');
+// the start position: the first two tiers fail on their horizons, the third finds the mate
+want3('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', undefined, '2 mate', 'the start position');
+want3('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', { thirdBudget: 0 }, '1 horizon', 'the start position without the third tier');
+// a lock: the static tests, no search
+want3('8/8/4k3/8/3PK3/8/8/8 w - - 0 1', undefined, '0 proven', 'an ending the static tests settle');
+// a budget failure (WPNvLYdo): the second tier proves it
+want3('8/7p/6k1/7P/8/1q6/2q5/K7 b - - 0 47', undefined, '1 proven', 'WPNvLYdo');
+// bKHPqNEw: the third tier proves it; RwnQJq1k: only the 75-move rule, after the third tier
+want3('1k6/1P5p/BP3p2/1P6/8/8/5PKP/8 b - - 0 41', undefined, '2 proven', 'bKHPqNEw');
+want3('8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - 11 51', undefined, '2 horizon', 'RwnQJq1k');
+const rw = proofOf('8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - 11 51', { moveRule: 150 });
+if (!(rw.proven && rw.ruled)) problem('RwnQJq1k is not proven under the 75-move rule');
+if (proofOf('8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - 11 51', { moveRule: 150, thirdBudget: 0 }).proven) problem('RwnQJq1k proven under the rule without the third tier');
 
 console.log(`${rows.length} rows (${Object.entries(kinds).map(([k, n]) => n + ' ' + k).join(', ')}), ${CASES.length} positions: ${problems} problems`);
 process.exit(problems ? 1 : 0);

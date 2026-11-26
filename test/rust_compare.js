@@ -11,7 +11,7 @@
      games <file> <rule> <rep>   the flags of games that end at a move rule (150, 100) and a
                                  repetition rule (5, 3), each update given the game's history (its
                                  positions since the last capture or pawn move, from the FENs)
-     rules <file>                lines "<fen>\t<w|b flagged>\t<rule>\t<rep>\t<ply>\t<budget>": the
+     rules <file>                lines "<fen>\t<w|b flagged>\t<rule>\t<rep>\t<ply>\t<budget>" (- -: the defaults): the
                                  proof under the rules, both proofs at once and the dead-position test
    The labelled lines and the rules lines are read with { strict: false }, so the search is compared
    on composed positions too; `fen <file>` compares the two readers themselves: per FEN (a line, its
@@ -65,13 +65,13 @@ if (mode === 'fen') {   // per FEN: the strict reading and the loose one (the er
     out.push([flags.whiteDownAt, flags.blackDownAt].join('\t'));
   }
 } else if (mode === 'rules') {
-  const f = r => [+r.proven, +r.staticProof, r.failure || '-', r.nodes, +r.ruled].join('/');
+  const f = r => [+r.proven, +r.staticProof, r.failure || '-', r.nodes, +r.deep, +r.ruled].join('/');
   fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
     const c = line.split('\t');
     if (c.length < 6) return;
     const s = E.fromFen(c[0], LOOSE);
     if (s.error) { out.push([i, 'fen-error', s.error].join('\t')); return; }
-    const rules = { moveRule: +c[2], repetition: +c[3] }, opts = Object.assign({ maxPly: +c[4], budget: +c[5] }, rules);
+    const rules = { moveRule: +c[2], repetition: +c[3] }, opts = Object.assign(c[4] === '-' ? {} : { maxPly: +c[4], budget: +c[5] }, rules);
     const p = E.proveCannotBeMated(s.position, c[1] === 'w' ? E.WHITE : E.BLACK, opts), both = E.proveBoth(s.position, opts);
     out.push([i, f(p), f(both[0]), f(both[1]), +E.isDeadPosition(s.position, rules)].join('\t'));
   });

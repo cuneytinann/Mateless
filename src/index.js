@@ -3,17 +3,16 @@
  * (5.2.2), flag fall (6.9) and resignation (5.1.2).
  *
  * After every move Mateless climbs a ladder for each side: the material test, the lock detector,
- * then a helpmate search (the Domino search: 6 plies and 100 nodes in the first version, 60 plies and
- * 10,000 nodes in the second, by default; the caller may give others). A side proven unable
+ * then a short helpmate search of 3 plies and 10 nodes (the Domino search). A side proven unable
  * to mate keeps that flag for the rest of the game; a flag fall is judged from the flags, with
  * nothing to compute. It never declares a draw where a mate is possible: it acts only on a proof,
  * and what it cannot prove it leaves to a complete solver.
  *
  * Two versions in one: the first is the fast layer (the lock detector of lock/ and of the
  * scalachess patch); the second adds rules that see more, each run only when its own situation is
- * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and a
- * deeper Domino search by default. Every search runs with the limits it is given, nothing beyond
- * them. Not complete either: wider, with completeness as its goal.
+ * on the board: open pawn pairs and boxed knights, rooks and queens in the lock detector, and two
+ * more tiers of the Domino search (9 plies and 5,000 nodes, then 150 and 5,000,000), each where the
+ * one before it fails without finding a mate. Not complete either: wider, with completeness as its goal.
  *
  * The source is in layers, one ES module each (src/); tools/build.js joins them into mateless.js,
  * one dependency-free file. Mateless itself, what this library adds:
@@ -21,7 +20,7 @@
  *   lock.js       rung 2: the lock detector, and the two static tests together
  *   domino.js     rung 3: the Domino search
  *   clock.js      the search under a move rule, bounded by the clock (the second version)
- *   ladder.js     when each rung is asked, and the two flags a game keeps
+ *   ladder.js     when each rung is asked (rung 4, the further tiers, too), and the two flags a game keeps
  * Around it, so that it runs on its own:
  *   board.js      a reference board: bitboards, magic bitboards, legal moves, FEN (standard
  *                 techniques; a platform may keep its own board)
@@ -63,8 +62,8 @@ import { BISHOP, BLACK, castlingField, CastlingFiles, chess960Arrangement, color
 import { fromFen } from './fen.js';
 import { materialCannotMate, materialTest } from './material.js';
 import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2, materStuck } from './lock.js';
-import { DOMINO_BUDGET, DOMINO_PLY, Domino, PositionSet } from './domino.js';
-import { ClockSearch } from './clock.js';
+import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_THIRD_BUDGET, DOMINO_THIRD_PLY, Domino, PositionSet } from './domino.js';
+import { ClockSearch, REGION_REACH } from './clock.js';
 import { Flags, isDeadPosition, proveBoth, proveCannotBeMated } from './ladder.js';
 import { flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
 
@@ -80,10 +79,10 @@ export {
   isAttacked, inCheck, makeMove, legalMoves, hasLegalMove, perft, positionKey,
   // the arbiter
   materialCannotMate, lockCannotMate, cannotMate, FLAGGED_WHITE, FLAGGED_BLACK, cannotMate2,
-  DOMINO_PLY, DOMINO_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
+  DOMINO_PLY, DOMINO_BUDGET, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, DOMINO_THIRD_PLY, DOMINO_THIRD_BUDGET, Domino, proveCannotBeMated, proveBoth, isDeadPosition, Flags, gameStatus, flagVerdict, Game,
 };
 // internals exposed for tests
 export const _internal = Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
                                          lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
                                          FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS,
-                                         ClockSearch, readFen });
+                                         ClockSearch, REGION_REACH, readFen });

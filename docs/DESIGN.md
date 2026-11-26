@@ -35,11 +35,11 @@ solver can judge it after the game.
 |---|---|---|---|
 | 1. material test | `src/material.js` | the piece sets | ~0.1 µs (JS), 1–3 ns above an empty loop (Rust) |
 | 2. lock detector | `src/lock.js` | pawns, kings, bishops, the en passant square | ~0.3–0.8 µs (JS), ~50–110 ns (Rust) on a lock; a few ns when a knight, rook or queen stands |
-| 3. Domino search | `src/domino.js` | legal moves, made and taken back in place | ~1–5 µs (JS); the second version's deeper default, ~10 µs a move in a game |
+| 3. Domino search | `src/domino.js` | legal moves, made and taken back in place | ~1–5 µs (JS) |
+| 4. further tiers (second version) | `src/ladder.js` | the same, 9 plies and 5,000 nodes, then 150 and 5,000,000, each after a failure of the one before without a mate | up to 5,000 nodes in a game (the third only for a single position's verdict) |
 
-Rung 2 carries the second version's rules (section 12), and rung 3 its deeper default limits (60
-plies and 10,000 nodes; the first version's: 6 and 100); the first version is rungs 1–3 with the
-lock detector's first version. Every search runs with the limits it is given, nothing beyond them.
+Rungs 2 and 4 carry the second version's rules (section 12); the first version is rungs 1–3 with
+the lock detector's first version.
 
 Each proof is permanent. Material never grows back (only a promotion adds a piece, and that needs
 a pawn the test counts). A lock or a Domino proof says that no series of legal moves from here
@@ -168,6 +168,13 @@ median 1, 90% ≤ 4, 99% ≤ 8, 99.9% ≤ 33, at most 1,354.
 
 Above 6 plies the budget, not the ceiling, ends the proofs; a failing search in an open position
 runs its first line down to the ceiling, so the cost grows linearly with the plies.
+
+**3 plies, 10 nodes (since 26 November 2026).** The figures above are those of chasolver's rows up
+to July. The default is now 3 plies and 10 nodes: in a game almost every search fails on its first
+line, at the ceiling, so half the ceiling is half the cost (real game positions: 320 ns a position
+in Rust against 625). It leaves more unproven: on chasolver's list of 19 November (204,484 rows)
+656, against 36 at 6 plies and 100 nodes; the second version's further tiers (section 12) leave
+none under the 75-move rule.
 
 The search plays the same nodes in the same order in every port (JS, Rust, WebAssembly, Scala):
 that is what makes their outputs comparable byte for byte, node counts included. Every speedup kept
@@ -401,35 +408,32 @@ move changes what it reads (a king or bishop stays inside its reach). Checked: a
 quiet knight, rook and queen moves from boxed and chasolver positions, no lock; `trigger_check.js`
 with boxed and open-pair positions, 57,000 games: no difference from the clock rule.
 
-### The limits: one Domino search, nothing beyond it
+### The further tiers of the Domino search
 
-The second version's Domino search runs by default at 60 plies and 10,000 nodes (`DOMINO_PLY`,
-`DOMINO_BUDGET`; the first version's are 6 and 100), and every search runs with the limits it is
-given and no others: the Domino search; the searches under the rules (the clock search near the
-move rule, the Domino search with a repetition set), with the same ply ceiling and a node budget of
-their own, the exits' searches paid from it; the clock search only where the move rule can end a
-line within the ply ceiling. Nothing runs in the background with limits a caller does not see.
+Where the first search (3 plies, 10 nodes, the first version's) fails without a mate, the same
+search runs again at 9 plies and 5,000 nodes, and where that fails so too, at 150 plies and
+5,000,000 nodes: each position on its own, the moment the tier before it fails. A failure on a mate
+proves nothing can be proven, so no tier runs after one. A budget is a ceiling: a search ends when
+its lines do.
 
-From 28 October to 25 November 2026 the second version had instead a second tier: where the
-6-ply, 100-node search failed without a mate, on its budget or on its horizon with a king shut in on
-a board of kings, pawns and bishops, the same search ran once more at 9 plies and 10,000 nodes;
-and the search under the move rule took at least 200,000 nodes and ran within 40 plies of the rule
-(`DOMINO_DEEP_PLY`, `DOMINO_DEEP_BUDGET`, `DOMINO_RULE_BUDGET`, `REGION_REACH`). Both were limits a
-caller did not set, and on 26 November they went: one search, with the limits shown.
+Until 26 November 2026 there was one more tier, of 9 plies and 10,000 nodes after a first search of
+6 plies and 100, and it ran only after a failure on the budget, or on the horizon on a board with no
+knight, rook or queen where some king had no square to step to. In the positions of real games the
+first search almost always fails on its horizon at its first line, and the deeper one would fail on
+its horizon too after ~9 nodes, so that condition kept the cost down. With a first search of 3 plies
+it no longer fits: a search of 3 plies fails on its horizon where one of 6 proved, and of
+chasolver's list of 19 November (204,484 rows) the condition left 14 unproven. Without it the first
+search leaves 645 rows to the second tier, 2 of them reach the third, and none is left under the
+75-move rule (without the rule 1, RwnQJq1k, which only the rule's search proves, see below).
 
-What it changes, measured on 26 November:
-- chasolver's list of 19 November (204,484 rows): the second tier left 2 rows unproven, the one
-  search at 60/10,000 leaves 1 (RwnQJq1k); at 6/100, which a caller can still ask for, 23. The
-  first version, at its own 6/100: 36. A row costs the same (~0.72 µs in JavaScript).
-- chasolver's labelled positions (positions.txt and lichess.txt as they stood before 29 August, both sides): no false
-  draw; of the composed positions labelled "cannot mate", 68.9% proven (63.8% with the second tier
-  at 6/100).
-- A game's two flags: ~11 µs a move in JavaScript instead of ~1.4 µs (~3.8 µs in Rust instead of
-  ~1.0, FEN reading included), since the search now runs to 60 plies in every position where a
-  side can still mate.
-- Under the move rule, on 12,962 cases of endings of three to five men around their rule distances:
-  6,834 of the 6,978 that cannot be mated in time proven (97.9%; with the hidden 200,000 nodes
-  99.8%), none wrong; against the exact search of the region on every case: no unsound answer.
+The third tier is for a single position's verdict (proveCannotBeMated, proveBoth, flagVerdict). A
+game's flags (`Flags`) and isDeadPosition stop at the second: they search after every move, for
+both sides, and the rules' search widens its window to the third's 150 plies for a side the third
+ran for; in every game position where a side can mate, but not in 9 plies, that would be a search
+under the 75-move rule of up to 5,000,000 nodes. The arbiter page judges the other side, for a dead
+position, the same way. In a game the second tier is one more walk of `Domino.run2`, for the sides
+it is asked for (Rust: `second_tier`, out of line, so that the first search stays the one inlined
+into `Flags::update`).
 
 ### The four rules of November
 

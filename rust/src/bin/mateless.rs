@@ -115,11 +115,11 @@ fn main() {
                 let pos = match loose(c[0]) { Ok(p) => p, Err(e) => { writeln!(out, "{}\tfen-error\t{}", i, e).unwrap(); continue; } };
                 let flagged = if c[1] == "w" { WHITE } else { BLACK };
                 let rules = Rules { move_rule: c[2].parse().unwrap(), repetition: c[3].parse().unwrap(), history: &[] };
-                let (ply, budget): (u32, i64) = (c[4].parse().unwrap(), c[5].parse().unwrap());
-                let p = prove_cannot_be_mated_rules(&mut search, &pos, flagged, ply, budget, &rules);
-                let both = prove_both_rules(&mut search, &pos, ply, budget, &rules);
+                let (ply, budget): (u32, i64) = if c[4] == "-" { (DOMINO_PLY, DOMINO_BUDGET) } else { (c[4].parse().unwrap(), c[5].parse().unwrap()) };
+                let p = prove_cannot_be_mated_rules(&mut search, &pos, flagged, ply, budget, &Tiers::DEFAULT, &rules);
+                let both = prove_both_rules(&mut search, &pos, ply, budget, &Tiers::DEFAULT, &rules);
                 let dead = is_dead_position_rules(&mut search, &pos, &rules);
-                let f = |p: &Proof| format!("{}/{}/{}/{}/{}", p.proven as u8, p.static_proof as u8, failure(p.failure), p.nodes, p.ruled as u8);
+                let f = |p: &Proof| format!("{}/{}/{}/{}/{}/{}", p.proven as u8, p.static_proof as u8, failure(p.failure), p.nodes, p.deep as u8, p.ruled as u8);
                 writeln!(out, "{}\t{}\t{}\t{}\t{}", i, f(&p), f(&both[0]), f(&both[1]), dead as u8).unwrap();
             }
         }

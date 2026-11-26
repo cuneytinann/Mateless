@@ -20,10 +20,18 @@ fn domino_examples() {
     let p = mateless::from_fen("8/8/1k6/p2p2p1/PK1P2Pp/7P/8/8 w - - 0 49").unwrap();
     let r = mateless::prove_cannot_be_mated(&mut search, &p, mateless::WHITE, 6, 100);
     assert!(r.proven && r.static_proof && r.nodes == 0);
-    // an open position: the first line runs to the ceiling
+    // an open position: the first line runs to the ceiling (no further tier)
     let p = mateless::from_fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2").unwrap();
-    let r = mateless::prove_cannot_be_mated(&mut search, &p, mateless::WHITE, 6, 100);
-    assert!(!r.proven && r.failure == mateless::Failure::Horizon && r.nodes == 6);
+    let r = mateless::prove_cannot_be_mated_deep(&mut search, &p, mateless::WHITE, 6, 100, &mateless::Tiers::second(0, 0));
+    assert!(!r.proven && r.failure == mateless::Failure::Horizon && r.nodes == 6 && r.deep == 0);
+    // the start position with the defaults: the first two tiers fail on their horizons, the third finds a mate
+    let p = mateless::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+    let r = mateless::prove_cannot_be_mated(&mut search, &p, mateless::WHITE, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET);
+    assert!(!r.proven && r.failure == mateless::Failure::Mate && r.deep == 2);
+    // bKHPqNEw: the third tier proves it
+    let p = mateless::from_fen("1k6/1P5p/BP3p2/1P6/8/8/5PKP/8 b - - 0 41").unwrap();
+    let r = mateless::prove_cannot_be_mated(&mut search, &p, mateless::BLACK, mateless::DOMINO_PLY, mateless::DOMINO_BUDGET);
+    assert!(r.proven && r.deep == 2 && r.nodes == 8884);
 }
 
 #[test]

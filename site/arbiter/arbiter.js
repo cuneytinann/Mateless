@@ -42,10 +42,11 @@ function judge(fen, ply, bud, forced) {
   let reason;
   if (proof.proven) reason = proof.nodes > 0 ? 'domino' : E.materialCannotMate(pos, flagged) ? 'material' : proof.staticProof ? 'lock' : 'stalemate';
   else reason = proof.failure === 'mate' ? 'mate' : 'open';
-  const dead = proof.proven && E.proveCannotBeMated(pos, other, limits).proven;
+  /* the other side as a game's flags would see it: up to the second tier */
+  const dead = proof.proven && E.proveCannotBeMated(pos, other, Object.assign({ thirdBudget: 0 }, limits)).proven;
   return {
     side, n: pos.halfmove, nGiven: setup.halfmoveGiven, ep: pos.ep, moves, fixed: setup.fixed, full: setup.fullmove,
-    draw: proof.proven, dead, reason, used: proof.nodes, ms,
+    draw: proof.proven, dead, reason, used: proof.nodes, deep: proof.deep, ms,
     why: proof.proven ? '' : proof.failure,
     castle: E.castlingField(pos),
   };
@@ -66,6 +67,7 @@ var $ = function (id) { return document.getElementById(id) }, ROOT = document.ge
 var ENGINE_FILE = 'mateless.js';
 var ENGINE_BYTES = new Blob([$('mateless-engine').textContent]).size;
 var LIMITS = [E.DOMINO_PLY, E.DOMINO_BUDGET];     /* the game's own Domino search: plies, nodes */
+var DEEP = [[E.DOMINO_DEEP_PLY, E.DOMINO_DEEP_BUDGET], [E.DOMINO_THIRD_PLY, E.DOMINO_THIRD_BUDGET]];   /* its further tiers */
 var REPO = 'https://github.com/cuneytinann/Mateless';
 var UNFAIR = 'https://chasolver.org/unfair-games';
 
@@ -105,7 +107,7 @@ en: {
  assumeBoth: "With “judge both flags” on, each labelled position is judged twice, once for each side’s flag, whoever is to move.",
  lblPly: "ply ceiling",
  lblBud: "node budget",
- limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move; nothing is searched beyond the limits",
+ limNote: "in a game, Mateless searches {0} plies and {1} nodes after every move and, where that fails without a mate, a second tier of {2} plies and {3} nodes; a position judged here also gets, where the second fails so, a third of {4} plies and {5} nodes",
  lblRange: "positions",
  lblRangeTo: "to",
  lblRangeNote: "in input order, pasted lines first; 0 = to the end",
@@ -218,6 +220,7 @@ en: {
  st2Ep: "No lock while an en passant square ({0}) stands.",
  st2Skip: "Not needed: material settled it.",
  st3Ok: "Followed every line until mate became impossible, {0} in all: {1} cannot mate. Draw by the Domino effect.",
+ st3Deep: "The first search ({0}) ended without a proof and without a mate, so the next tiers ran: {1}.",
  st3Mate: "Found a line in which {0} mates. Win on time, proven.",
  st3Hor: "A line reached the ply ceiling ({0}) without a proof. Nothing proven: the win for {1} stands by default.",
  st3Bud: "The node budget ({0}) ran out without a proof. Nothing proven: the win for {1} stands by default.",
@@ -420,7 +423,7 @@ tr: {
  assumeBoth: "“İki bayrağı da dene” açıkken etiketli her pozisyon, sıra kimde olursa olsun, iki kez yargılanır: her iki tarafın bayrağı için birer kez.",
  lblPly: "ply tavanı",
  lblBud: "düğüm bütçesi",
- limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar; sınırların ötesinde hiçbir şey aranmaz",
+ limNote: "oyunda Mateless her hamleden sonra {0} ply ve {1} düğümle arar, bu arama mat bulmadan başarısız olursa {2} ply ve {3} düğümlük ikinci bir kademe; burada yargılanan bir pozisyon, ikinci de öyle başarısız olursa, {4} ply ve {5} düğümlük bir üçüncüsünü de alır",
  lblRange: "pozisyonlar",
  lblRangeTo: "–",
  lblRangeNote: "giriş sırasıyla, yapıştırılanlar önce; 0 = sona kadar",
@@ -533,6 +536,7 @@ tr: {
  st2Ep: "Geçerken alma karesi ({0}) dururken kilit olmaz.",
  st2Skip: "Gerek yok: materyal çözdü.",
  st3Ok: "Her hat mat imkânsızlaşana dek izlendi, toplam {0}: {1} mat edemez. Domino etkisiyle berabere.",
+ st3Deep: "İlk arama ({0}) ispatsız ve matsız bitti; sonraki kademeler çalıştı: {1}.",
  st3Mate: "{0} tarafının mat ettiği bir hat bulundu. Süreden galibiyet, ispatlı.",
  st3Hor: "Bir hat ispat olmadan ply tavanına ({0}) ulaştı. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
  st3Bud: "Düğüm bütçesi ({0}) ispat olmadan tükendi. Hiçbir şey ispatlanmadı: {1} lehine galibiyet varsayılan olarak kalıyor.",
@@ -1119,7 +1123,10 @@ function detailHTML(k) {
   else if (ins.lock) { s += stepRow('dec', T('s2n'), c2, F('st2Yes', op)); done = true }
   else s += stepRow('no', T('s2n'), c2, ep ? F('st2Ep', ep) : F('st2No', op));
   var c3 = 'Domino(' + who + ', ' + P + ', ' + num(B) + ')';
-  var dp = P, db = B, dn = '';
+  /* the further tiers that ran: the last one's limits are the ones the last search reached */
+  var k3 = Math.min(r.deep || 0, DEEP.length), last = k3 ? DEEP[k3 - 1] : [P, B];
+  var dp = last[0], db = last[1], dn = k3 ? ' ' + F('st3Deep', F('limits', P, num(B)), DEEP.slice(0, k3).map(function (g) { return F('limits', g[0], num(g[1])) }).join(' → ')) : '';
+  for (var j = 0; j < k3; j++) c3 += ' → Domino(' + who + ', ' + DEEP[j][0] + ', ' + num(DEEP[j][1]) + ')';
   if (done) s += stepRow('skip', T('s3n'), c3, T('st3Skip'));
   else if (r.reason == 'domino') s += stepRow('dec', T('s3n'), c3, F('st3Ok', nodes(r.used), op) + dn);
   else if (r.reason == 'stalemate') s += stepRow('dec', T('s3n'), c3, T('st3SM'));
@@ -1150,8 +1157,8 @@ function detailHTML(k) {
      (r.fixed && r.fixed.length ? '<dt>' + T('kFixed') + '</dt><dd>' + r.fixed.map(function (f) { return T('fx_' + f.replace(' ', '')) }).join('; ') + '</dd>' : '') + '</dl>';
   /* the proof */
   h += '<h4>' + T('hRun') + '</h4><dl class="kv">' +
-     '<dt>' + T('kLimits') + '</dt><dd>' + F('limits', P, num(B)) + '</dd>' +
-     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(B)) + '</dd>' +
+     '<dt>' + T('kLimits') + '</dt><dd>' + [F('limits', P, num(B))].concat(DEEP.slice(0, k3).map(function (g) { return F('limits', g[0], num(g[1])) })).join(' → ') + '</dd>' +
+     '<dt>' + T('kUsed') + '</dt><dd>' + F('usedOf', num(r.used), num(DEEP.slice(0, k3).reduce(function (t, g) { return t + g[1] }, B))) + '</dd>' +
      '<dt>' + T('kTime') + '</dt><dd>' + (r.warm === undefined ? (r.warm = warmTime(w, P, B)) : r.warm, us(r.warm)) + ' µs</dd>' +
      (r.why ? '<dt>' + T('kStop') + '</dt><dd>' + T({ horizon: 'rHorizon', budget: 'rBudget', mate: 'rMate' }[r.why]) + '</dd>' : '') + '</dl>';
   h += srcBlock(w, r) + '</div></div>';
@@ -1456,7 +1463,7 @@ $('pgnexp').onclick = function () { if (!PGN.res) return;
   download('games.csv', o.join('\n') + '\n') };
 
 /* ═══════════════════════════════ wiring ═══════════════════════════════ */
-function limNote() { $('limnote').textContent = F('limNote', LIMITS[0], num(LIMITS[1])) }
+function limNote() { $('limnote').textContent = F('limNote', LIMITS[0], num(LIMITS[1]), DEEP[0][0], num(DEEP[0][1]), DEEP[1][0], num(DEEP[1][1])) }
 $('fold-engine').addEventListener('toggle', function () {
   if (this.open && !$('srcbox').textContent) $('srcbox').textContent = $('mateless-engine').textContent.trim() });
 function applyI18n() {

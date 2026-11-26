@@ -4,6 +4,33 @@ Measured on a shared cloud machine (2 vCPU Xeon 2.8 GHz, Node 22, rustc 1.97, on
 separate runs move by ±5–10%, so ranges are given where runs differed. How the engine works is in
 [DESIGN.md](DESIGN.md).
 
+## The search at 3 plies and 10 nodes, and the tiers (26 November 2026)
+
+The figures below were measured with the Domino search at 6 plies and 100 nodes, its default
+until 26 November 2026, and the second version's second tier at 9 plies and 10,000 nodes after a
+failure on the budget or in a king's cage. Since then the first search is 3 plies and 10 nodes in
+both versions, and the second version's further tiers (9 plies and 5,000 nodes, then 150 and
+5,000,000) run after every failure without a mate. On chasolver's list of 19 November 2026
+(204,484 rows), the flagged side's opponent:
+
+| | unproven | reach the second tier | reach the third |
+|---|---|---|---|
+| the first version, 6 plies / 100 nodes | 36 | | |
+| the first version, 3 plies / 10 nodes | 656 | | |
+| the second version, the second tier only after a budget failure or a cage (its condition until 26 November) | 14 | 631 | |
+| the second version, every failure without a mate goes on | 1 (RwnQJq1k) | 645 | 2 |
+| the same under the 75-move rule | 0 | 645 | 2 |
+
+RwnQJq1k (`8/7p/5p1P/5p1K/5Pp1/6P1/b3k3/8 w - - 11 51`): every tier fails on its horizon (the third
+after 254 nodes); the 75-move rule's search, its window widened to the third tier's 150 plies,
+proves it in 1,131,417 nodes. bKHPqNEw (`1k6/1P5p/BP3p2/1P6/8/8/5PKP/8 b - - 0 41`): the third tier,
+8,884 nodes in all. In the arbiter page (Chrome, page included) the 204,484 rows take 4.0 s with
+the third tier ticked, 3.3 s with the first version; the page before the change, 3.5 s. With the
+rules' window widened to 150 plies for every side (a version of that day, never published) they
+took 165 s: the check of the other side, for a dead position, ran the 75-move rule's search at
+up to 5,000,000 nodes. Rust and WebAssembly give the same answers and node counts as JavaScript
+(`test/rust_compare.js`, `test/wasm_check.js`).
+
 ## 1. The Lichess data
 
 Miguel Ambrona's [chasolver](https://github.com/miguel-ambrona/chasolver) project scans the Lichess
@@ -270,13 +297,6 @@ then to be checked by machine.
 <a id="the-second-version"></a>
 
 ## 5. The second version
-
-**26 November 2026:** the second tier is gone. The second version now has one Domino search, 60
-plies and 10,000 nodes by default, and every search runs with the limits it is given
-([DESIGN.md](DESIGN.md), "The limits"). On chasolver's list of 19 November (204,484 rows) it
-leaves 1 row unproven (RwnQJq1k; the second tier left 2, the first version leaves 36); a game's two
-flags cost ~11 µs a move in JavaScript instead of ~1.4 µs. The tables below were measured with the
-second tier, as it was then.
 
 The second version's rules (open pawn pairs, boxed knights, rooks and queens, a second tier of the
 Domino search; [DESIGN.md](DESIGN.md), section 12), measured on the same data. The data files keep

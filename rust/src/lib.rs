@@ -9,15 +9,15 @@
 //! The modules are the layers of the JavaScript sources (`src/`). Mateless itself:
 //!   - [`material`]  rung 1: the material test
 //!   - [`lock`]      rung 2: the lock detector, and the two static tests together
-//!   - [`domino`]    rung 3: the Domino search (by default 60 plies, 10,000 nodes; no move-count rules)
+//!   - [`domino`]    rung 3: the Domino search, 3 plies and 10 nodes, by default no move-count rules
 //!   - [`clock`]     the search under a move rule, bounded by the clock (the second version)
 //!   - [`ladder`]    the rungs put together: [`prove_cannot_be_mated`], [`prove_both`] and
 //!                   [`is_dead_position`] for one position, [`Flags`] for the two flags of a game
-//!                   played move by move; and rung 4, on request, the searches under the rules
+//!                   played move by move; and rung 4, the search's further tiers (the second version)
 //!
 //! Both versions are here: the first version's lock detector and search, and the second version's
 //! rules (open pawn pairs, boxed knights, rooks and queens, twin bishops, the four rules of kings and
-//! pawns: the stalemate guard, the check seed, the stuck mater, the forced step; the move rules),
+//! pawns: the stalemate guard, the check seed, the stuck mater, the forced step; the further tiers),
 //! each run only when its own situation is on the board.
 //!
 //! and under it [`board`], a reference board (bitboards, magic bitboards, legal moves, FEN). Every

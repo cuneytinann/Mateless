@@ -529,7 +529,8 @@ node wasm_check.js                               # mateless.wasm = mateless.js, 
 node types_check.js                              # mateless.d.ts motora karşı (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü, her 50. kilit
 node second_version_check.js                     # ikinci sürümün kuralları: 36 satır, her kuralın pozisyonları
-node chess960_boxed_check.js                     # rok kutulu bir kaleyi hiç oynatmıyor (Chess960'ın her dizilişi; şahının yanındaki kale)
+node chess960_boxed_check.js                     # rok kutulu bir kaleyi hiç oynatmıyor (Chess960'ın her dizilişi; şahının yanındaki kale, iki kanatta);
+                                                 # hiçbir rok bir kilidi tamamlamıyor
 ```
 
 Kasım kuralları ve ikiz filler Rust ve WebAssembly derlemelerinde de var: `rust_compare.js`,

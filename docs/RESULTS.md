@@ -39,7 +39,10 @@ The castle is why the king next to its rook on g1 and f1 (c1 and d1) holds nothi
 resets no clock, so the static tests are not asked after one, and in Chess960 it can leave a frozen
 king between its rooks (`4bkrr/1p1p1p1p/1P1P1P1P/8/8/8/8/K7 b g`: after the castle, `4brkr`, dead).
 That costs 148 of the 1.18 million answers of the castling positions above (and the 8 positions of
-`lock/second/positions.tsv` written for it), and none elsewhere.
+`lock/second/positions.tsv` written for it), and none elsewhere. `test/chess960_boxed_check.js` now
+makes such a castle on each wing (the queenside one composed) and fails the engine without the
+exception; it also has the rook beside its king on the queenside, `8/8/8/4k3/p1p3p1/PpPp1pP1/1P1PpP2/BRK1B1B1`:
+dead without the right (132 positions reachable, no mate), a mate in two with it (`w Q`).
 
 Speed, alternated in one process: the lock test on chasolver's Lichess positions with a knight,
 rook or queen is the same within the noise (JS ~54–57 ns, Rust ~16 ns); on a corpus of locks with

@@ -532,7 +532,8 @@ node wasm_check.js                               # mateless.wasm = mateless.js, 
 node types_check.js                              # mateless.d.ts against the engine (npm i --no-save typescript)
 node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, every 50th lock
 node second_version_check.js                     # the second version's rules: the 36 rows, each rule's positions
-node chess960_boxed_check.js                     # castling never moves a boxed rook (every Chess960 layout; the rook beside its king)
+node chess960_boxed_check.js                     # castling never moves a boxed rook (every Chess960 layout; the rook beside its king, both wings);
+                                                 # no castle completes a lock
 ```
 
 The November rules and twin bishops are in the Rust and WebAssembly builds too: `rust_compare.js`,

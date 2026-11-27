@@ -439,6 +439,9 @@ declare namespace Mateless {
     readonly frozen: [number, number];
     /** With knights, rooks or queens on the board: the boxed ones no enemy king or bishop reaches. */
     readonly boxed?: [number, number];
+    /** With boxed pieces: the still bishops, every diagonal neighbour held for good (own fixed pawns,
+        boxed pieces or still bishops) and out of the enemy king's and bishops' reach; walls of the boxed pieces. */
+    readonly still?: [number, number];
   }
 
   /** The stuck mater's certificate: the game ends at the mater's next turn. */

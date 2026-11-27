@@ -15,7 +15,10 @@
  *     the reachable positions split into families by what the pair's pawns have done (neither
  *     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
  *   - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
- *     that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+ *     that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a
+ *     man is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so,
+ *     and out of the enemy king's and bishops' reach) or the piece's own frozen king (its side
+ *     with no castling right left and not standing where a castle leaves it beside its rook);
  *   - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
  *     out its second flight rule where they may hold both flights;
  *   - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -90,7 +93,9 @@ object Lock {
         val whiteRooks: Long, val blackRooks: Long,
         val whiteQueens: Long, val blackQueens: Long,
         val whiteToMove: Boolean,
-        val enPassant: Boolean     // the side to move can capture en passant
+        val enPassant: Boolean,    // the side to move can capture en passant
+        val whiteCastles: Boolean = false,   // White has a castling right (its king and that rook in place)
+        val blackCastles: Boolean = false
     )
 
     /** What one level leaves for the mating net (and for the families after it). */
@@ -125,8 +130,27 @@ object Lock {
                         else (sideways(north(target)) and sets['p'.toInt()]) != 0L
         }
         fun s(c: Char) = sets[c.toInt()]
+        val castles = BooleanArray(2)   // White, Black
+        if (fields.size > 2 && fields[2] != "-") {
+            for (c in fields[2]) {
+                val white = c.isUpperCase()
+                val back = if (white) RANK_1 else RANK_8
+                val king = s(if (white) 'K' else 'k') and back
+                val rooks = s(if (white) 'R' else 'r') and back
+                if (king == 0L) continue   // a right without its king in place does not count
+                val kf = java.lang.Long.numberOfTrailingZeros(king) % 8
+                val up = Character.toUpperCase(c)
+                var r = rooks
+                while (r != 0L) {
+                    val f = java.lang.Long.numberOfTrailingZeros(r) % 8
+                    if ((up == 'K' && f > kf) || (up == 'Q' && f < kf) || (up != 'K' && up != 'Q' && f == up - 'A' && f != kf))
+                        castles[if (white) 0 else 1] = true
+                    r = r and (r - 1)
+                }
+            }
+        }
         return Pieces(s('P'), s('p'), s('K'), s('k'), s('B'), s('b'), s('N'), s('n'), s('R'), s('r'), s('Q'), s('q'),
-                      whiteToMove, enPassant)
+                      whiteToMove, enPassant, castles[0], castles[1])
     }
 
     /** Can White (white = true) or Black never be mated, by the lock detector? */
@@ -151,10 +175,44 @@ object Lock {
     }
 
     /** The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-        when every square around it is held or attacked by a pawn. */
-    private fun levels(p: Pieces): List<Long> {
+        when every square around it is held or attacked by a pawn (or holds one of its own pieces,
+        wOwn or bOwn, where boxed pieces are on the board). */
+    private fun levels(p: Pieces, wOwn: Long = 0, bOwn: Long = 0): List<Long> {
         val held = p.whitePawns or p.blackPawns or sideways(north(p.whitePawns) or south(p.blackPawns))
-        return listOf(0L) + listOf(p.whiteKing, p.blackKing).filter { (steps(it) and held.inv()) == 0L }
+        return listOf(0L) + listOf(p.whiteKing to wOwn, p.blackKing to bOwn)
+            .filter { (king, own) -> (steps(king) and (held or own).inv()) == 0L }.map { it.first }
+    }
+
+    /** May this side's king hold a boxed piece's step square (when frozen)? Not with a castling
+        right left (a castling rook may stand beside its king, in Chess960, and castling moves it), and
+        not where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8,
+        c8, d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one. */
+    private fun kingWall(p: Pieces, white: Boolean): Boolean {
+        val king = if (white) p.whiteKing else p.blackKing
+        val rooks = if (white) p.whiteRooks else p.blackRooks
+        val g = if (white) 1L shl 6 else 1L shl 62
+        val c = if (white) 1L shl 2 else 1L shl 58
+        return !(if (white) p.whiteCastles else p.blackCastles) &&
+            (rooks and (((king and g) ushr 1) or ((king and c) shl 1))) == 0L
+    }
+
+    /** The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and
+        boxed pieces of their colour) or by another still bishop, and out of the enemy king's and
+        bishops' reach. Such a bishop never moves and is never taken (a pawn taking it fails the
+        bishop contact test). The largest such set. */
+    private fun stillBishops(b: Long, held: Long, reach: Long): Long {
+        var s = b and reach.inv()
+        while (true) {
+            var n = 0L
+            var m = s
+            while (m != 0L) {
+                val q = m and -m
+                if ((diagonal(q) and (held or s).inv()) == 0L) n = n or q
+                m = m xor q
+            }
+            if (n == s) return s
+            s = n
+        }
     }
 
     /**
@@ -204,11 +262,15 @@ object Lock {
             val nbFixed = bFixed and bWall and north(wWall or bFixed)
             val nwCone = fillNorth(wCone, bWall.inv())
             val nbCone = fillSouth(bCone, wWall.inv())
-            // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+            // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king;
+            // with boxed pieces on the board, never onto its own boxed pieces and still bishops either.
             val bHit = sideways(south(nbFixed))
             val wHit = sideways(north(nwFixed))
-            val nwKing = flood(wKing, (nwFixed or bHit or nearFrozenBlack).inv())
-            val nbKing = flood(bKing, (nbFixed or wHit or nearFrozenWhite).inv())
+            val boxedNow = (wx or bx) != 0L
+            val wStill = if (boxedNow) stillBishops(p.whiteBishops, nwFixed or (wx and boxed), bKing or bBish) else 0L
+            val bStill = if (boxedNow) stillBishops(p.blackBishops, nbFixed or (bx and boxed), wKing or wBish) else 0L
+            val nwKing = flood(wKing, (nwFixed or bHit or nearFrozenBlack or (wx and boxed) or wStill).inv())
+            val nbKing = flood(bKing, (nbFixed or wHit or nearFrozenWhite or (bx and boxed) or bStill).inv())
             var nwBish = wBish
             var nbBish = bBish
             val open = (nwFixed or nbFixed).inv()
@@ -245,7 +307,14 @@ object Lock {
         if (((north(sideways(wCone)) and (bCone or bx)) or (south(sideways(bCone)) and wx)) != 0L) return null  // a pawn can capture
         if ((frozenWhite && wKing != wk) || (frozenBlack && bKing != bk)) return null                     // the frozen king can move
         if (((diagonal(wBish) and bCone) or (diagonal(bBish) and wCone)) != 0L) return null                // a bishop meets a pawn's path
-        if (((o.ws and (wFixed or (wx and boxed)).inv()) or (o.bs and (bFixed or (bx and boxed)).inv())) != 0L) return null  // a piece may step
+        // A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop
+        // of its colour, or by its frozen king (where the king may be a wall).
+        val wStill = if ((wx or bx) != 0L) stillBishops(p.whiteBishops, wFixed or (wx and boxed), bKing or bBish) else 0L
+        val bStill = if ((wx or bx) != 0L) stillBishops(p.blackBishops, bFixed or (bx and boxed), wKing or wBish) else 0L
+        val wKw = if (frozenWhite && kingWall(p, true)) wk else 0L
+        val bKw = if (frozenBlack && kingWall(p, false)) bk else 0L
+        if (((o.ws and (wFixed or (wx and boxed) or wStill or wKw).inv()) or
+             (o.bs and (bFixed or (bx and boxed) or bStill or bKw).inv())) != 0L) return null  // a piece may step
         if ((wGuard or bGuard) != 0L) {
             // A king that takes a guarded pawn ends the game: for the mating net, the kings'
             // reaches again, now stopping at the enemy's guarded pawns.
@@ -414,13 +483,15 @@ object Lock {
         sideways(o) or north(o) or south(o) or diagonal(queens) or knight(knights)
 
     /** With knights, rooks or queens on the board: every one of them must be boxed in by its own
-        pawns and pieces; then the levels, with the boxed pieces as walls and no flight onto their
-        squares. */
+        pawns and pieces (bishops and the king among them: the level checks that they never move);
+        then the levels, with the boxed pieces as walls and no flight onto their squares. */
     private fun boxedLock(p: Pieces, white: Boolean, wx: Long, bx: Long): Boolean {
         val ws = boxSteps(p.whiteKnights, p.whiteRooks or p.whiteQueens, p.whiteQueens)
         val bs = boxSteps(p.blackKnights, p.blackRooks or p.blackQueens, p.blackQueens)
-        if ((ws and (p.whitePawns or wx).inv()) != 0L || (bs and (p.blackPawns or bx).inv()) != 0L || p.enPassant) return false
-        for (frozen in levels(p)) {
+        val wOwn = p.whitePawns or wx or p.whiteBishops or (if (kingWall(p, true)) p.whiteKing else 0L)
+        val bOwn = p.blackPawns or bx or p.blackBishops or (if (kingWall(p, false)) p.blackKing else 0L)
+        if ((ws and wOwn.inv()) != 0L || (bs and bOwn.inv()) != 0L || p.enPassant) return false
+        for (frozen in levels(p, wx or p.whiteBishops, bx or p.blackBishops)) {
             val s = level(p, frozen, Level(wx = wx, bx = bx, ws = ws, bs = bs))
             if (s != null && !netLeaks(p, s, white, wx or bx)) return true
         }

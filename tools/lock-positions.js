@@ -239,7 +239,9 @@ for (let i = 0; i < 4000; i++) add(normal(randomPosition()));
    pulled apart into an open pair, a knight, rook or queen boxed in by its own pawns, the king of the
    side to move stepped into a pawn's check, both kings moved anywhere (stalemate guards and stuck
    maters come from those); for each lock and change, one position the rule proves and one it does
-   not, when they come within a few tries. */
+   not, when they come within a few tries. Last (with a seed of its own, so the lines above stay as
+   they were), the walls of a boxed piece that are not pawns: WALL_CASES and a piece boxed in partly
+   by a still bishop of its colour or by its own king (wallPiece). */
 const SECOND_CASES = [
   '8/4k1p1/1p2p1Pp/1p1pPp2/1P1P1P1P/4K3/8/8 w - - 0 33', '8/4k1p1/1p2p1PP/1p1pPp2/1P1P1P2/4K3/8/8 b - - 0 33',
   '1n6/2Bp4/p1pPp1k1/PpP1Pp1p/1P3P1P/2K5/8/8 w - - 7 53', '1n6/2Bp4/p2Pp1k1/PpP1Pp1p/1P3P1P/2K5/8/8 w - - 7 53',
@@ -303,6 +305,7 @@ function secondKind(fen) {   // the certificate kinds of the second version's pr
   for (const side of [E.WHITE, E.BLACK]) {
     if (!E.lockCannotMate(pos, side) || I.coreLockTest(pos, side)) continue;
     const c = I.lockSets(pos, side);
+    if (c.boxed && ((c.still[0] | c.still[1]) || (c.frozen[0] | c.frozen[1]))) kind.wall = true;
     if (c.families) kind.families = true; else if (c.boxed) kind.boxed = true;
     else if (c.stuck) kind.stuck = true; else if (c.forced) kind.forced = true; else kind.level = true;
   }
@@ -318,6 +321,61 @@ for (const fen of seeds) for (const mutation of SECOND_MUTATIONS) {
     const n = normal(p);
     if (!n || second.has(n)) continue;
     if (HIT[mutation.name](secondKind(n))) { if (!hits++) add2(n); }
+    else if (!misses++) add2(n);
+  }
+}
+
+/* Walls of a boxed piece that are not pawns: a still bishop (every diagonal neighbour held for good)
+   or its own frozen king. WALL_CASES: the rook of a screenshot boxed in by its pawn and a bishop, a
+   king, rook and bishop holding one another, and what each is without the bishop or the king; a
+   king between two rooks, where a castle leaves king and rook (g8 and f8, c8 and d8: the king holds
+   nothing there) and where it does not (f8 and g8, d8 and c8). */
+const WALL_CASES = [
+  'rb2k3/p1p1p1p1/P1P1P1P1/8/8/1K6/8/8 w - - 0 1', 'r3k3/p1p1p1p1/P1P1P1P1/8/8/1K6/8/8 w - - 0 1',
+  'krb5/1p1p1p1p/1P1P1P1P/8/8/8/8/4K3 w - - 0 1', 'kr6/1p1p1p1p/1P1P1P1P/8/8/8/8/4K3 w - - 0 1',
+  'k1b5/1p1p1p1p/1P1P1P1P/8/8/8/8/4K3 w - - 0 1', 'krb5/1p1p1p1p/1P1P1P1P/8/8/8/8/2K5 b - - 0 1',
+  '4brkr/1p1p1p1p/1P1P1P1P/8/8/8/8/K7 w - - 0 1', 'brkrb3/1p1p1p1p/1P1P1P1P/8/8/2K5/8/8 b - - 0 1',
+  '3brkrb/p1p1p1p1/P1P1P1P1/8/8/2K5/8/8 w - - 0 1', '1brkrb2/p1p1p1p1/P1P1P1P1/8/8/2K5/8/8 b - - 0 1',
+];
+rng = 20261127;
+for (const fen of WALL_CASES) { add2(normal(parse(fen))); add2(normal(mirror(parse(fen)))); }
+// A castling right left keeps the king from being a wall: the same positions with one (written as
+// mateless.js writes it, a file letter here), and a right that cannot stand (no rook there), dropped.
+for (const fen of ['krb5/1p1p1p1p/1P1P1P1P/8/8/8/8/4K3 w k - 0 1', 'krb5/1p1p1p1p/1P1P1P1P/8/8/8/8/4K3 w K - 0 1',
+                   '4k3/8/8/8/1p1p1p1p/1P1P1P1P/8/KRB5 b B - 0 1', '4k3/8/8/8/1p1p1p1p/1P1P1P1P/8/KRB5 b q - 0 1']) {
+  const r = E.fromFen(fen, LOOSE); if (!r.error) add2(E.toFen(r.position));
+}
+// A knight, rook or queen whose step squares hold its own pawns, and one or two of them a bishop of its
+// colour (with its own pawns on the bishop's diagonal neighbours) or its own king.
+function wallPiece(p) {
+  const white = rand() < 0.5, kind = pick(['N', 'R', 'R', 'Q']), own = white ? 'P' : 'p', sq = pick(empties(p.a));
+  const st = stepSquares(kind, sq), bishop = white ? 'B' : 'b', king = white ? 'K' : 'k';
+  const walls = st.filter(t => p.a[t] === '.' || p.a[t] === own);
+  if (walls.length !== st.length || st.filter(t => p.a[t] === '.').length > 5) return false;
+  const pawnOk = t => t >= 8 && t <= 55;
+  const diagonal = t => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([df, dr]) => [(t & 7) + df, (t >> 3) + dr])
+    .filter(([f, r]) => f >= 0 && f < 8 && r >= 0 && r < 8).map(([f, r]) => 8 * r + f);
+  const free = st.filter(t => p.a[t] === '.');
+  if (!free.length) return false;
+  const special = pick(free);
+  if (rand() < 0.6) {                          // a bishop there, its diagonal neighbours its own pawns
+    for (const u of diagonal(special)) { if (u === sq) return false; if (p.a[u] === '.') { if (!pawnOk(u)) return false; p.a[u] = own; } else if (p.a[u] !== own) return false; }
+    p.a[special] = bishop;
+  } else {                                     // its own king there
+    p.a[p.a.indexOf(king)] = '.'; p.a[special] = king;
+  }
+  for (const t of st) if (p.a[t] === '.') { if (!pawnOk(t)) return false; p.a[t] = own; }
+  p.a[sq] = white ? kind : kind.toLowerCase(); return true;
+}
+for (const fen of seeds) {
+  let hits = 0, misses = 0;
+  for (let tries = 0; tries < 100 && (!hits || !misses); tries++) {
+    const p = rand() < 0.5 ? parse(fen) : mirror(parse(fen));
+    if (rand() < 0.5) p.side = p.side === 'w' ? 'b' : 'w';
+    if (!wallPiece(p)) continue;
+    const n = normal(p);
+    if (!n || second.has(n)) continue;
+    if (secondKind(n).wall) { if (!hits++) add2(n); }
     else if (!misses++) add2(n);
   }
 }

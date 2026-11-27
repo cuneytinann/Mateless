@@ -4,6 +4,53 @@ Measured on a shared cloud machine (2 vCPU Xeon 2.8 GHz, Node 22, rustc 1.97, on
 separate runs move by ±5–10%, so ranges are given where runs differed. How the engine works is in
 [DESIGN.md](DESIGN.md).
 
+<a id="the-walls-of-a-boxed-piece"></a>
+
+## The walls of a boxed piece: a still bishop, a frozen king (27 November 2026)
+
+A boxed knight, rook or queen (DESIGN.md, section 12) may now have among its walls a still bishop
+of its colour (every diagonal neighbour held for good, out of the enemy king's and bishops' reach)
+and its own king, when the level freezes it, its side has no castling right left and it does not
+stand where a castle leaves it beside its rook. The rook of `rb2k3/p1p1p1p1/P1P1P1P1/8/8/1K6/8/8`,
+shut in by its pawn and its bishop, is a lock now. In JavaScript, Rust, WebAssembly and the 20
+languages of `lock/second/`.
+
+| | answers the lock detector gives now and not on 26 November |
+|---|---|
+| the Lichess rows, `data/` (locked positions, the second version's rows, August–September) | 0 |
+| chasolver's composed positions (`positions.txt`, both sides) | 72; 66 of them proven by nothing else before |
+| chasolver's Lichess positions (`lichess.txt`) | 0 |
+| the test files of `lock/second/`, 183,461 cross-check positions, 590,929 written to try the castling field, chasolver's positions | 1,510 |
+
+| check | on | result |
+|---|---|---|
+| every position reachable, walked by an independent move generator (shakmaty, Chess960 castling) | the 1,510 new answers | 1,401 walked to the end, no mate; 1 too big (3 million positions); 108 composed positions it refuses as illegal |
+| the same, first on a broader king rule (the king also a wall with a castling right in a standard layout), which proves all this one does | two generators aimed at the rule (a piece boxed in partly by a bishop, partly by its king): 14,940 and 4,945 proofs, 573 and 128 million positions | no mate |
+| the invariant (`lock_invariant.js`; boxed pieces and still bishops never move nor fall) | the 1,510 certificates | 0 violations; 1,453 enumerated completely (5.8 million positions) |
+| chasolver's full analysis (`rust/examples/oracle.rs`) | the 1,510; 20,000 fuzzed certificates (`fuzz_lock_gen.js 27`), 1,008 of them new | every one unwinnable |
+| chasolver's labels (`classify.js 6 100 1`) | 68,950 positions, both sides | FALSE DRAWS 0; static proofs 3,628 → 3,674, unproven 906 → 864 |
+| broken versions: every bishop still; every king a wall | the generators above | mates found: the walk sees such holes |
+| the trigger: quiet moves of kings, bishops, knights, rooks and queens, castles among them | 11.6 million moves from 844,533 positions | no lock after one that the position before lacked, but the 90 of 26 November's engine (kings and pawns only, where the stuck mater and the forced step read the side to move) |
+| JS = Rust (`rust_compare.js labels`, `fen`), node counts included | `lock/second/positions.tsv`, the cross-check and castling positions, chasolver's two files | byte for byte |
+| JS = WebAssembly (`lockCannotMate`); `wasm_check.js`, `trigger_check.js`, `twosided_check.js`, `game_check.js`, `game_flags_check.js`, `build_check.js`, `second_version_check.js`, `chess960_boxed_check.js`, `page_check.js` | 1.68 million verdicts; their usual inputs | 0 differences, 0 problems |
+| the 20 languages | 65,956 + 183,461 + 206,149 positions | 0 wrong each |
+
+The castle is why the king next to its rook on g1 and f1 (c1 and d1) holds nothing: a castle
+resets no clock, so the static tests are not asked after one, and in Chess960 it can leave a frozen
+king between its rooks (`4bkrr/1p1p1p1p/1P1P1P1P/8/8/8/8/K7 b g`: after the castle, `4brkr`, dead).
+That costs 148 of the 1.18 million answers of the castling positions above (and the 8 positions of
+`lock/second/positions.tsv` written for it), and none elsewhere.
+
+Speed, alternated in one process: the lock test on chasolver's Lichess positions with a knight,
+rook or queen is the same within the noise (JS ~54–57 ns, Rust ~16 ns); on a corpus of locks with
+such pieces it costs JS 77 → 89 ns and Rust ~24 → ~25 ns, the still bishops computed on every pass.
+
+The simple versions read the castling field themselves: a right counts when its king stands on its
+first rank and a rook of its colour on that rank on that side (a file letter: on that file).
+Mateless also drops a right whose files disagree with the other side's; the simple versions keep
+it, so on such a FEN they may prove less, never more (384,779 such castling fields: no answer
+differs).
+
 ## A game's own rules, and the engine as a package (26 November 2026, night)
 
 A `Game` now takes a platform's own rules (DESIGN.md, section 9): where the game ends by itself

@@ -9,7 +9,8 @@ const LOOSE = { strict: false };   // chasolver's positions include composed one
      I3  each king stands in its reach; a frozen king on its root square
      I4  every bishop stands in its side's bishop reach
      I5  no knight, rook or queen appears or moves (boxed pieces stand still); the boxed ones
-         (lockSets: boxed, the pieces no enemy king or bishop reaches) are never taken
+         (lockSets: boxed, the pieces no enemy king or bishop reaches) are never taken; the still
+         bishops (lockSets: still) never move nor fall
      I6  no piece count has grown (no promotion)
      I7  the flagged king is not checkmated
    I7 is what the arbiter needs; I1–I6 are what the reasoning says. A hole in the reasoning shows
@@ -75,6 +76,8 @@ function violation1(pos, S, root, atRoot) {
     const xH = hi[WHITE | KNIGHT] | hi[WHITE | ROOK] | hi[WHITE | QUEEN] | hi[BLACK | KNIGHT] | hi[BLACK | ROOK] | hi[BLACK | QUEEN];
     if (!sub(S.boxed[0], S.boxed[1], xL, xH)) return 'I5 a boxed piece fell';
   }
+  // the still bishops (lockSets: still, the bishops that hold a boxed piece's step square) stand where they stood
+  if (S.still && !sub(S.still[0], S.still[1], lo[WHITE | BISHOP] | lo[BLACK | BISHOP], hi[WHITE | BISHOP] | hi[BLACK | BISHOP])) return 'I5 a still bishop moved or fell';
   const c = counts(pos); for (let i = 0; i < c.length; i++) if (c[i] > root.counts[i]) return 'I6 a piece count grew';
   return null;
 }

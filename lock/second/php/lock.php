@@ -16,7 +16,10 @@
  *     the reachable positions split into families by what the pair's pawns have done (neither
  *     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
  *   - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
- *     that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+ *     that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+ *     is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and out
+ *     of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+ *     castling right left and not standing where a castle leaves it beside its rook);
  *   - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
  *     out its second flight rule where they may hold both flights;
  *   - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -112,6 +115,8 @@ final class Pieces
     public int $blackQueens = 0;
     public bool $whiteToMove = true;
     public bool $enPassant = false;  // the side to move can capture en passant
+    public bool $whiteCastles = false;  // White has a castling right (its king and that rook in place)
+    public bool $blackCastles = false;
 }
 
 /** What one level leaves for the mating net (and for the families after it). */
@@ -146,8 +151,34 @@ function fromFen(string $fen): Pieces
         $p->enPassant = $p->whiteToMove ? (sideways(south($target)) & $p->whitePawns) !== 0
                                         : (sideways(north($target)) & $p->blackPawns) !== 0;
     }
+    $rights = $fields[2] ?? '-';
+    foreach ($rights === '-' ? [] : str_split($rights) as $c) {
+        $white = ctype_upper($c);
+        $back = $white ? RANK_1 : RANK_8;
+        $king = ($white ? $p->whiteKing : $p->blackKing) & $back;
+        $rooks = ($white ? $p->whiteRooks : $p->blackRooks) & $back;
+        if ($king === 0) continue;   // a right without its king in place does not count
+        $kf = squareOf($king) % 8;
+        $files = array_map(fn($r) => squareOf($r) % 8, squares($rooks));
+        $up = strtoupper($c);
+        if ($up === 'K') $ok = array_filter($files, fn($f) => $f > $kf) !== [];
+        elseif ($up === 'Q') $ok = array_filter($files, fn($f) => $f < $kf) !== [];
+        else $ok = ord($up) - ord('A') !== $kf && in_array(ord($up) - ord('A'), $files, true);
+        if ($ok) { if ($white) $p->whiteCastles = true; else $p->blackCastles = true; }
+    }
     return $p;
 }
+
+/** The one-square sets of s. */
+function squares(int $s): array
+{
+    $out = [];
+    while ($s !== 0) { $b = lowest($s); $out[] = $b; $s ^= $b; }
+    return $out;
+}
+
+/** The square of a one-square set. */
+function squareOf(int $b): int { return strlen(decbin($b)) - 1; }
 
 /** Can White ($white = true) or Black never be mated, by the lock detector? */
 function cannotBeMated(Pieces $p, bool $white): bool
@@ -172,13 +203,40 @@ function cannotBeMated(Pieces $p, bool $white): bool
 }
 
 /** The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-    when every square around it is held or attacked by a pawn. */
-function levels(Pieces $p): array
+    when every square around it is held or attacked by a pawn (or holds one of its own pieces, wOwn
+    or bOwn, where boxed pieces are on the board). */
+function levels(Pieces $p, int $wOwn = 0, int $bOwn = 0): array
 {
     $held = $p->whitePawns | $p->blackPawns | sideways(north($p->whitePawns) | south($p->blackPawns));
     $out = [0];
-    foreach ([$p->whiteKing, $p->blackKing] as $king) if ((steps($king) & ~$held) === 0) $out[] = $king;
+    foreach ([[$p->whiteKing, $wOwn], [$p->blackKing, $bOwn]] as [$king, $own]) if ((steps($king) & ~($held | $own)) === 0) $out[] = $king;
     return $out;
+}
+
+/** May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+    left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+    where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+    d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one. */
+function kingWall(Pieces $p, bool $white): bool
+{
+    [$king, $rooks, $castles, $g, $c] = $white ? [$p->whiteKing, $p->whiteRooks, $p->whiteCastles, 1 << 6, 1 << 2]
+                                                : [$p->blackKing, $p->blackRooks, $p->blackCastles, 1 << 62, 1 << 58];
+    return !$castles && ($rooks & ((($king & $g) >> 1) | (($king & $c) << 1))) === 0;
+}
+
+/** The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+    pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+    reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+    test). The largest such set. */
+function stillBishops(int $b, int $held, int $reach): int
+{
+    $s = $b & ~$reach;
+    for (;;) {
+        $n = 0;
+        foreach (squares($s) as $q) if ((diagonal($q) & ~($held | $s)) === 0) $n |= $q;
+        if ($n === $s) return $s;
+        $s = $n;
+    }
 }
 
 /**
@@ -220,8 +278,11 @@ function level(Pieces $p, int $frozen, ?int $wp = null, ?int $bp = null, int $v 
         // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
         $bHit = sideways(south($nbFixed));
         $wHit = sideways(north($nwFixed));
-        $nwKing = flood($wKing, ~($nwFixed | $bHit | $nearFrozenBlack));
-        $nbKing = flood($bKing, ~($nbFixed | $wHit | $nearFrozenWhite));
+        // With boxed pieces on the board, never onto its own boxed pieces and still bishops either.
+        $wStill = ($wx | $bx) !== 0 ? stillBishops($p->whiteBishops, $nwFixed | ($wx & $boxed), $bKing | $bBish) : 0;
+        $bStill = ($wx | $bx) !== 0 ? stillBishops($p->blackBishops, $nbFixed | ($bx & $boxed), $wKing | $wBish) : 0;
+        $nwKing = flood($wKing, ~($nwFixed | $bHit | $nearFrozenBlack | ($wx & $boxed) | $wStill));
+        $nbKing = flood($bKing, ~($nbFixed | $wHit | $nearFrozenWhite | ($bx & $boxed) | $bStill));
         [$nwBish, $nbBish, $open] = [$wBish, $bBish, ~($nwFixed | $nbFixed)];
         for (;;) {
             $a = $nwBish | (diagonal($nwBish) & $open);
@@ -253,7 +314,13 @@ function level(Pieces $p, int $frozen, ?int $wp = null, ?int $bp = null, int $v 
     if (((north(sideways($wCone)) & ($bCone | $bx)) | (south(sideways($bCone)) & $wx)) !== 0) return null;  // a pawn can capture
     if (($frozenWhite && $wKing !== $wk) || ($frozenBlack && $bKing !== $bk)) return null;    // the frozen king can move
     if (((diagonal($wBish) & $bCone) | (diagonal($bBish) & $wCone)) !== 0) return null;       // a bishop meets a pawn's path
-    if ((($ws & ~($wFixed | ($wx & $boxed))) | ($bs & ~($bFixed | ($bx & $boxed)))) !== 0) return null;  // a piece may step
+    // A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+    // its colour, or by its frozen king (where the king may be a wall).
+    $wStill = ($wx | $bx) !== 0 ? stillBishops($p->whiteBishops, $wFixed | ($wx & $boxed), $bKing | $bBish) : 0;
+    $bStill = ($wx | $bx) !== 0 ? stillBishops($p->blackBishops, $bFixed | ($bx & $boxed), $wKing | $wBish) : 0;
+    $wKw = $frozenWhite && kingWall($p, true) ? $wk : 0;
+    $bKw = $frozenBlack && kingWall($p, false) ? $bk : 0;
+    if ((($ws & ~($wFixed | ($wx & $boxed) | $wStill | $wKw)) | ($bs & ~($bFixed | ($bx & $boxed) | $bStill | $bKw))) !== 0) return null;  // a piece may step
     if (($wGuard | $bGuard) !== 0) {
         // A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches
         // again, now stopping at the enemy's guarded pawns.
@@ -392,13 +459,16 @@ function families(Pieces $p, int $gaps, int $frozen, bool $white): string
 }
 
 /** With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
-    and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares. */
+    and pieces (bishops and the king among them: the level checks that they never move); then the
+    levels, with the boxed pieces as walls and no flight onto their squares. */
 function boxedLock(Pieces $p, bool $white, int $wx, int $bx): bool
 {
-    $ws = boxSteps($p->whiteKnights, $p->whiteRooks | $p->whiteQueens, $p->whiteQueens, $p->whitePawns | $wx);
-    $bs = boxSteps($p->blackKnights, $p->blackRooks | $p->blackQueens, $p->blackQueens, $p->blackPawns | $bx);
+    $wOwn = $p->whitePawns | $wx | $p->whiteBishops | (kingWall($p, true) ? $p->whiteKing : 0);
+    $bOwn = $p->blackPawns | $bx | $p->blackBishops | (kingWall($p, false) ? $p->blackKing : 0);
+    $ws = boxSteps($p->whiteKnights, $p->whiteRooks | $p->whiteQueens, $p->whiteQueens, $wOwn);
+    $bs = boxSteps($p->blackKnights, $p->blackRooks | $p->blackQueens, $p->blackQueens, $bOwn);
     if ($ws === null || $bs === null || $p->enPassant) return false;
-    foreach (levels($p) as $frozen) {
+    foreach (levels($p, $wx | $p->whiteBishops, $bx | $p->blackBishops) as $frozen) {
         $s = level($p, $frozen, wx: $wx, bx: $bx, ws: $ws, bs: $bs);
         if ($s !== null && !netLeaks($p, $s, $white, $wx | $bx)) return true;
     }

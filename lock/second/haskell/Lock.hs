@@ -16,7 +16,10 @@ keeps all of it and adds, each only where its situation is on the board:
     the reachable positions split into families by what the pair's pawns have done (neither
     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
   * boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-    that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+    that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+    is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and out
+    of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+    castling right left and not standing where a castle leaves it beside its rook);
   * twin bishops: two bishops of one side on one colour no longer fail it; the mating net
     leaves out its second flight rule where they may hold both flights;
   * the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -33,8 +36,8 @@ Squares: a1 = 0, b1 = 1, ..., h8 = 63. A set of squares (a bitboard) is a 'Word6
 -}
 module Lock (Pieces(..), fromFen, cannotBeMated) where
 
-import Data.Bits (bit, complement, countTrailingZeros, popCount, shiftL, shiftR, (.&.), (.|.))
-import Data.Char (ord)
+import Data.Bits (bit, complement, countTrailingZeros, popCount, shiftL, shiftR, testBit, (.&.), (.|.))
+import Data.Char (isUpper, ord, toUpper)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Word (Word64)
 
@@ -111,16 +114,18 @@ data Pieces = Pieces
   , whiteQueens, blackQueens :: !Word64
   , whiteToMove :: !Bool
   , enPassant :: !Bool   -- ^ the side to move can capture en passant
+  , whiteCastles :: !Bool   -- ^ White has a castling right (its king and that rook in place)
+  , blackCastles :: !Bool
   }
 
 -- | The pieces of a FEN. The en passant square counts only if a pawn can capture onto it.
 fromFen :: String -> Pieces
-fromFen fen = p { enPassant = ep }
+fromFen fen = p { enPassant = ep, whiteCastles = castles True, blackCastles = castles False }
   where
     (board, after) = break (== ' ') fen
     fields = words after
     toMove = listToMaybe fields /= Just "b"
-    (_, _, p) = foldl place (7, 0, Pieces 0 0 0 0 0 0 0 0 0 0 0 0 toMove False) board
+    (_, _, p) = foldl place (7, 0, Pieces 0 0 0 0 0 0 0 0 0 0 0 0 toMove False False False) board
     place (rank, file, q) c
       | c == '/' = (rank - 1, 0, q)
       | c >= '1' && c <= '8' = (rank, file + ord c - ord '0', q)
@@ -145,6 +150,18 @@ fromFen fen = p { enPassant = ep }
         in if toMove then (sideways (south target) .&. whitePawns p) /= 0
                      else (sideways (north target) .&. blackPawns p) /= 0
       _ -> False
+    -- A castling right counts only with its king and a rook of its side on the back rank.
+    castles white = or [right c | c <- concat (take 1 (drop 1 fields)), c /= '-', isUpper c == white]
+      where
+        home = if white then rank1 else rank8
+        king = (if white then whiteKing p else blackKing p) .&. home
+        rooks = (if white then whiteRooks p else blackRooks p) .&. home
+        kf = countTrailingZeros king `mod` 8
+        files = [sq `mod` 8 | sq <- [0 .. 63], testBit rooks sq]
+        right c = king /= 0 && case toUpper c of
+          'K' -> any (> kf) files
+          'Q' -> any (< kf) files
+          u -> let f = ord u - ord 'A' in f /= kf && f `elem` files
 
 -- | What one level grows to its fixed point, and leaves for the mating net (and for the families
 -- after it).
@@ -184,7 +201,7 @@ cannotBeMated p white
   | Just q <- forcedStep p = cannotBeMated q white
   | (wx .|. bx) /= 0 = boxedLock p white wx bx
   | enPassant p = False
-  | otherwise = go (levels p)
+  | otherwise = go (levels p 0 0)
   where
     wx = whiteKnights p .|. whiteRooks p .|. whiteQueens p
     bx = blackKnights p .|. blackRooks p .|. blackQueens p
@@ -198,10 +215,33 @@ cannotBeMated p white
       where f = families p gaps frozen white
 
 -- | The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
--- when every square around it is held or attacked by a pawn.
-levels :: Pieces -> [Set]
-levels p = 0 : [king | king <- [whiteKing p, blackKing p], (steps king .&. no held) == 0]
+-- when every square around it is held or attacked by a pawn (or holds one of its own pieces, wOwn
+-- or bOwn, where boxed pieces are on the board).
+levels :: Pieces -> Set -> Set -> [Set]
+levels p wOwn bOwn =
+  0 : [king | (king, own) <- [(whiteKing p, wOwn), (blackKing p, bOwn)], (steps king .&. no (held .|. own)) == 0]
   where held = whitePawns p .|. blackPawns p .|. sideways (north (whitePawns p) .|. south (blackPawns p))
+
+-- | May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+-- left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+-- where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+-- d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one.
+kingWall :: Pieces -> Bool -> Bool
+kingWall p white = not castles && (rooks .&. (((king .&. g) `shiftR` 1) .|. ((king .&. c) `shiftL` 1))) == 0
+  where
+    (king, rooks, castles, g, c)
+      | white = (whiteKing p, whiteRooks p, whiteCastles p, bit 6, bit 2)
+      | otherwise = (blackKing p, blackRooks p, blackCastles p, bit 62, bit 58)
+
+-- | The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+-- pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+-- reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+-- test). The largest such set.
+stillBishops :: Set -> Set -> Set -> Set
+stillBishops b held reach = go (b .&. no reach)
+  where
+    go s = let n = foldr (.|.) 0 [q | q <- squares s, (diagonal q .&. no (held .|. s)) == 0]
+           in if n == s then s else go n
 
 -- | One level: the fixed point of the walls, the pawns that can never move, the kings' reaches, the
 -- squares where each side may take a pawn, the pawns' cones and the bishops' reaches. The sets the
@@ -213,8 +253,7 @@ level p frozen o
       Nothing                                                                      -- a pawn can capture
   | (frozenWhite && wKing s /= wk) || (frozenBlack && bKing s /= bk) = Nothing     -- the frozen king can move
   | ((diagonal (wBish s) .&. bCone s) .|. (diagonal (bBish s) .&. wCone s)) /= 0 = Nothing   -- a bishop meets a pawn's path
-  | ((stepsW o .&. no (wFixed s .|. (wx .&. boxedOf s))) .|. (stepsB o .&. no (bFixed s .|. (bx .&. boxedOf s)))) /= 0 =
-      Nothing                                                                      -- a piece may step
+  | ((stepsW o .&. no stepHeldW) .|. (stepsB o .&. no stepHeldB)) /= 0 = Nothing   -- a piece may step
   -- A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches again,
   -- now stopping at the enemy's guarded pawns.
   | (wGuard s .|. bGuard s) /= 0 =
@@ -233,6 +272,15 @@ level p frozen o
     nearFrozenBlack = if frozenBlack then zone bk else 0
     nearFrozenWhite = if frozenWhite then zone wk else 0
     (wSeed, bSeed) = if guarded o && frozen == 0 then checkSeed p else (wk, bk)
+    -- A piece may step where a step square is not held by a fixed pawn, a boxed piece or a still
+    -- bishop of its colour, or by its frozen king (where the king may be a wall).
+    stepHeldW = wFixed s .|. (wx .&. boxedOf s) .|. stillOf s True .|. (if frozenWhite && kingWall p True then wk else 0)
+    stepHeldB = bFixed s .|. (bx .&. boxedOf s) .|. stillOf s False .|. (if frozenBlack && kingWall p False then bk else 0)
+    -- The still bishops of one side, where boxed pieces are on the board, against the sets t.
+    stillOf t white
+      | (wx .|. bx) == 0 = 0
+      | white = stillBishops (whiteBishops p) (wFixed t .|. (wx .&. boxedOf t)) (bKing t .|. bBish t)
+      | otherwise = stillBishops (blackBishops p) (bFixed t .|. (bx .&. boxedOf t)) (wKing t .|. wBish t)
     nothingTaken = if guarded o then complement 0 else 0
     first = case start o of
       Just a -> a { wCone = wp, bCone = bp, wFixed = wp, bFixed = bp, wGuard = nothingTaken, bGuard = nothingTaken }
@@ -252,11 +300,13 @@ level p frozen o
         nbFixed = bFixed t .&. bWall .&. north (wWall .|. bFixed t)
         nwCone = fillNorth (wCone t) (no bWall)
         nbCone = fillSouth (bCone t) (no wWall)
-        -- The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+        -- The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king; with
+        -- boxed pieces on the board, never onto its own boxed pieces and still bishops either.
         bHit = sideways (south nbFixed)
         wHit = sideways (north nwFixed)
-        nwKing = flood (wKing t) (no (nwFixed .|. bHit .|. nearFrozenBlack))
-        nbKing = flood (bKing t) (no (nbFixed .|. wHit .|. nearFrozenWhite))
+        held = t { wFixed = nwFixed, bFixed = nbFixed }   -- this pass's fixed pawns, the last pass's reaches
+        nwKing = flood (wKing t) (no (nwFixed .|. bHit .|. nearFrozenBlack .|. (wx .&. boxed) .|. stillOf held True))
+        nbKing = flood (bKing t) (no (nbFixed .|. wHit .|. nearFrozenWhite .|. (bx .&. boxed) .|. stillOf held False))
         nwBish = glide (wBish t) (no (nwFixed .|. nbFixed))
         nbBish = glide (bBish t) (no (nwFixed .|. nbFixed))
         -- A side may take a pawn where its king goes, and on any square a pawn may walk into.
@@ -381,14 +431,17 @@ families p gaps frozen white
                             , wBish = wBish a .|. (wBish r .&. no gap), bBish = bBish a .|. (bBish r .&. no gap) }
 
 -- | With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
--- and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares.
+-- and pieces (bishops and the king among them: the level checks that they never move); then the
+-- levels, with the boxed pieces as walls and no flight onto their squares.
 boxedLock :: Pieces -> Bool -> Set -> Set -> Bool
 boxedLock p white wx bx = case (ws, bs) of
-  (Just w, Just b) | not (enPassant p) -> any (holds w b) (levels p)
+  (Just w, Just b) | not (enPassant p) -> any (holds w b) (levels p (wx .|. whiteBishops p) (bx .|. blackBishops p))
   _ -> False
   where
-    ws = boxSteps (whiteKnights p) (whiteRooks p .|. whiteQueens p) (whiteQueens p) (whitePawns p .|. wx)
-    bs = boxSteps (blackKnights p) (blackRooks p .|. blackQueens p) (blackQueens p) (blackPawns p .|. bx)
+    wOwn = whitePawns p .|. wx .|. whiteBishops p .|. (if kingWall p True then whiteKing p else 0)
+    bOwn = blackPawns p .|. bx .|. blackBishops p .|. (if kingWall p False then blackKing p else 0)
+    ws = boxSteps (whiteKnights p) (whiteRooks p .|. whiteQueens p) (whiteQueens p) wOwn
+    bs = boxSteps (blackKnights p) (blackRooks p .|. blackQueens p) (blackQueens p) bOwn
     holds w b frozen = case level p frozen plain { boxedW = wx, boxedB = bx, stepsW = w, stepsB = b } of
       Just s -> not (netLeaks p s white (wx .|. bx))
       Nothing -> False

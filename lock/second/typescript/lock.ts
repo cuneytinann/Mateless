@@ -14,7 +14,10 @@
        the reachable positions split into families by what the pair's pawns have done (neither
        moved, the white one stepped into the gap, the black one did), up to 3 pairs;
      - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-       that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+       that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+       is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and
+       out of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+       castling right left and not standing where a castle leaves it beside its rook);
      - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
        out its second flight rule where they may hold both flights;
      - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -92,6 +95,8 @@ export interface Pieces {
   blackQueens: bigint;
   whiteToMove: boolean;
   enPassant: boolean;  // the side to move can capture en passant
+  whiteCastles: boolean;  // White has a castling right (its king and that rook in place)
+  blackCastles: boolean;
 }
 
 /** What one level leaves for the mating net (and for the families after it). */
@@ -109,14 +114,14 @@ interface LevelIn {
   wx?: bigint; bx?: bigint; ws?: bigint; bs?: bigint; guard?: boolean;
 }
 
-type PieceSet = Exclude<keyof Pieces, 'whiteToMove' | 'enPassant'>;
+type PieceSet = Exclude<keyof Pieces, 'whiteToMove' | 'enPassant' | 'whiteCastles' | 'blackCastles'>;
 
 /** The pieces of a FEN. The en passant square counts only if a pawn can capture onto it. */
 export function fromFen(fen: string): Pieces {
   const fields = fen.split(' ');
   const p: Pieces = { whitePawns: 0n, blackPawns: 0n, whiteKing: 0n, blackKing: 0n, whiteBishops: 0n, blackBishops: 0n,
               whiteKnights: 0n, blackKnights: 0n, whiteRooks: 0n, blackRooks: 0n, whiteQueens: 0n, blackQueens: 0n,
-              whiteToMove: fields[1] !== 'b', enPassant: false };
+              whiteToMove: fields[1] !== 'b', enPassant: false, whiteCastles: false, blackCastles: false };
   const names: Record<string, PieceSet> = { P: 'whitePawns', p: 'blackPawns', K: 'whiteKing', k: 'blackKing', B: 'whiteBishops', b: 'blackBishops',
                   N: 'whiteKnights', n: 'blackKnights', R: 'whiteRooks', r: 'blackRooks', Q: 'whiteQueens', q: 'blackQueens' };
   let rank = 7, file = 0;
@@ -131,8 +136,23 @@ export function fromFen(fen: string): Pieces {
     p.enPassant = p.whiteToMove ? (sideways(south(target)) & p.whitePawns) !== 0n
                                 : (sideways(north(target)) & p.blackPawns) !== 0n;
   }
+  const rights = fields[2] ?? '-';
+  for (const c of rights === '-' ? '' : rights) {
+    const white = c === c.toUpperCase(), back = white ? RANK_1 : RANK_8;
+    const king = (white ? p.whiteKing : p.blackKing) & back, rooks = (white ? p.whiteRooks : p.blackRooks) & back;
+    if (!king) continue;                         // a right without its king in place does not count
+    const kf = squareOf(king) % 8, files = [...squares(rooks)].map(r => squareOf(r) % 8), up = c.toUpperCase();
+    const ok = up === 'K' ? files.some(f => f > kf) : up === 'Q' ? files.some(f => f < kf)
+             : up.charCodeAt(0) - 65 !== kf && files.includes(up.charCodeAt(0) - 65);
+    if (ok) { if (white) p.whiteCastles = true; else p.blackCastles = true; }
+  }
   return p;
 }
+
+/** The one-square sets of s. */
+function* squares(s: bigint): Generator<bigint> { while (s) { const b = s & -s; yield b; s ^= b; } }
+/** The square of a one-square set. */
+function squareOf(b: bigint): number { return b.toString(2).length - 1; }
 
 /** Can White (white = true) or Black never be mated, by the lock detector? */
 export function cannotBeMated(p: Pieces, white: boolean): boolean {
@@ -155,12 +175,37 @@ export function cannotBeMated(p: Pieces, white: boolean): boolean {
 }
 
 /** The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-    when every square around it is held or attacked by a pawn. */
-function levels(p: Pieces): bigint[] {
+    when every square around it is held or attacked by a pawn (or holds one of its own pieces, wOwn
+    or bOwn, where boxed pieces are on the board). */
+function levels(p: Pieces, wOwn = 0n, bOwn = 0n): bigint[] {
   const held = p.whitePawns | p.blackPawns | sideways(north(p.whitePawns) | south(p.blackPawns));
   const out = [0n];
-  for (const king of [p.whiteKing, p.blackKing]) if ((steps(king) & no(held)) === 0n) out.push(king);
+  for (const [king, own] of [[p.whiteKing, wOwn], [p.blackKing, bOwn]]) if ((steps(king) & no(held | own)) === 0n) out.push(king);
   return out;
+}
+
+/** May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+    left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+    where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+    d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one. */
+function kingWall(p: Pieces, white: boolean): boolean {
+  const [king, rooks, castles, g, c] = white ? [p.whiteKing, p.whiteRooks, p.whiteCastles, 1n << 6n, 1n << 2n]
+                                              : [p.blackKing, p.blackRooks, p.blackCastles, 1n << 62n, 1n << 58n];
+  return !castles && (rooks & (((king & g) >> 1n) | ((king & c) << 1n))) === 0n;
+}
+
+/** The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+    pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+    reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+    test). The largest such set. */
+function stillBishops(b: bigint, held: bigint, reach: bigint): bigint {
+  let s = b & no(reach);
+  for (;;) {
+    let n = 0n;
+    for (const q of squares(s)) if ((diagonal(q) & no(held | s)) === 0n) n |= q;
+    if (n === s) return s;
+    s = n;
+  }
 }
 
 /**
@@ -194,10 +239,13 @@ function level(p: Pieces, frozen: bigint, o: LevelIn): Sets | null {
     const nwFixed = wFixed & wWall & south(bWall | wFixed);
     const nbFixed = bFixed & bWall & north(wWall | bFixed);
     const nwCone = fillNorth(wCone, no(bWall)), nbCone = fillSouth(bCone, no(wWall));
-    // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+    // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king; with
+    // boxed pieces on the board, never onto its own boxed pieces and still bishops either.
     const bHit = sideways(south(nbFixed)), wHit = sideways(north(nwFixed));
-    const nwKing = flood(wKing, no(nwFixed | bHit | nearFrozenBlack));
-    const nbKing = flood(bKing, no(nbFixed | wHit | nearFrozenWhite));
+    const wStill = wx | bx ? stillBishops(p.whiteBishops, nwFixed | (wx & boxed), bKing | bBish) : 0n;
+    const bStill = wx | bx ? stillBishops(p.blackBishops, nbFixed | (bx & boxed), wKing | wBish) : 0n;
+    const nwKing = flood(wKing, no(nwFixed | bHit | nearFrozenBlack | (wx & boxed) | wStill));
+    const nbKing = flood(bKing, no(nbFixed | wHit | nearFrozenWhite | (bx & boxed) | bStill));
     let nwBish = wBish, nbBish = bBish;
     const open = no(nwFixed | nbFixed);
     for (;;) {
@@ -228,7 +276,12 @@ function level(p: Pieces, frozen: bigint, o: LevelIn): Sets | null {
   if ((north(sideways(wCone)) & (bCone | bx)) | (south(sideways(bCone)) & wx)) return null;  // a pawn can capture
   if ((frozenWhite && wKing !== wk) || (frozenBlack && bKing !== bk)) return null;   // the frozen king can move
   if ((diagonal(wBish) & bCone) | (diagonal(bBish) & wCone)) return null;        // a bishop meets a pawn's path
-  if (((o.ws ?? 0n) & no(wFixed | (wx & boxed))) | ((o.bs ?? 0n) & no(bFixed | (bx & boxed))))
+  // A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+  // its colour, or by its frozen king (where the king may be a wall).
+  const wStill = wx | bx ? stillBishops(p.whiteBishops, wFixed | (wx & boxed), bKing | bBish) : 0n;
+  const bStill = wx | bx ? stillBishops(p.blackBishops, bFixed | (bx & boxed), wKing | wBish) : 0n;
+  const wKw = frozenWhite && kingWall(p, true) ? wk : 0n, bKw = frozenBlack && kingWall(p, false) ? bk : 0n;
+  if (((o.ws ?? 0n) & no(wFixed | (wx & boxed) | wStill | wKw)) | ((o.bs ?? 0n) & no(bFixed | (bx & boxed) | bStill | bKw)))
     return null;                                                                 // a piece may step
   if (wGuard | bGuard) {
     // A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches again,
@@ -355,12 +408,15 @@ function families(p: Pieces, gaps: bigint, frozen: bigint, white: boolean): 'loc
 }
 
 /** With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
-    and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares. */
+    and pieces (bishops and the king among them: the level checks that they never move); then the
+    levels, with the boxed pieces as walls and no flight onto their squares. */
 function boxedLock(p: Pieces, white: boolean, wx: bigint, bx: bigint): boolean {
-  const ws = boxSteps(p.whiteKnights, p.whiteRooks | p.whiteQueens, p.whiteQueens, p.whitePawns | wx);
-  const bs = boxSteps(p.blackKnights, p.blackRooks | p.blackQueens, p.blackQueens, p.blackPawns | bx);
+  const wOwn = p.whitePawns | wx | p.whiteBishops | (kingWall(p, true) ? p.whiteKing : 0n);
+  const bOwn = p.blackPawns | bx | p.blackBishops | (kingWall(p, false) ? p.blackKing : 0n);
+  const ws = boxSteps(p.whiteKnights, p.whiteRooks | p.whiteQueens, p.whiteQueens, wOwn);
+  const bs = boxSteps(p.blackKnights, p.blackRooks | p.blackQueens, p.blackQueens, bOwn);
   if (ws === null || bs === null || p.enPassant) return false;
-  for (const frozen of levels(p)) {
+  for (const frozen of levels(p, wx | p.whiteBishops, bx | p.blackBishops)) {
     const s = level(p, frozen, { wx, bx, ws, bs });
     if (s && !netLeaks(p, s, white, wx | bx)) return true;
   }

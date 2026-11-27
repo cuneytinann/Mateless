@@ -2,9 +2,9 @@
 
 The second version of [Mateless](https://github.com/cuneytinann/Mateless)'s lock detector, in its
 simplest form, in the same 20 languages as the first version (one folder up, [`../`](../)). Each
-version is 430 to 650 lines and uses its language's standard library only. All of them are the same
-algorithm, line for line, and all give the answers of Mateless's second version on the 60,471
-positions of `positions.tsv`.
+version is 470 to 730 lines (Rust, as rustfmt lays it out, 920) and uses its language's standard
+library only. All of them are the same algorithm, line for line, and all give the answers of
+Mateless's second version on the 65,956 positions of `positions.tsv`.
 
 [Türkçe](README.tr.md) · [The first version](../README.md)
 
@@ -24,8 +24,13 @@ on the board, so on any other position it gives the first version's answer.
   moved, the white one stepped into the gap, or the black one did. Each family is tried like a
   lock. Up to 3 pairs (27 families).
 - **Boxed knights, rooks and queens.** A piece whose every step square holds one of its own men that
-  never moves, and that no enemy king or bishop reaches, never moves and never falls. Any other
-  knight, rook or queen still fails the detector at once.
+  never moves, and that no enemy king or bishop reaches, never moves and never falls. Such a man is
+  a fixed pawn, another boxed piece, a still bishop (each of its diagonal neighbours held in the same
+  way, and no enemy king or bishop reaching it) or the piece's own king, when that king is frozen,
+  its side has no castling right left, and it does not stand where a castle leaves it beside its
+  rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8, d8): a castle leaves the halfmove clock
+  as it is, so the detector is not asked after one (see below). Any other knight, rook or queen
+  still fails the detector at once.
 - **Twin bishops.** Two bishops of one side on squares of one colour no longer fail it. Where they
   could block both of their own king's flights, the mating net does not count on those flights.
 - **The stalemate guard.** A pawn the enemy king may take stays a wall if taking it always
@@ -48,8 +53,8 @@ pieces = fromFen(fen)              // or fill Pieces from your own bitboards
 cannotBeMated(pieces, white)       // true: White (false: Black) can never be mated
 ```
 
-`Pieces` holds fourteen fields. The second version needs each kind of piece apart, and the side to
-move:
+`Pieces` holds sixteen fields. The second version needs each kind of piece apart, the side to move
+and whether each side may still castle:
 
 | field | what |
 |---|---|
@@ -61,10 +66,17 @@ move:
 | white queens, black queens | the queens of each side |
 | white to move | true when White is to move |
 | en passant | true when the side to move can capture en passant |
+| white castles, black castles | true when that side still has a castling right |
 
 A set of squares is a 64-bit integer, with a1 = 0, b1 = 1, …, h8 = 63. `fromFen` counts the en
 passant square only when a pawn of the side to move stands ready to take onto it. It does not ask
-whether that capture would be legal. When your program knows that, pass it.
+whether that capture would be legal. When your program knows that, pass it. It reads the castling
+field as KQkq or as file letters (Shredder-FEN, Chess960) and counts a right only when its king
+stands on its first rank and a rook of its colour on the same rank, on that side of the king (a
+letter: on that file). A right matters only to a king that boxes in a piece of its own: while it
+stands, the king may still castle away, so it holds nothing. Mateless also drops a right whose
+files disagree with the other side's (one castling skeleton for both); this version keeps such a
+right, so on such a FEN it may prove less than Mateless, never more.
 
 ## The languages
 
@@ -73,12 +85,12 @@ whether that capture would be legal. When your program knows that, pass it.
 | C | [`c/`](c/) | `cc -O2 -o test test.c lock.c && ./test` | GCC 13.3, Clang 18 |
 | C++ | [`cpp/`](cpp/) | `c++ -std=c++17 -O2 -o test test.cpp && ./test` | GCC 13.3, Clang 18 |
 | C# | [`csharp/`](csharp/) | `dotnet run -c Release -- ../positions.tsv` | .NET 8 |
-| Crystal | [`crystal/`](crystal/) | `crystal run --release test.cr -- ../positions.tsv` | Crystal 1.11 |
+| Crystal | [`crystal/`](crystal/) | `crystal run --release test.cr -- ../positions.tsv` | Crystal 1.14 |
 | Go | [`go/`](go/) | `go test -v` | Go 1.24 |
 | Haskell | [`haskell/`](haskell/) | `ghc -O2 -outputdir build -o test Test.hs && ./test` | GHC 9.4 |
 | Java | [`java/`](java/) | `javac Lock.java Test.java && java Test` | Java 21 (needs 17 or later) |
 | JavaScript | [`javascript/`](javascript/) | `node test.mjs` | Node 22 |
-| Kotlin | [`kotlin/`](kotlin/) | `kotlinc Lock.kt Test.kt -include-runtime -d lock.jar && java -jar lock.jar` | Kotlin 1.3 |
+| Kotlin | [`kotlin/`](kotlin/) | `kotlinc Lock.kt Test.kt -include-runtime -d lock.jar && java -jar lock.jar` | Kotlin 1.3, 2.1 |
 | Lua | [`lua/`](lua/) | `lua test.lua` | Lua 5.4 (needs 5.3 or later) |
 | Nim | [`nim/`](nim/) | `nim c -d:release --hints:off -r test.nim` | Nim 1.6 |
 | OCaml | [`ocaml/`](ocaml/) | `ocamlopt -o test lock.mli lock.ml test.ml && ./test` | OCaml 4.14 |
@@ -87,12 +99,12 @@ whether that capture would be legal. When your program knows that, pass it.
 | Python | [`python/`](python/) | `python3 test.py` | Python 3.13 |
 | Ruby | [`ruby/`](ruby/) | `ruby test.rb` | Ruby 3.3 (needs 3.0 or later) |
 | Rust | [`rust/`](rust/) | `cargo test --release -- --nocapture` | Rust 1.97 |
-| Scala | [`scala/`](scala/) | `scalac Lock.scala Test.scala && scala Test` | Scala 2.11 |
+| Scala | [`scala/`](scala/) | `scalac Lock.scala Test.scala && scala Test` | Scala 2.11, 3.8 (from 3.5 on: `scala run -cp . -M Test`) |
 | TypeScript | [`typescript/`](typescript/) | `node test.ts` | Node 22.18 or later (it strips the types); `tsc --strict` checks them |
 | Zig | [`zig/`](zig/) | `zig run -O ReleaseFast test.zig` | Zig 0.17 |
 
 `sh test-all.sh` runs every test whose compiler is installed. Each test answers both sides for
-every position and prints `<language>: 60471 positions, 0 wrong`.
+every position and prints `<language>: 65956 positions, 0 wrong`.
 
 ## How it was tested
 
@@ -106,18 +118,27 @@ the same for Black. Every one is labelled by the second version's detector in Ma
 - the Lichess locks changed so that one rule has a chance: a pawn ram pulled apart into an open
   pair, a knight, rook or queen boxed in by its own pawns, the king of the side to move stepped
   into a pawn's check, both kings moved anywhere. For each lock and each change, one position the
-  rule proves and one it does not.
+  rule proves and one it does not;
+- the walls of a boxed piece that are not pawns: a knight, rook or queen boxed in partly by a still
+  bishop of its colour or by its own king, put into the Lichess locks the same way; a rook boxed in
+  by its pawn and a bishop, and a king, rook and bishop holding one another, each also without the
+  bishop or the king; the same with a castling right left, and with one the board cannot have; and
+  a king between two rooks, where a castle leaves king and rook and where it does not.
 
-Of the 37,793 answers "can never be mated", 31,252 are the first version's. The rest come from the
+Of the 38,265 answers "can never be mated", 31,256 are the first version's. The rest come from the
 new rules:
 
 | rule | answers |
 |---|---|
-| the new level: twin bishops, the stalemate guard, the check seed | 5,651 |
+| the new level: twin bishops, the stalemate guard, the check seed | 5,653 |
 | the forced step | 618 |
-| boxed knights, rooks and queens | 114 |
+| boxed knights, rooks and queens (466 of them with a still bishop or a king among the walls) | 580 |
 | open pawn pairs | 92 |
 | the stuck mater | 66 |
+
+Every language also gives Mateless's answers on 183,461 other positions and on 206,149 positions
+written to try the castling field (king, rooks and bishops on the first rank over a pawn chain,
+under every castling field the board allows).
 
 The file is written by `tools/lock-positions.js` in the Mateless repository.
 

@@ -19,7 +19,10 @@ import java.util.List;
  *     the reachable positions split into families by what the pair's pawns have done (neither
  *     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
  * <li>boxed knights, rooks and queens: a piece whose every step square holds one of its own men
- *     that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+ *     that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a
+ *     man is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so,
+ *     and out of the enemy king's and bishops' reach) or the piece's own frozen king (its side
+ *     with no castling right left and not standing where a castle leaves it beside its rook);
  * <li>twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
  *     out its second flight rule where they may hold both flights;
  * <li>the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -94,7 +97,9 @@ public final class Lock {
             long whiteRooks, long blackRooks,
             long whiteQueens, long blackQueens,
             boolean whiteToMove,
-            boolean enPassant     // the side to move can capture en passant
+            boolean enPassant,    // the side to move can capture en passant
+            boolean whiteCastles, // White has a castling right (its king and that rook in place)
+            boolean blackCastles
     ) {}
 
     /** What one level leaves for the mating net (and for the families after it). */
@@ -121,8 +126,24 @@ public final class Lock {
             enPassant = whiteToMove ? (sideways(south(target)) & sets['P']) != 0
                                     : (sideways(north(target)) & sets['p']) != 0;
         }
+        boolean[] castles = new boolean[2];   // White, Black
+        if (fields.length > 2 && !fields[2].equals("-")) {
+            for (char c : fields[2].toCharArray()) {
+                boolean white = Character.isUpperCase(c);
+                long back = white ? RANK_1 : RANK_8;
+                long king = sets[white ? 'K' : 'k'] & back, rooks = sets[white ? 'R' : 'r'] & back;
+                if (king == 0) continue;   // a right without its king in place does not count
+                int kf = Long.numberOfTrailingZeros(king) % 8;
+                char up = Character.toUpperCase(c);
+                for (long r = rooks; r != 0; r &= r - 1) {
+                    int f = Long.numberOfTrailingZeros(r) % 8;
+                    if ((up == 'K' && f > kf) || (up == 'Q' && f < kf) || (up != 'K' && up != 'Q' && f == up - 'A' && f != kf))
+                        castles[white ? 0 : 1] = true;
+                }
+            }
+        }
         return new Pieces(sets['P'], sets['p'], sets['K'], sets['k'], sets['B'], sets['b'], sets['N'], sets['n'],
-                          sets['R'], sets['r'], sets['Q'], sets['q'], whiteToMove, enPassant);
+                          sets['R'], sets['r'], sets['Q'], sets['q'], whiteToMove, enPassant, castles[0], castles[1]);
     }
 
     /** Can White (white = true) or Black never be mated, by the lock detector? */
@@ -133,7 +154,7 @@ public final class Lock {
         if ((wx | bx) != 0) return boxedLock(p, white, wx, bx);
         if (p.enPassant()) return false;
         long gaps = north(p.whitePawns()) & south(p.blackPawns()) & ~(p.whitePawns() | p.blackPawns());
-        for (long frozen : levels(p)) {
+        for (long frozen : levels(p, 0, 0)) {
             if (gaps != 0) {
                 Family f = families(p, gaps, frozen, white);
                 if (f == Family.LOCK) return true;
@@ -146,13 +167,41 @@ public final class Lock {
     }
 
     /** The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-        when every square around it is held or attacked by a pawn. */
-    private static List<Long> levels(Pieces p) {
+        when every square around it is held or attacked by a pawn (or holds one of its own pieces,
+        wOwn or bOwn, where boxed pieces are on the board). */
+    private static List<Long> levels(Pieces p, long wOwn, long bOwn) {
         long held = p.whitePawns() | p.blackPawns() | sideways(north(p.whitePawns()) | south(p.blackPawns()));
         List<Long> out = new ArrayList<>(List.of(0L));
-        for (long king : new long[] { p.whiteKing(), p.blackKing() })
-            if ((steps(king) & ~held) == 0) out.add(king);
+        if ((steps(p.whiteKing()) & ~(held | wOwn)) == 0) out.add(p.whiteKing());
+        if ((steps(p.blackKing()) & ~(held | bOwn)) == 0) out.add(p.blackKing());
         return out;
+    }
+
+    /** May this side's king hold a boxed piece's step square (when frozen)? Not with a castling
+        right left (a castling rook may stand beside its king, in Chess960, and castling moves it), and
+        not where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8,
+        c8, d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one. */
+    private static boolean kingWall(Pieces p, boolean white) {
+        long king = white ? p.whiteKing() : p.blackKing(), rooks = white ? p.whiteRooks() : p.blackRooks();
+        long g = white ? 1L << 6 : 1L << 62, c = white ? 1L << 2 : 1L << 58;
+        return !(white ? p.whiteCastles() : p.blackCastles()) && (rooks & (((king & g) >>> 1) | ((king & c) << 1))) == 0;
+    }
+
+    /** The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and
+        boxed pieces of their colour) or by another still bishop, and out of the enemy king's and
+        bishops' reach. Such a bishop never moves and is never taken (a pawn taking it fails the
+        bishop contact test). The largest such set. */
+    private static long stillBishops(long b, long held, long reach) {
+        long s = b & ~reach;
+        for (;;) {
+            long n = 0;
+            for (long m = s; m != 0; m &= m - 1) {
+                long q = m & -m;
+                if ((diagonal(q) & ~(held | s)) == 0) n |= q;
+            }
+            if (n == s) return s;
+            s = n;
+        }
     }
 
     /**
@@ -189,10 +238,16 @@ public final class Lock {
             long nwFixed = wFixed & wWall & south(bWall | wFixed);
             long nbFixed = bFixed & bWall & north(wWall | bFixed);
             long nwCone = fillNorth(wCone, ~bWall), nbCone = fillSouth(bCone, ~wWall);
-            // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+            // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king;
+            // with boxed pieces on the board, never onto its own boxed pieces and still bishops either.
             long bHit = sideways(south(nbFixed)), wHit = sideways(north(nwFixed));
-            long nwKing = flood(wKing, ~(nwFixed | bHit | nearFrozenBlack));
-            long nbKing = flood(bKing, ~(nbFixed | wHit | nearFrozenWhite));
+            long wStill = 0, bStill = 0;
+            if ((wx | bx) != 0) {
+                wStill = stillBishops(p.whiteBishops(), nwFixed | (wx & boxed), bKing | bBish);
+                bStill = stillBishops(p.blackBishops(), nbFixed | (bx & boxed), wKing | wBish);
+            }
+            long nwKing = flood(wKing, ~(nwFixed | bHit | nearFrozenBlack | (wx & boxed) | wStill));
+            long nbKing = flood(bKing, ~(nbFixed | wHit | nearFrozenWhite | (bx & boxed) | bStill));
             long nwBish = wBish, nbBish = bBish, open = ~(nwFixed | nbFixed);
             for (;;) {
                 long a = nwBish | (diagonal(nwBish) & open), d = nbBish | (diagonal(nbBish) & open);
@@ -224,7 +279,15 @@ public final class Lock {
         if (((north(sideways(wCone)) & (bCone | bx)) | (south(sideways(bCone)) & wx)) != 0) return null;  // a pawn can capture
         if ((frozenWhite && wKing != wk) || (frozenBlack && bKing != bk)) return null;          // the frozen king can move
         if (((diagonal(wBish) & bCone) | (diagonal(bBish) & wCone)) != 0) return null;           // a bishop meets a pawn's path
-        if (((o.ws() & ~(wFixed | (wx & boxed))) | (o.bs() & ~(bFixed | (bx & boxed)))) != 0) return null;  // a piece may step
+        // A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop
+        // of its colour, or by its frozen king (where the king may be a wall).
+        long wStill = 0, bStill = 0;
+        if ((wx | bx) != 0) {
+            wStill = stillBishops(p.whiteBishops(), wFixed | (wx & boxed), bKing | bBish);
+            bStill = stillBishops(p.blackBishops(), bFixed | (bx & boxed), wKing | wBish);
+        }
+        long wKw = frozenWhite && kingWall(p, true) ? wk : 0, bKw = frozenBlack && kingWall(p, false) ? bk : 0;
+        if (((o.ws() & ~(wFixed | (wx & boxed) | wStill | wKw)) | (o.bs() & ~(bFixed | (bx & boxed) | bStill | bKw))) != 0) return null;
         if ((wGuard | bGuard) != 0) {
             // A king that takes a guarded pawn ends the game: for the mating net, the kings'
             // reaches again, now stopping at the enemy's guarded pawns.
@@ -366,13 +429,15 @@ public final class Lock {
     }
 
     /** With knights, rooks or queens on the board: every one of them must be boxed in by its own
-        pawns and pieces; then the levels, with the boxed pieces as walls and no flight onto their
-        squares. */
+        pawns and pieces (bishops and the king among them: the level checks that they never move);
+        then the levels, with the boxed pieces as walls and no flight onto their squares. */
     private static boolean boxedLock(Pieces p, boolean white, long wx, long bx) {
         long ws = boxSteps(p.whiteKnights(), p.whiteRooks() | p.whiteQueens(), p.whiteQueens());
         long bs = boxSteps(p.blackKnights(), p.blackRooks() | p.blackQueens(), p.blackQueens());
-        if ((ws & ~(p.whitePawns() | wx)) != 0 || (bs & ~(p.blackPawns() | bx)) != 0 || p.enPassant()) return false;
-        for (long frozen : levels(p)) {
+        long wOwn = p.whitePawns() | wx | p.whiteBishops() | (kingWall(p, true) ? p.whiteKing() : 0);
+        long bOwn = p.blackPawns() | bx | p.blackBishops() | (kingWall(p, false) ? p.blackKing() : 0);
+        if ((ws & ~wOwn) != 0 || (bs & ~bOwn) != 0 || p.enPassant()) return false;
+        for (long frozen : levels(p, wx | p.whiteBishops(), bx | p.blackBishops())) {
             Sets s = level(p, frozen, new Level(null, 0, null, wx, bx, ws, bs, false));
             if (s != null && !netLeaks(p, s, white, wx | bx)) return true;
         }
@@ -439,7 +504,7 @@ public final class Lock {
         if (count(to) != 1) return null;
         if (((white ? sideways(south(checkers)) : sideways(north(checkers))) & own) != 0) return null;  // a pawn may take instead
         return white
-                ? new Pieces(p.whitePawns(), p.blackPawns() & ~to, to, p.blackKing(), 0, 0, 0, 0, 0, 0, 0, 0, false, false)
-                : new Pieces(p.whitePawns() & ~to, p.blackPawns(), p.whiteKing(), to, 0, 0, 0, 0, 0, 0, 0, 0, true, false);
+                ? new Pieces(p.whitePawns(), p.blackPawns() & ~to, to, p.blackKing(), 0, 0, 0, 0, 0, 0, 0, 0, false, false, false, false)
+                : new Pieces(p.whitePawns() & ~to, p.blackPawns(), p.whiteKing(), to, 0, 0, 0, 0, 0, 0, 0, 0, true, false, false, false);
     }
 }

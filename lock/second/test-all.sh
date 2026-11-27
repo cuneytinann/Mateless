@@ -43,7 +43,8 @@ run php        php      'php test.php'
 run python     python3  'python3 test.py'
 run ruby       ruby     'ruby test.rb'
 run rust       cargo    'cargo test --release -q -- --nocapture'
-run scala      scalac   'scalac -d . Lock.scala Test.scala && scala -cp . Test'
+# (Scala 3.5 and later run a class with `scala run -M`; the older runner takes it as `scala -cp . Test`.)
+run scala      scalac   'scalac -d . Lock.scala Test.scala && if scala -cp . Test > run.log 2>&1 || ! grep -q sub-command run.log; then cat run.log; grep -q " 0 wrong" run.log; else scala run --server=false -cp . -M Test; fi'
 run typescript node     'node test.ts'
 run zig        zig      'zig run -O ReleaseFast --cache-dir zig-cache test.zig'
 

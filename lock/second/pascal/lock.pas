@@ -14,7 +14,10 @@
       the reachable positions split into families by what the pair's pawns have done (neither
       moved, the white one stepped into the gap, the black one did), up to 3 pairs;
     - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-      that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+      that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+      is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and out
+      of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+      castling right left and not standing where a castle leaves it beside its rook);
     - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
       out its second flight rule where they may hold both flights;
     - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -44,6 +47,8 @@ type
     WhiteQueens, BlackQueens: QWord;
     WhiteToMove: Boolean;
     EnPassant: Boolean;  // the side to move can capture en passant
+    WhiteCastles: Boolean;  // White has a castling right (its king and that rook in place)
+    BlackCastles: Boolean;
   end;
 
 { The pieces of a FEN. The en passant square counts only if a pawn can capture onto it. }
@@ -139,8 +144,10 @@ end;
 function FromFen(const fen: string): TPieces;
 var
   p: TPieces;
-  rank, fileNo, c, field: Integer;
-  sq, target: QWord;
+  rank, fileNo, c, kf, f: Integer;
+  sq, target, home, king, r: QWord;
+  white, ok: Boolean;
+  up: Char;
 begin
   p := Default(TPieces);
   rank := 7;
@@ -179,11 +186,31 @@ begin
   end;
   while (c <= Length(fen)) and (fen[c] = ' ') do Inc(c);
   p.WhiteToMove := (c > Length(fen)) or (fen[c] <> 'b');
-  for field := 0 to 1 do  // past the side to move and castling
+  while (c <= Length(fen)) and (fen[c] <> ' ') do Inc(c);  // past the side to move
+  while (c <= Length(fen)) and (fen[c] = ' ') do Inc(c);
+  while (c <= Length(fen)) and (fen[c] <> ' ') do  // the castling rights
   begin
-    while (c <= Length(fen)) and (fen[c] <> ' ') do Inc(c);
-    while (c <= Length(fen)) and (fen[c] = ' ') do Inc(c);
+    white := fen[c] in ['A'..'Z'];
+    up := UpCase(fen[c]);
+    if white then home := Rank1 else home := Rank8;
+    if white then king := p.WhiteKing and home else king := p.BlackKing and home;
+    if white then r := p.WhiteRooks and home else r := p.BlackRooks and home;
+    ok := False;
+    if (fen[c] <> '-') and (king <> 0) then  // a right without its king in place does not count
+    begin
+      kf := BsfQWord(king) mod 8;
+      while r <> 0 do
+      begin
+        f := BsfQWord(r) mod 8;
+        if ((up = 'K') and (f > kf)) or ((up = 'Q') and (f < kf)) or
+           ((up <> 'K') and (up <> 'Q') and (f = Ord(up) - Ord('A')) and (f <> kf)) then ok := True;
+        r := r and (r - 1);
+      end;
+    end;
+    if white then p.WhiteCastles := p.WhiteCastles or ok else p.BlackCastles := p.BlackCastles or ok;
+    Inc(c);
   end;
+  while (c <= Length(fen)) and (fen[c] = ' ') do Inc(c);
   if (c + 1 <= Length(fen)) and (fen[c] in ['a'..'h']) and (fen[c + 1] in ['1'..'8']) then
   begin
     target := QWord(1) shl ((Ord(fen[c]) - Ord('a')) + 8 * (Ord(fen[c + 1]) - Ord('1')));
@@ -196,16 +223,52 @@ begin
 end;
 
 { The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-  when every square around it is held or attacked by a pawn. Their number. }
-function Levels(const p: TPieces; out lv: array of QWord): Integer;
+  when every square around it is held or attacked by a pawn (or holds one of its own pieces, wOwn
+  or bOwn, where boxed pieces are on the board). Their number. }
+function Levels(const p: TPieces; wOwn, bOwn: QWord; out lv: array of QWord): Integer;
 var held: QWord;
 begin
   held := p.WhitePawns or p.BlackPawns or Sideways(North(p.WhitePawns) or South(p.BlackPawns));
   Result := 0;
   lv[Result] := 0;
   Inc(Result);
-  if (Steps(p.WhiteKing) and not held) = 0 then begin lv[Result] := p.WhiteKing; Inc(Result); end;
-  if (Steps(p.BlackKing) and not held) = 0 then begin lv[Result] := p.BlackKing; Inc(Result); end;
+  if (Steps(p.WhiteKing) and not (held or wOwn)) = 0 then begin lv[Result] := p.WhiteKing; Inc(Result); end;
+  if (Steps(p.BlackKing) and not (held or bOwn)) = 0 then begin lv[Result] := p.BlackKing; Inc(Result); end;
+end;
+
+{ May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+  left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+  where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+  d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one. }
+function KingWall(const p: TPieces; white: Boolean): Boolean;
+var king, rooks, g, c: QWord;
+    castles: Boolean;
+begin
+  if white then begin king := p.WhiteKing; rooks := p.WhiteRooks; castles := p.WhiteCastles; g := QWord(1) shl 6; c := QWord(1) shl 2; end
+  else begin king := p.BlackKing; rooks := p.BlackRooks; castles := p.BlackCastles; g := QWord(1) shl 62; c := QWord(1) shl 58; end;
+  Result := (not castles) and ((rooks and (((king and g) shr 1) or ((king and c) shl 1))) = 0);
+end;
+
+{ The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+  pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+  reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+  test). The largest such set. }
+function StillBishops(b, held, reach: QWord): QWord;
+var s, n, m, q: QWord;
+begin
+  s := b and not reach;
+  repeat
+    n := 0;
+    m := s;
+    while m <> 0 do
+    begin
+      q := Lowest(m);
+      if (Diagonal(q) and not (held or s)) = 0 then n := n or q;
+      m := m and (m - 1);
+    end;
+    if n = s then Exit(s);
+    s := n;
+  until False;
 end;
 
 { The check seed: the side to move is in a pawn's check, so its king must step now, to a square it
@@ -307,6 +370,7 @@ var
   wp, bp, wk, bk, wx, bx, v, nearFrozenBlack, nearFrozenWhite, wSeed, bSeed: QWord;
   wKing, bKing, wTake, bTake, wBish, bBish, wCone, bCone, wFixed, bFixed, wGuard, bGuard: QWord;
   boxed, wWall, bWall, nwFixed, nbFixed, nwCone, nbCone, bHit, wHit, nwKing, nbKing: QWord;
+  wStill, bStill, wKw, bKw: QWord;
   nwBish, nbBish, open, a, d, t, nbTake, nwTake, nwGuard, nbGuard, blk: QWord;
   frozenWhite, frozenBlack, changed: Boolean;
 begin
@@ -341,11 +405,18 @@ begin
     nbFixed := bFixed and bWall and North(wWall or bFixed);
     nwCone := FillNorth(wCone, not bWall);
     nbCone := FillSouth(bCone, not wWall);
-    // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+    // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king; with
+    // boxed pieces on the board, never onto its own boxed pieces and still bishops either.
     bHit := Sideways(South(nbFixed));
     wHit := Sideways(North(nwFixed));
-    nwKing := Flood(wKing, not (nwFixed or bHit or nearFrozenBlack));
-    nbKing := Flood(bKing, not (nbFixed or wHit or nearFrozenWhite));
+    wStill := 0; bStill := 0;
+    if (wx or bx) <> 0 then
+    begin
+      wStill := StillBishops(p.WhiteBishops, nwFixed or (wx and boxed), bKing or bBish);
+      bStill := StillBishops(p.BlackBishops, nbFixed or (bx and boxed), wKing or wBish);
+    end;
+    nwKing := Flood(wKing, not (nwFixed or bHit or nearFrozenBlack or (wx and boxed) or wStill));
+    nbKing := Flood(bKing, not (nbFixed or wHit or nearFrozenWhite or (bx and boxed) or bStill));
     nwBish := wBish; nbBish := bBish;
     open := not (nwFixed or nbFixed);
     repeat
@@ -381,7 +452,18 @@ begin
   if ((North(Sideways(wCone)) and (bCone or bx)) or (South(Sideways(bCone)) and wx)) <> 0 then Exit;  // a pawn can capture
   if (frozenWhite and (wKing <> wk)) or (frozenBlack and (bKing <> bk)) then Exit;             // the frozen king can move
   if ((Diagonal(wBish) and bCone) or (Diagonal(bBish) and wCone)) <> 0 then Exit;              // a bishop meets a pawn's path
-  if ((o.Ws and not (wFixed or (wx and boxed))) or (o.Bs and not (bFixed or (bx and boxed)))) <> 0 then Exit;  // a piece may step
+  // A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+  // its colour, or by its frozen king (where the king may be a wall).
+  wStill := 0; bStill := 0; wKw := 0; bKw := 0;
+  if (wx or bx) <> 0 then
+  begin
+    wStill := StillBishops(p.WhiteBishops, wFixed or (wx and boxed), bKing or bBish);
+    bStill := StillBishops(p.BlackBishops, bFixed or (bx and boxed), wKing or wBish);
+  end;
+  if frozenWhite and KingWall(p, True) then wKw := wk;
+  if frozenBlack and KingWall(p, False) then bKw := bk;
+  if ((o.Ws and not (wFixed or (wx and boxed) or wStill or wKw)) or
+      (o.Bs and not (bFixed or (bx and boxed) or bStill or bKw))) <> 0 then Exit;
   if (wGuard or bGuard) <> 0 then
   begin
     // A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches
@@ -507,9 +589,10 @@ begin
 end;
 
 { With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
-  and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares. }
+  and pieces (bishops and the king among them: the level checks that they never move); then the
+  levels, with the boxed pieces as walls and no flight onto their squares. }
 function BoxedLock(const p: TPieces; white: Boolean; wx, bx: QWord): Boolean;
-var ws, bs: QWord;
+var ws, bs, wOwn, bOwn: QWord;
     lv: array[0..2] of QWord;
     n, i: Integer;
     o: TLevel;
@@ -518,10 +601,14 @@ begin
   Result := False;
   ws := BoxSteps(p.WhiteKnights, p.WhiteRooks or p.WhiteQueens, p.WhiteQueens);
   bs := BoxSteps(p.BlackKnights, p.BlackRooks or p.BlackQueens, p.BlackQueens);
-  if ((ws and not (p.WhitePawns or wx)) <> 0) or ((bs and not (p.BlackPawns or bx)) <> 0) or p.EnPassant then Exit;
+  wOwn := p.WhitePawns or wx or p.WhiteBishops;
+  bOwn := p.BlackPawns or bx or p.BlackBishops;
+  if KingWall(p, True) then wOwn := wOwn or p.WhiteKing;
+  if KingWall(p, False) then bOwn := bOwn or p.BlackKing;
+  if ((ws and not wOwn) <> 0) or ((bs and not bOwn) <> 0) or p.EnPassant then Exit;
   o := Default(TLevel);
   o.Wx := wx; o.Bx := bx; o.Ws := ws; o.Bs := bs;
-  n := Levels(p, lv);
+  n := Levels(p, wx or p.WhiteBishops, bx or p.BlackBishops, lv);
   for i := 0 to n - 1 do
     if Level(p, lv[i], o, s) and not NetLeaks(p, s, white, wx or bx) then Exit(True);
 end;
@@ -634,7 +721,7 @@ begin
   gaps := North(p.WhitePawns) and South(p.BlackPawns) and not (p.WhitePawns or p.BlackPawns);
   o := Default(TLevel);
   o.Guard := True;
-  n := Levels(p, lv);
+  n := Levels(p, 0, 0, lv);
   for i := 0 to n - 1 do
   begin
     if gaps <> 0 then

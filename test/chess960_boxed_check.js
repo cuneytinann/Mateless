@@ -77,7 +77,7 @@ const problem = text => { problems++; console.log('PROBLEM ' + text); };
   if (claims.some(Boolean)) problem('with the castling right White is claimed never to be mated: ' + claims.join(','));
   const s = E.fromFen(STANDARD).position;
   console.log(`the rook beside its king, without the castling right: ${seen.size} positions reachable, no mate, ` +
-              `${E.isDeadPosition(s) ? 'proven dead' : 'not proven dead (the engine does not count the king as a wall)'}; ` +
+              `${E.isDeadPosition(s) ? 'proven dead' : 'not proven dead'}; ` +
               `with it: a mate in four, never claimed: ${problems} problems`);
 }
 process.exitCode = problems ? 1 : 0;

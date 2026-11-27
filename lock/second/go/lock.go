@@ -14,7 +14,10 @@
 //     the reachable positions split into families by what the pair's pawns have done (neither
 //     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
 //   - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-//     that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+//     that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+//     is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and out
+//     of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+//     castling right left and not standing where a castle leaves it beside its rook);
 //   - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
 //     out its second flight rule where they may hold both flights;
 //   - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -30,7 +33,10 @@
 // Squares: a1 = 0, b1 = 1, ..., h8 = 63. A set of squares (a bitboard) is a uint64.
 package lock
 
-import "math/bits"
+import (
+	"math/bits"
+	"strings"
+)
 
 // Pieces is what the lock detector reads from a position.
 type Pieces struct {
@@ -42,6 +48,8 @@ type Pieces struct {
 	WhiteQueens, BlackQueens   uint64
 	WhiteToMove                bool
 	EnPassant                  bool // the side to move can capture en passant
+	WhiteCastles               bool // White has a castling right (its king and that rook in place)
+	BlackCastles               bool
 }
 
 const (
@@ -178,6 +186,31 @@ func FromFen(fen string) Pieces {
 			p.EnPassant = sideways(north(target))&p.BlackPawns != 0
 		}
 	}
+	if fields := strings.Fields(fen); len(fields) > 2 && fields[2] != "-" {
+		for _, c := range fields[2] {
+			white := c >= 'A' && c <= 'Z'
+			back, king, rooks := rank1, p.WhiteKing, p.WhiteRooks
+			if !white {
+				back, king, rooks = rank8, p.BlackKing, p.BlackRooks
+			}
+			king, rooks = king&back, rooks&back
+			if king == 0 {
+				continue // a right without its king in place does not count
+			}
+			kf, up, ok := bits.TrailingZeros64(king)%8, c&^0x20, false
+			for r := rooks; r != 0; r &= r - 1 {
+				f := bits.TrailingZeros64(r) % 8
+				if (up == 'K' && f > kf) || (up == 'Q' && f < kf) || (up != 'K' && up != 'Q' && f == int(up-'A') && f != kf) {
+					ok = true
+				}
+			}
+			if ok && white {
+				p.WhiteCastles = true
+			} else if ok {
+				p.BlackCastles = true
+			}
+		}
+	}
 	return p
 }
 
@@ -195,7 +228,7 @@ func CannotBeMated(p Pieces, white bool) bool {
 		return false
 	}
 	gaps := north(p.WhitePawns) & south(p.BlackPawns) &^ (p.WhitePawns | p.BlackPawns)
-	for _, frozen := range levels(p) {
+	for _, frozen := range levels(p, 0, 0) {
 		if gaps != 0 {
 			switch families(p, gaps, frozen, white) {
 			case familyLock:
@@ -212,16 +245,50 @@ func CannotBeMated(p Pieces, white bool) bool {
 }
 
 // The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-// when every square around it is held or attacked by a pawn.
-func levels(p Pieces) []uint64 {
+// when every square around it is held or attacked by a pawn (or holds one of its own pieces, wOwn
+// or bOwn, where boxed pieces are on the board).
+func levels(p Pieces, wOwn, bOwn uint64) []uint64 {
 	held := p.WhitePawns | p.BlackPawns | sideways(north(p.WhitePawns)|south(p.BlackPawns))
 	out := []uint64{0}
-	for _, king := range []uint64{p.WhiteKing, p.BlackKing} {
-		if steps(king)&^held == 0 {
-			out = append(out, king)
+	for _, ko := range [][2]uint64{{p.WhiteKing, wOwn}, {p.BlackKing, bOwn}} {
+		if steps(ko[0])&^(held|ko[1]) == 0 {
+			out = append(out, ko[0])
 		}
 	}
 	return out
+}
+
+// May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+// left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+// where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+// d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one.
+func kingWall(p Pieces, white bool) bool {
+	king, rooks, castles, g, c := p.BlackKing, p.BlackRooks, p.BlackCastles, uint64(1)<<62, uint64(1)<<58
+	if white {
+		king, rooks, castles, g, c = p.WhiteKing, p.WhiteRooks, p.WhiteCastles, 1<<6, 1<<2
+	}
+	return !castles && rooks&(((king&g)>>1)|((king&c)<<1)) == 0
+}
+
+// The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+// pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+// reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+// test). The largest such set.
+func stillBishops(b, held, reach uint64) uint64 {
+	s := b &^ reach
+	for {
+		n := uint64(0)
+		for m := s; m != 0; m &= m - 1 {
+			q := m & -m
+			if diagonal(q)&^(held|s) == 0 {
+				n |= q
+			}
+		}
+		if n == s {
+			return s
+		}
+		s = n
+	}
 }
 
 // One level: the fixed point of the walls, the pawns that can never move, the kings' reaches, the
@@ -271,8 +338,14 @@ func level(p Pieces, frozen uint64, o levelIn) (sets, bool) {
 		nwCone, nbCone := fillNorth(wCone, ^bWall), fillSouth(bCone, ^wWall)
 		// The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
 		bHit, wHit := sideways(south(nbFixed)), sideways(north(nwFixed))
-		nwKing := flood(wKing, ^(nwFixed | bHit | nearFrozenBlack))
-		nbKing := flood(bKing, ^(nbFixed | wHit | nearFrozenWhite))
+		// With boxed pieces on the board, never onto its own boxed pieces and still bishops either.
+		wStill, bStill := uint64(0), uint64(0)
+		if wx|bx != 0 {
+			wStill = stillBishops(p.WhiteBishops, nwFixed|(wx&boxed), bKing|bBish)
+			bStill = stillBishops(p.BlackBishops, nbFixed|(bx&boxed), wKing|wBish)
+		}
+		nwKing := flood(wKing, ^(nwFixed | bHit | nearFrozenBlack | (wx & boxed) | wStill))
+		nbKing := flood(bKing, ^(nbFixed | wHit | nearFrozenWhite | (bx & boxed) | bStill))
 		nwBish, nbBish := wBish, bBish
 		open := ^(nwFixed | nbFixed)
 		for {
@@ -320,7 +393,20 @@ func level(p Pieces, frozen uint64, o levelIn) (sets, bool) {
 	if (diagonal(wBish)&bCone)|(diagonal(bBish)&wCone) != 0 {
 		return sets{}, false // a bishop meets a pawn's path
 	}
-	if (o.ws&^(wFixed|(wx&boxed)))|(o.bs&^(bFixed|(bx&boxed))) != 0 {
+	// A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+	// its colour, or by its frozen king (where the king may be a wall).
+	wStill, bStill, wKw, bKw := uint64(0), uint64(0), uint64(0), uint64(0)
+	if wx|bx != 0 {
+		wStill = stillBishops(p.WhiteBishops, wFixed|(wx&boxed), bKing|bBish)
+		bStill = stillBishops(p.BlackBishops, bFixed|(bx&boxed), wKing|wBish)
+	}
+	if frozenWhite && kingWall(p, true) {
+		wKw = wk
+	}
+	if frozenBlack && kingWall(p, false) {
+		bKw = bk
+	}
+	if (o.ws&^(wFixed|(wx&boxed)|wStill|wKw))|(o.bs&^(bFixed|(bx&boxed)|bStill|bKw)) != 0 {
 		return sets{}, false // a piece may step
 	}
 	if wGuard|bGuard != 0 {
@@ -521,14 +607,22 @@ func families(p Pieces, gaps, frozen uint64, white bool) int {
 }
 
 // With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
-// and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares.
+// and pieces (bishops and the king among them: the level checks that they never move); then the
+// levels, with the boxed pieces as walls and no flight onto their squares.
 func boxedLock(p Pieces, white bool, wx, bx uint64) bool {
-	ws, wok := boxSteps(p.WhiteKnights, p.WhiteRooks|p.WhiteQueens, p.WhiteQueens, p.WhitePawns|wx)
-	bs, bok := boxSteps(p.BlackKnights, p.BlackRooks|p.BlackQueens, p.BlackQueens, p.BlackPawns|bx)
+	wOwn, bOwn := p.WhitePawns|wx|p.WhiteBishops, p.BlackPawns|bx|p.BlackBishops
+	if kingWall(p, true) {
+		wOwn |= p.WhiteKing
+	}
+	if kingWall(p, false) {
+		bOwn |= p.BlackKing
+	}
+	ws, wok := boxSteps(p.WhiteKnights, p.WhiteRooks|p.WhiteQueens, p.WhiteQueens, wOwn)
+	bs, bok := boxSteps(p.BlackKnights, p.BlackRooks|p.BlackQueens, p.BlackQueens, bOwn)
 	if !wok || !bok || p.EnPassant {
 		return false
 	}
-	for _, frozen := range levels(p) {
+	for _, frozen := range levels(p, wx|p.WhiteBishops, bx|p.BlackBishops) {
 		if s, ok := level(p, frozen, levelIn{wx: wx, bx: bx, ws: ws, bs: bs}); ok && !netLeaks(p, s, white, wx|bx) {
 			return true
 		}

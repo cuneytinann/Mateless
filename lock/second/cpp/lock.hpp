@@ -14,7 +14,10 @@
 //     the reachable positions split into families by what the pair's pawns have done (neither
 //     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
 //   - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-//     that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+//     that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+//     is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and out
+//     of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+//     castling right left and not standing where a castle leaves it beside its rook);
 //   - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
 //     out its second flight rule where they may hold both flights;
 //   - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -49,6 +52,8 @@ struct Pieces {
     std::uint64_t white_queens = 0, black_queens = 0;
     bool white_to_move = true;
     bool en_passant = false;   // the side to move can capture en passant
+    bool white_castles = false;   // White has a castling right (its king and that rook in place)
+    bool black_castles = false;
 };
 
 namespace detail {
@@ -72,6 +77,7 @@ inline Set steps(Set s) { return zone(s) & ~s; }                                
 inline Set diagonal(Set s) { return sideways(north(s) | south(s)); }               // the squares diagonally next to s
 inline int count(Set s) { int n = 0; for (; s; s &= s - 1) n++; return n; }
 inline Set lowest(Set s) { return s & (~s + 1); }                                  // the lowest square of s
+inline int square_of(Set s) { int n = 0; while (!((s >> n) & 1)) n++; return n; }  // the lowest square's number
 
 // The squares a knight on s goes to.
 inline Set knight(Set s) {
@@ -146,10 +152,23 @@ inline Pieces from_fen(std::string_view fen) {
     }
     while (c < end && fen[c] == ' ') c++;
     p.white_to_move = c == end || fen[c] != 'b';
-    for (int field = 0; field < 2 && c < end; field++) {   // past the side to move and castling
-        while (c < end && fen[c] != ' ') c++;
-        while (c < end && fen[c] == ' ') c++;
+    while (c < end && fen[c] != ' ') c++;                   // past the side to move
+    while (c < end && fen[c] == ' ') c++;
+    for (; c < end && fen[c] != ' '; c++) {                 // the castling rights
+        bool white = fen[c] >= 'A' && fen[c] <= 'Z';
+        char up = static_cast<char>(fen[c] & ~0x20);
+        Set back = white ? RANK_1 : RANK_8;
+        Set king = (white ? p.white_king : p.black_king) & back, rooks = (white ? p.white_rooks : p.black_rooks) & back;
+        if (fen[c] == '-' || !king) continue;               // a right without its king in place does not count
+        int kf = square_of(king) % 8;
+        bool ok = false;
+        for (Set r = rooks; r; r &= r - 1) {
+            int f = square_of(r) % 8;
+            if ((up == 'K' && f > kf) || (up == 'Q' && f < kf) || (up != 'K' && up != 'Q' && f == up - 'A' && f != kf)) ok = true;
+        }
+        if (ok) (white ? p.white_castles : p.black_castles) = true;
     }
+    while (c < end && fen[c] == ' ') c++;
     if (c + 1 < end && fen[c] >= 'a' && fen[c] <= 'h' && fen[c + 1] >= '1' && fen[c + 1] <= '8') {
         Set target = Set{1} << ((fen[c] - 'a') + 8 * (fen[c + 1] - '1'));
         p.en_passant = p.white_to_move ? (sideways(south(target)) & p.white_pawns) != 0
@@ -161,13 +180,41 @@ inline Pieces from_fen(std::string_view fen) {
 namespace detail {
 
 // The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-// when every square around it is held or attacked by a pawn.
-inline std::vector<Set> levels(const Pieces& p) {
+// when every square around it is held or attacked by a pawn (or holds one of its own pieces, w_own
+// or b_own, where boxed pieces are on the board).
+inline std::vector<Set> levels(const Pieces& p, Set w_own = 0, Set b_own = 0) {
     Set held = p.white_pawns | p.black_pawns | sideways(north(p.white_pawns) | south(p.black_pawns));
     std::vector<Set> out{0};
-    for (Set king : {p.white_king, p.black_king})
-        if ((steps(king) & ~held) == 0) out.push_back(king);
+    if ((steps(p.white_king) & ~(held | w_own)) == 0) out.push_back(p.white_king);
+    if ((steps(p.black_king) & ~(held | b_own)) == 0) out.push_back(p.black_king);
     return out;
+}
+
+// May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+// left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+// where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+// d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one.
+inline bool king_wall(const Pieces& p, bool white) {
+    Set king = white ? p.white_king : p.black_king, rooks = white ? p.white_rooks : p.black_rooks;
+    Set g = white ? Set{1} << 6 : Set{1} << 62, c = white ? Set{1} << 2 : Set{1} << 58;
+    return !(white ? p.white_castles : p.black_castles) && !(rooks & (((king & g) >> 1) | ((king & c) << 1)));
+}
+
+// The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+// pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+// reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+// test). The largest such set.
+inline Set still_bishops(Set b, Set held, Set reach) {
+    Set s = b & ~reach;
+    for (;;) {
+        Set n = 0;
+        for (Set m = s; m; m &= m - 1) {
+            Set q = lowest(m);
+            if (!(diagonal(q) & ~(held | s))) n |= q;
+        }
+        if (n == s) return s;
+        s = n;
+    }
 }
 
 // The check seed: the side to move is in a pawn's check, so its king must step now, to a square it
@@ -256,10 +303,16 @@ inline std::optional<Sets> level(const Pieces& p, Set frozen, const Level& o) {
         Set nw_fixed = w_fixed & w_wall & south(b_wall | w_fixed);
         Set nb_fixed = b_fixed & b_wall & north(w_wall | b_fixed);
         Set nw_cone = fill_north(w_cone, ~b_wall), nb_cone = fill_south(b_cone, ~w_wall);
-        // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+        // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king; with
+        // boxed pieces on the board, never onto its own boxed pieces and still bishops either.
         Set b_hit = sideways(south(nb_fixed)), w_hit = sideways(north(nw_fixed));
-        Set nw_king = flood(w_king, ~(nw_fixed | b_hit | near_frozen_black));
-        Set nb_king = flood(b_king, ~(nb_fixed | w_hit | near_frozen_white));
+        Set w_still = 0, b_still = 0;
+        if (wx | bx) {
+            w_still = still_bishops(p.white_bishops, nw_fixed | (wx & boxed), b_king | b_bish);
+            b_still = still_bishops(p.black_bishops, nb_fixed | (bx & boxed), w_king | w_bish);
+        }
+        Set nw_king = flood(w_king, ~(nw_fixed | b_hit | near_frozen_black | (wx & boxed) | w_still));
+        Set nb_king = flood(b_king, ~(nb_fixed | w_hit | near_frozen_white | (bx & boxed) | b_still));
         Set nw_bish = w_bish, nb_bish = b_bish, open = ~(nw_fixed | nb_fixed);
         for (;;) {
             Set a = nw_bish | (diagonal(nw_bish) & open), d = nb_bish | (diagonal(nb_bish) & open);
@@ -291,7 +344,15 @@ inline std::optional<Sets> level(const Pieces& p, Set frozen, const Level& o) {
     if ((north(sideways(w_cone)) & (b_cone | bx)) | (south(sideways(b_cone)) & wx)) return std::nullopt;  // a pawn can capture
     if ((frozen_white && w_king != wk) || (frozen_black && b_king != bk)) return std::nullopt;  // the frozen king can move
     if ((diagonal(w_bish) & b_cone) | (diagonal(b_bish) & w_cone)) return std::nullopt;          // a bishop meets a pawn's path
-    if ((o.ws & ~(w_fixed | (wx & boxed))) | (o.bs & ~(b_fixed | (bx & boxed)))) return std::nullopt;  // a piece may step
+    // A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+    // its colour, or by its frozen king (where the king may be a wall).
+    Set w_still = 0, b_still = 0;
+    if (wx | bx) {
+        w_still = still_bishops(p.white_bishops, w_fixed | (wx & boxed), b_king | b_bish);
+        b_still = still_bishops(p.black_bishops, b_fixed | (bx & boxed), w_king | w_bish);
+    }
+    Set w_kw = frozen_white && king_wall(p, true) ? wk : 0, b_kw = frozen_black && king_wall(p, false) ? bk : 0;
+    if ((o.ws & ~(w_fixed | (wx & boxed) | w_still | w_kw)) | (o.bs & ~(b_fixed | (bx & boxed) | b_still | b_kw))) return std::nullopt;
     if (w_guard | b_guard) {
         // A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches
         // again, now stopping at the enemy's guarded pawns.
@@ -376,14 +437,17 @@ inline Set box_steps(Set knights, Set o, Set queens) {
 }
 
 // With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
-// and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares.
+// and pieces (bishops and the king among them: the level checks that they never move); then the
+// levels, with the boxed pieces as walls and no flight onto their squares.
 inline bool boxed_lock(const Pieces& p, bool white, Set wx, Set bx) {
     Set ws = box_steps(p.white_knights, p.white_rooks | p.white_queens, p.white_queens);
     Set bs = box_steps(p.black_knights, p.black_rooks | p.black_queens, p.black_queens);
-    if ((ws & ~(p.white_pawns | wx)) || (bs & ~(p.black_pawns | bx)) || p.en_passant) return false;
+    Set w_own = p.white_pawns | wx | p.white_bishops | (king_wall(p, true) ? p.white_king : 0);
+    Set b_own = p.black_pawns | bx | p.black_bishops | (king_wall(p, false) ? p.black_king : 0);
+    if ((ws & ~w_own) || (bs & ~b_own) || p.en_passant) return false;
     Level o;
     o.wx = wx; o.bx = bx; o.ws = ws; o.bs = bs;
-    for (Set frozen : levels(p)) {
+    for (Set frozen : levels(p, wx | p.white_bishops, bx | p.black_bishops)) {
         auto s = level(p, frozen, o);
         if (s && !net_leaks(p, *s, white, wx | bx)) return true;
     }

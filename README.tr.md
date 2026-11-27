@@ -393,7 +393,7 @@ kendisini en sade hâliyle 20 dilde taşıyor: C, C++, C#, Crystal, Go, Haskell,
 Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Her biri kendi
 dilinin standart kütüphanesi üzerinde iki yüz kadar satır ve hepsi aynı 36.406 test pozisyonunda
 aynı cevapları veriyor ([lock/README.tr.md](lock/README.tr.md)). İçindeki `second/` klasörü
-ikinci sürümü aynı biçimde taşıyor: aynı 20 dilin her birinde 430 ile 650 satır arası, 60.471 test
+ikinci sürümü aynı biçimde taşıyor: aynı 20 dilin her birinde 470 ile 730 satır arası, 65.956 test
 pozisyonunda aynı cevaplar ([lock/second/README.tr.md](lock/second/README.tr.md)). Aşağıdaki tablo
 Mateless'in içindeki hızlı sürümler.
 
@@ -552,7 +552,7 @@ giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 | kural | yalnızca şu zaman çalışıyor | ispatladığı (ilk sürümün ispatlayamadığı 36 satırdan) | başka yerdeki bedeli |
 |---|---|---|---|
 | **önü açık piyon çiftleri**: bir sütunda aralarında tek kare olan bir beyaz ve bir siyah piyon, geri kalan kilitli; ulaşılabilen pozisyonlar çiftin piyonlarının ne yaptığına göre üç aileye ayrılıyor (hiçbiri oynamadı, beyaz boşluğa girdi, siyah girdi), her biri kendi duvarları olan sıradan bir seviye, en çok 3 çift | piyonlarda böyle bir çift var (iki kaydırma söylüyor) | 3 (ve ağustos–eylülün 5 beraberliğinde ölümü gerçekleştiği ply'da görüyor) | ölçülebilir değil |
-| **kutulu at, kale ve vezir**: adım karelerinin hepsinde kendi sabit piyonu ya da kutulu taşı olan bir taş hiç oynamıyor ve yalnızca kendi taşlarının karelerine saldırıyor; tahtada kalabiliyor (golf motorunun kuralı, geçmişten); şahı hiçbir zaman duvar sayılmıyor, bu yüzden rok, Chess960'ınki de, kutulu bir kaleyi hiç oynatmıyor (`test/chess960_boxed_check.js`). Şahının yanındaki bir kale kutulu görünüp yine de rok yapabilir: `8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1` ölü, rok hakkıyla (`w K`, Chess960) 4 hamlede mat var (1.O-O exf1=N 2.Bb2 Ne3 3.dxe3 d2 4.Kh1 dxe1=Q#); hiçbir test onu ispatlamıyor, aynı kontrol de bunu koruyor | tahtada at, kale ya da vezir var; her kale ve vezirin yanındaki karelere bakıştan sonra (oyun pozisyonlarının %96'sı orada biter) | 1 (hPiwD75i) ve chasolver'ın test pozisyonlarındaki 84 bestelenmiş kilit | böyle bir taş varken kilit testi başına ~2 ns (Rust) / ~10 ns (JS) |
+| **kutulu at, kale ve vezir**: adım karelerinin hepsinde kendi tarafının hiç oynamayan bir taşı olan bir taş hiç oynamıyor ve yalnızca kendi taşlarının karelerine saldırıyor; tahtada kalabiliyor (golf motorunun kuralı, geçmişten). Böyle bir taş sabit bir piyon, kutulu başka bir taş, hareketsiz bir fil (her çapraz komşusu aynı biçimde tutulmuş, hiçbir rakip şahın ya da filin ulaşmadığı) ya da kendi şahı olabilir; şah donmuşsa, tarafının hiç rok hakkı kalmamışsa ve bir rokun onu kalesinin yanında bıraktığı yerde durmuyorsa (g1 ve f1, c1 ve d1; g8, f8, c8, d8: roktan sonra statik test sorulmuyor). Bu yüzden rok, Chess960'ınki de, kutulu bir kaleyi hiç oynatmıyor (`test/chess960_boxed_check.js`). Şahının yanındaki bir kale kutulu görünüp yine de rok yapabilir: `8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1` ölü, rok hakkıyla (`w K`, Chess960) 4 hamlede mat var (1.O-O exf1=N 2.Bb2 Ne3 3.dxe3 d2 4.Kh1 dxe1=Q#); hiçbir test onu ispatlamıyor, aynı kontrol de bunu koruyor | tahtada at, kale ya da vezir var; her kale ve vezirin yanındaki karelere bakıştan sonra (oyun pozisyonlarının %96'sı orada biter) | 1 (hPiwD75i) ve chasolver'ın test pozisyonlarındaki 84 bestelenmiş kilit; hareketsiz fil ve şah orada 72 kilit cevabı daha (66'sını başka hiçbir şey ispatlamıyor) | böyle bir taş varken kilit testi başına ~2 ns (Rust) / ~10 ns (JS) |
 | **Domino aramasından sonra hamle hamle hamlesiz rakip ve ikinci bir kademe**: sıra bayrağı düşende ve mat edecek tarafın yalnız şahı ve piyonları var; bayrağı düşenin bitboard'larda yapılan her hamlesinden sonra mat edecek tarafın legal hamlesi yok (bayrağı düşene karşı açmaz olamaz; mat edecek tarafın piyonları açmazları ve şahlarıyla deneniyor). Sonra arama yeniden, 9 ply ve 5.000 düğümle | arama mat bulmadan başarısız oldu (bütçe ya da ufuk); hamlesiz rakip yalnızca sıra bayrağı düşendeyken, mat edecek tarafta şah ve piyonlar kalmışken ve bayrağı düşenin rok hakkı yokken | 27 (ikinci kademe); 19 Kasım listesinde tam sürümün ilk aramasının matsız bıraktığı 645 satırın 345'ini hamlesiz rakip, kalan 300'ün 2'si (bKHPqNEw ve RwnQJq1k) dışında hepsini ikinci kademe | bir oyunun başarısız aramaları 9 ply'a kadar gider: JavaScript'te hamle başına ~6 µs, iki taraf; hamlesiz rakip bit işi |
 | **pat bekçisi**: rakip şahın alabileceği bir piyon, alınması sahibini her durumda pat ediyorsa duvar kalıyor (sahibinin şahı nerede durursa dursun piyonu koruyor ya da adım atacak karesi kalmıyor; sahibinin başka oynayan taşı yok; alış bir filin şahını açmıyor) | döngü, filsiz bir tarafın alınabilir sabit piyonuna rastladığında | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **piyon şahı tohumu**: piyon şahındaki bir şahın erişimi kendi karesinden değil, şimdi adım atabileceği karelerden başlıyor; kendi karesine sabit piyon saldırmaya devam ediyor | sırası gelen taraf piyon şahında (tahtada fil yok) | | |
@@ -628,7 +628,16 @@ Kasım'ın dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zor
 ulaşılabilen bütün pozisyonlar dolaşılarak denetlendi, chasolver'ın etiketleri hiç yanlış beraberlik
 vermiyor ve değişmez kontrolü sertifikalarını tanıyor ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
 JavaScript, Rust ve WebAssembly motorlarında düğüm sayılarına kadar aynı cevaplarla, sade
-dedektörün 20 dilinde de var (`lock/second/`, 60.471 pozisyonda aynı cevaplar).
+dedektörün 20 dilinde de var (`lock/second/`, 65.956 pozisyonda aynı cevaplar).
+
+Kutulu bir taşın piyon olmayan duvarları (27 Kasım): kendi renginden hareketsiz bir fil ve kendi
+donmuş şahı, yukarıdaki tablodaki gibi. Piyonu ve filinin kapattığı bir kale
+(`rb2k3/p1p1p1p1/P1P1P1P1/8/8/1K6/8/8`) artık kilit. Lichess satırlarından hiçbirini ispatlamıyorlar
+(hiçbir satır onlara ihtiyaç duymuyor), chasolver'ın bestelenmiş pozisyonlarında 72 cevap daha
+veriyorlar; test dosyalarındaki her yeni kilit, ondan ulaşılabilen bütün pozisyonlar dolaşılarak,
+chasolver'ın tam analiziyle ve değişmez kontrolüyle denetlendi
+([docs/RESULTS.md](docs/RESULTS.md#the-walls-of-a-boxed-piece)). JavaScript, Rust, WebAssembly ve
+20 dilde aynı.
 
 **Sırada ne var**, sırasıyla: kalan 2 kafes (RwnQJq1k, bKHPqNEw), açık kalan için sınırlı tam
 kapanış, ve dedektörün ve yukarıdaki kuralların yazılı sağlamlık ispatı.

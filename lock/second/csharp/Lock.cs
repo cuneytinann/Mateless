@@ -14,7 +14,10 @@
 //     the reachable positions split into families by what the pair's pawns have done (neither
 //     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
 //   - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-//     that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+//     that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+//     is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and out
+//     of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+//     castling right left and not standing where a castle leaves it beside its rook);
 //   - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
 //     out its second flight rule where they may hold both flights;
 //   - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -42,7 +45,9 @@ public readonly record struct Pieces(
     ulong WhiteRooks, ulong BlackRooks,
     ulong WhiteQueens, ulong BlackQueens,
     bool WhiteToMove,
-    bool EnPassant);   // the side to move can capture en passant
+    bool EnPassant,            // the side to move can capture en passant
+    bool WhiteCastles = false, // White has a castling right (its king and that rook in place)
+    bool BlackCastles = false);
 
 public static class Lock
 {
@@ -128,8 +133,27 @@ public static class Lock
             ulong target = 1UL << ((fields[3][0] - 'a') + 8 * (fields[3][1] - '1'));
             enPassant = whiteToMove ? (Sideways(South(target)) & sets['P']) != 0 : (Sideways(North(target)) & sets['p']) != 0;
         }
+        bool[] castles = new bool[2];   // White, Black
+        if (fields.Length > 2 && fields[2] != "-")
+        {
+            foreach (char c in fields[2])
+            {
+                bool white = char.IsUpper(c);
+                ulong back = white ? Rank1 : Rank8;
+                ulong king = sets[white ? 'K' : 'k'] & back, rooks = sets[white ? 'R' : 'r'] & back;
+                if (king == 0) continue;   // a right without its king in place does not count
+                int kf = BitOperations.TrailingZeroCount(king) % 8;
+                char up = char.ToUpperInvariant(c);
+                for (ulong r = rooks; r != 0; r &= r - 1)
+                {
+                    int f = BitOperations.TrailingZeroCount(r) % 8;
+                    if ((up == 'K' && f > kf) || (up == 'Q' && f < kf) || (up != 'K' && up != 'Q' && f == up - 'A' && f != kf))
+                        castles[white ? 0 : 1] = true;
+                }
+            }
+        }
         return new Pieces(sets['P'], sets['p'], sets['K'], sets['k'], sets['B'], sets['b'], sets['N'], sets['n'],
-                          sets['R'], sets['r'], sets['Q'], sets['q'], whiteToMove, enPassant);
+                          sets['R'], sets['r'], sets['Q'], sets['q'], whiteToMove, enPassant, castles[0], castles[1]);
     }
 
     /// <summary>Can White (white = true) or Black never be mated, by the lock detector?</summary>
@@ -154,14 +178,46 @@ public static class Lock
     }
 
     // The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-    // when every square around it is held or attacked by a pawn.
-    static List<ulong> Levels(Pieces p)
+    // when every square around it is held or attacked by a pawn (or holds one of its own pieces,
+    // wOwn or bOwn, where boxed pieces are on the board).
+    static List<ulong> Levels(Pieces p, ulong wOwn = 0, ulong bOwn = 0)
     {
         ulong held = p.WhitePawns | p.BlackPawns | Sideways(North(p.WhitePawns) | South(p.BlackPawns));
         var output = new List<ulong> { 0 };
-        foreach (ulong king in new[] { p.WhiteKing, p.BlackKing })
-            if ((Steps(king) & ~held) == 0) output.Add(king);
+        if ((Steps(p.WhiteKing) & ~(held | wOwn)) == 0) output.Add(p.WhiteKing);
+        if ((Steps(p.BlackKing) & ~(held | bOwn)) == 0) output.Add(p.BlackKing);
         return output;
+    }
+
+    // May this side's king hold a boxed piece's step square (when frozen)? Not with a castling
+    // right left (a castling rook may stand beside its king, in Chess960, and castling moves it), and
+    // not where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8,
+    // c8, d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one.
+    static bool KingWall(Pieces p, bool white)
+    {
+        ulong king = white ? p.WhiteKing : p.BlackKing, rooks = white ? p.WhiteRooks : p.BlackRooks;
+        ulong g = white ? 1UL << 6 : 1UL << 62, c = white ? 1UL << 2 : 1UL << 58;
+        return !(white ? p.WhiteCastles : p.BlackCastles) && (rooks & (((king & g) >> 1) | ((king & c) << 1))) == 0;
+    }
+
+    // The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+    // pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+    // reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+    // test). The largest such set.
+    static ulong StillBishops(ulong b, ulong held, ulong reach)
+    {
+        ulong s = b & ~reach;
+        for (;;)
+        {
+            ulong n = 0;
+            for (ulong m = s; m != 0; m &= m - 1)
+            {
+                ulong q = Lowest(m);
+                if ((Diagonal(q) & ~(held | s)) == 0) n |= q;
+            }
+            if (n == s) return s;
+            s = n;
+        }
     }
 
     // One level: the fixed point of the walls, the pawns that can never move, the kings' reaches, the
@@ -193,10 +249,17 @@ public static class Lock
             ulong nwFixed = wFixed & wWall & South(bWall | wFixed);
             ulong nbFixed = bFixed & bWall & North(wWall | bFixed);
             ulong nwCone = FillNorth(wCone, ~bWall), nbCone = FillSouth(bCone, ~wWall);
-            // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+            // The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king; with
+            // boxed pieces on the board, never onto its own boxed pieces and still bishops either.
             ulong bHit = Sideways(South(nbFixed)), wHit = Sideways(North(nwFixed));
-            ulong nwKing = Flood(wKing, ~(nwFixed | bHit | nearFrozenBlack));
-            ulong nbKing = Flood(bKing, ~(nbFixed | wHit | nearFrozenWhite));
+            ulong wStillNow = 0, bStillNow = 0;
+            if ((wx | bx) != 0)
+            {
+                wStillNow = StillBishops(p.WhiteBishops, nwFixed | (wx & boxedNow), bKing | bBish);
+                bStillNow = StillBishops(p.BlackBishops, nbFixed | (bx & boxedNow), wKing | wBish);
+            }
+            ulong nwKing = Flood(wKing, ~(nwFixed | bHit | nearFrozenBlack | (wx & boxedNow) | wStillNow));
+            ulong nbKing = Flood(bKing, ~(nbFixed | wHit | nearFrozenWhite | (bx & boxedNow) | bStillNow));
             ulong nwBish = wBish, nbBish = bBish, open = ~(nwFixed | nbFixed);
             for (;;)
             {
@@ -230,7 +293,16 @@ public static class Lock
         if (((North(Sideways(wCone)) & (bCone | bx)) | (South(Sideways(bCone)) & wx)) != 0) return null;  // a pawn can capture
         if ((frozenWhite && wKing != wk) || (frozenBlack && bKing != bk)) return null;           // the frozen king can move
         if (((Diagonal(wBish) & bCone) | (Diagonal(bBish) & wCone)) != 0) return null;            // a bishop meets a pawn's path
-        if (((o.Ws & ~(wFixed | (wx & boxed))) | (o.Bs & ~(bFixed | (bx & boxed)))) != 0) return null;  // a piece may step
+        // A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+        // its colour, or by its frozen king (where the king may be a wall).
+        ulong wStill = 0, bStill = 0;
+        if ((wx | bx) != 0)
+        {
+            wStill = StillBishops(p.WhiteBishops, wFixed | (wx & boxed), bKing | bBish);
+            bStill = StillBishops(p.BlackBishops, bFixed | (bx & boxed), wKing | wBish);
+        }
+        ulong wKw = frozenWhite && KingWall(p, true) ? wk : 0, bKw = frozenBlack && KingWall(p, false) ? bk : 0;
+        if (((o.Ws & ~(wFixed | (wx & boxed) | wStill | wKw)) | (o.Bs & ~(bFixed | (bx & boxed) | bStill | bKw))) != 0) return null;
         if ((wGuard | bGuard) != 0)
         {
             // A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches
@@ -386,14 +458,16 @@ public static class Lock
         Sideways(o) | North(o) | South(o) | Diagonal(queens) | Knight(knights);
 
     // With knights, rooks or queens on the board: every one of them must be boxed in by its own
-    // pawns and pieces; then the levels, with the boxed pieces as walls and no flight onto their
-    // squares.
+    // pawns and pieces (bishops and the king among them: the level checks that they never move);
+    // then the levels, with the boxed pieces as walls and no flight onto their squares.
     static bool BoxedLock(Pieces p, bool white, ulong wx, ulong bx)
     {
         ulong ws = BoxSteps(p.WhiteKnights, p.WhiteRooks | p.WhiteQueens, p.WhiteQueens);
         ulong bs = BoxSteps(p.BlackKnights, p.BlackRooks | p.BlackQueens, p.BlackQueens);
-        if ((ws & ~(p.WhitePawns | wx)) != 0 || (bs & ~(p.BlackPawns | bx)) != 0 || p.EnPassant) return false;
-        foreach (ulong frozen in Levels(p))
+        ulong wOwn = p.WhitePawns | wx | p.WhiteBishops | (KingWall(p, true) ? p.WhiteKing : 0);
+        ulong bOwn = p.BlackPawns | bx | p.BlackBishops | (KingWall(p, false) ? p.BlackKing : 0);
+        if ((ws & ~wOwn) != 0 || (bs & ~bOwn) != 0 || p.EnPassant) return false;
+        foreach (ulong frozen in Levels(p, wx | p.WhiteBishops, bx | p.BlackBishops))
             if (Level(p, frozen, new LevelIn(Wx: wx, Bx: bx, Ws: ws, Bs: bs)) is Sets s && !NetLeaks(p, s, white, wx | bx)) return true;
         return false;
     }

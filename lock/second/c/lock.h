@@ -16,6 +16,8 @@ typedef struct {
     uint64_t white_queens, black_queens;
     bool white_to_move;
     bool en_passant;     /* the side to move can capture en passant */
+    bool white_castles;  /* White has a castling right (its king and that rook in place) */
+    bool black_castles;
 } Pieces;
 
 /* The pieces of a FEN. The en passant square counts only if a pawn can capture onto it. */

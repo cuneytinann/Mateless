@@ -11,6 +11,8 @@ type pieces = {
   white_queens : int64; black_queens : int64;
   white_to_move : bool;
   en_passant : bool;  (** the side to move can capture en passant *)
+  white_castles : bool;  (** White has a castling right (its king and that rook in place) *)
+  black_castles : bool;
 }
 
 (** The pieces of a FEN. The en passant square counts only if a pawn can capture onto it. *)

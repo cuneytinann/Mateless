@@ -409,15 +409,33 @@ answers are those of trying every level and then the families; only the work dif
 
 ### Boxed knights, rooks and queens
 
-A piece whose every step square holds one of its own men that never moves (a fixed pawn, or
-another boxed piece) never moves; it attacks only those squares, which its own men hold for good,
-so it never gives check and takes no part in a mate. The rule is the golfed engine's, kept in the
-history (`[boxed]`): the boxed pieces are those no enemy king or bishop reaches, recomputed on every
-pass, so the bishops join the cycle; they are walls for both sides' pawns; two more leaks (a pawn
-can capture on a piece's square; a piece has a step square not held by a fixed pawn or a boxed
-piece of its colour); and the mating net counts no flight onto a piece's square. A piece whose
-steps are all held but that an enemy king or bishop reaches is no wall: it may be taken, and until
-then it stands still.
+A piece whose every step square holds one of its own men that never moves (a fixed pawn, another
+boxed piece, a still bishop or its own frozen king, below) never moves; it attacks only those
+squares, which its own men hold for good, so it never gives check and takes no part in a mate. The
+rule is the golfed engine's, kept in the history (`[boxed]`): the boxed pieces are those no enemy
+king or bishop reaches, recomputed on every pass, so the bishops join the cycle; they are walls for
+both sides' pawns; two more leaks (a pawn can capture on a piece's square; a piece has a step
+square not held by its own men as above); and the mating net counts no flight onto a piece's
+square. A piece whose steps are all held but that an enemy king or bishop reaches is no wall: it
+may be taken, and until then it stands still.
+
+*The walls that are not pawns* (27 November). A rook shut in by its pawn and a bishop of its own
+(`rb2k3/p1p1p1p1/P1P1P1P1/8/8/1K6/8/8`) never moves either, if the bishop never does. A **still
+bishop** is one whose every diagonal neighbour is held for good (a fixed pawn of its colour, a
+boxed piece of its colour or another still bishop) and that no enemy king or bishop reaches: the
+largest such set, found by dropping bishops until none is left with an open neighbour. It never
+moves, and nothing takes it: a pawn that could would fail the bishop contact test, and no king or
+bishop of the enemy reaches it. **The king** holds a step square when its level freezes it (the
+level then shows that it never moves) and its side has no castling right left: castling moves a
+rook that stands beside its king (Chess960), so while a right stands the king holds nothing. Nor
+does it where a castle leaves it beside its rook (g1 and f1, c1 and d1; g8, f8, c8, d8): a castle
+is a quiet move, after which the static tests are not asked (below), and there it could complete a
+box (`4bkrr/1p1p1p1p/1P1P1P1P/8/8/8/8/K7 b g`: after the castle, `4brkr`, the king frozen between
+its rooks; dead, and not proven). Its own knights, rooks, queens and bishops may hold its
+neighbours for the frozen level's first look, which the level then checks. With boxed pieces on the board the kings never step onto their own
+boxed pieces and still bishops. Each pass computes the still bishops from that pass's fixed pawns
+and boxed pieces and from the last pass's reaches, and the final check from the final sets: the
+sets only shrink as the reaches grow, so the fixed point is the same.
 
 *When:* only with a knight, rook or queen on the board (the first version stops there). A first
 look at the squares beside each rook and queen, east and west, against the side's own pawns and
@@ -431,7 +449,16 @@ queen, the neighbour on the side it came from, which it came from or slid over; 
 castled stands next to its king. So after such a move the boxed rule fails, and no other quiet
 move changes what it reads (a king or bishop stays inside its reach). Checked: after 2,436,600
 quiet knight, rook and queen moves from boxed and chasolver positions, no lock; `trigger_check.js`
-with boxed and open-pair positions, 57,000 games: no difference from the clock rule.
+with boxed and open-pair positions, 57,000 games: no difference from the clock rule. The walls that
+are not pawns keep it so: a bishop that has just moved has the square it came from or slid over
+empty beside it, so it is no still bishop; a king that has just stepped can step back (an enemy
+pawn attacking that square would have been a check, after which the lock is asked), so its frozen
+level fails; and a castle leaves king and rook on the squares where the king holds nothing, so the
+rook is not boxed. Checked on 844,533 positions (the test files, the castling positions, the new
+locks): of 11.6 million quiet moves of kings, bishops, knights, rooks and queens, castles among
+them, none gives a lock the position before did not have, but the 90 that the engine of 26 November
+gives as well (kings and pawns only, where the stuck mater and the forced step read the side to
+move).
 
 ### After the first search: the stuck mater move by move, then the second tier
 

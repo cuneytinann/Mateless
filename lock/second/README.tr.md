@@ -1,9 +1,9 @@
 # Kilit dedektörü, ikinci sürüm, tek başına
 
 [Mateless](https://github.com/cuneytinann/Mateless)'in kilit dedektörünün ikinci sürümü, en sade
-hâliyle, ilk sürümle aynı 20 dilde (ilk sürüm bir üst klasörde, [`../`](../)). Her sürüm 430 ile
+hâliyle, ilk sürümle aynı 20 dilde (ilk sürüm bir üst klasörde, [`../`](../)). Her sürüm 470 ile
 650 satır arası ve yalnızca kendi dilinin standart kütüphanesini kullanıyor. Hepsi satır satır aynı
-algoritma ve hepsi `positions.tsv`'deki 60.471 pozisyonda Mateless'in ikinci sürümünün cevaplarını
+algoritma ve hepsi `positions.tsv`'deki 65.956 pozisyonda Mateless'in ikinci sürümünün cevaplarını
 veriyor.
 
 [English](README.md) · [İlk sürüm](../README.tr.md)
@@ -24,7 +24,12 @@ değil**: geçirdiği bir yapı asla açılamaz, ama geçirmediği bir pozisyon 
   kilit gibi deneniyor. En fazla 3 çift (27 aile).
 - **Kutulu at, kale ve vezir.** Adım attığı her karede kendi tarafının asla kıpırdamayan
   bir taşı duran ve hiçbir rakip şahın ya da filin ulaşmadığı bir taş asla oynamaz ve asla
-  alınmaz. Başka her at, kale ya da vezir dedektörü yine hemen düşürüyor.
+  alınmaz. Böyle bir taş sabit bir piyon, kutulu başka bir taş, hareketsiz bir fil (her çapraz
+  komşusu aynı biçimde tutulmuş, hiçbir rakip şahın ya da filin ulaşmadığı) ya da taşın kendi
+  şahı olabilir; şah donmuşsa, tarafının hiç rok hakkı kalmamışsa ve bir rokun onu kalesinin yanında
+  bıraktığı yerde durmuyorsa (f1'de kaleyle g1, d1'de kaleyle c1; g8, f8, c8, d8): rok yarım hamle
+  sayacını olduğu gibi bırakıyor, yani dedektör roktan sonra sorulmuyor (aşağıya bakın). Başka her
+  at, kale ya da vezir dedektörü yine hemen düşürüyor.
 - **İkiz filler.** Bir tarafın aynı renk karelerde iki fili artık dedektörü düşürmüyor. Kendi
   şahlarının iki kaçış karesini birden kapatabildikleri yerde mat ağı o kaçışlara güvenmiyor.
 - **Pat bekçisi.** Rakip şahın alabileceği bir piyon, onu almak sahibini her seferinde pat
@@ -47,8 +52,8 @@ pieces = fromFen(fen)              // ya da Pieces'ı kendi bitboard'larından d
 cannotBeMated(pieces, white)       // true: Beyaz (false: Siyah) asla mat edilemez
 ```
 
-`Pieces` on dört alan taşıyor. İkinci sürüm her taş türünü ayrı ayrı ve sıranın kimde olduğunu
-istiyor:
+`Pieces` on altı alan taşıyor. İkinci sürüm her taş türünü ayrı ayrı, sıranın kimde olduğunu ve
+her tarafın hâlâ rok yapıp yapamayacağını istiyor:
 
 | alan | ne |
 |---|---|
@@ -60,10 +65,17 @@ istiyor:
 | beyaz vezirler, siyah vezirler | her tarafın vezirleri |
 | sıra beyazda | sıra Beyaz'daysa true |
 | en passant | sırası gelen taraf en passant alabiliyorsa true |
+| beyaz rok, siyah rok | o tarafın hâlâ bir rok hakkı varsa true |
 
 Bir kare kümesi 64 bitlik bir tamsayı: a1 = 0, b1 = 1, …, h8 = 63. `fromFen` en passant karesini
 yalnızca sırası gelen tarafın bir piyonu o kareye almaya hazır duruyorsa sayıyor. O alışın yasal
-olup olmadığını sormuyor. Programın bunu biliyorsa kendin ver.
+olup olmadığını sormuyor. Programın bunu biliyorsa kendin ver. Rok alanını KQkq olarak ya da dikey
+harfleriyle (Shredder-FEN, Chess960) okuyor ve bir hakkı yalnızca şahı kendi ilk yatayında, o
+renkten bir kale de aynı yatayda şahın o yanında (harfle yazılmışsa o dikeyde) duruyorsa sayıyor. Bir
+hak yalnızca kendi taşını kutulayan bir şah için önemli: hak durdukça şah rok yapıp gidebilir, yani
+hiçbir şeyi tutmuyor. Mateless ayrıca dikeyleri öbür tarafınkiyle çelişen bir hakkı düşürüyor (iki
+taraf için tek rok iskeleti); bu sürüm böyle bir hakkı tutuyor, yani böyle bir FEN'de Mateless'ten
+az ispatlayabilir, asla fazla değil.
 
 ## Diller
 
@@ -72,12 +84,12 @@ olup olmadığını sormuyor. Programın bunu biliyorsa kendin ver.
 | C | [`c/`](c/) | `cc -O2 -o test test.c lock.c && ./test` | GCC 13.3, Clang 18 |
 | C++ | [`cpp/`](cpp/) | `c++ -std=c++17 -O2 -o test test.cpp && ./test` | GCC 13.3, Clang 18 |
 | C# | [`csharp/`](csharp/) | `dotnet run -c Release -- ../positions.tsv` | .NET 8 |
-| Crystal | [`crystal/`](crystal/) | `crystal run --release test.cr -- ../positions.tsv` | Crystal 1.11 |
+| Crystal | [`crystal/`](crystal/) | `crystal run --release test.cr -- ../positions.tsv` | Crystal 1.14 |
 | Go | [`go/`](go/) | `go test -v` | Go 1.24 |
 | Haskell | [`haskell/`](haskell/) | `ghc -O2 -outputdir build -o test Test.hs && ./test` | GHC 9.4 |
 | Java | [`java/`](java/) | `javac Lock.java Test.java && java Test` | Java 21 (17 ya da sonrası gerekir) |
 | JavaScript | [`javascript/`](javascript/) | `node test.mjs` | Node 22 |
-| Kotlin | [`kotlin/`](kotlin/) | `kotlinc Lock.kt Test.kt -include-runtime -d lock.jar && java -jar lock.jar` | Kotlin 1.3 |
+| Kotlin | [`kotlin/`](kotlin/) | `kotlinc Lock.kt Test.kt -include-runtime -d lock.jar && java -jar lock.jar` | Kotlin 1.3, 2.1 |
 | Lua | [`lua/`](lua/) | `lua test.lua` | Lua 5.4 (5.3 ya da sonrası gerekir) |
 | Nim | [`nim/`](nim/) | `nim c -d:release --hints:off -r test.nim` | Nim 1.6 |
 | OCaml | [`ocaml/`](ocaml/) | `ocamlopt -o test lock.mli lock.ml test.ml && ./test` | OCaml 4.14 |
@@ -86,12 +98,12 @@ olup olmadığını sormuyor. Programın bunu biliyorsa kendin ver.
 | Python | [`python/`](python/) | `python3 test.py` | Python 3.13 |
 | Ruby | [`ruby/`](ruby/) | `ruby test.rb` | Ruby 3.3 (3.0 ya da sonrası gerekir) |
 | Rust | [`rust/`](rust/) | `cargo test --release -- --nocapture` | Rust 1.97 |
-| Scala | [`scala/`](scala/) | `scalac Lock.scala Test.scala && scala Test` | Scala 2.11 |
+| Scala | [`scala/`](scala/) | `scalac Lock.scala Test.scala && scala Test` | Scala 2.11, 3.8 (3.5'ten itibaren: `scala run -cp . -M Test`) |
 | TypeScript | [`typescript/`](typescript/) | `node test.ts` | Node 22.18 ya da sonrası (türleri atarak çalıştırır); `tsc --strict` türleri denetler |
 | Zig | [`zig/`](zig/) | `zig run -O ReleaseFast test.zig` | Zig 0.17 |
 
 `sh test-all.sh`, derleyicisi kurulu olan her testi çalıştırıyor. Her test her pozisyonda iki
-tarafı da cevaplıyor ve `<dil>: 60471 positions, 0 wrong` yazıyor.
+tarafı da cevaplıyor ve `<dil>: 65956 positions, 0 wrong` yazıyor.
 
 ## Nasıl denendi
 
@@ -104,17 +116,26 @@ tarafı da cevaplıyor ve `<dil>: 60471 positions, 0 wrong` yazıyor.
 - Lichess kilitleri, bir kurala şans verecek biçimde değiştirilmiş: bir piyon kilitlenmesi önü
   açık bir çifte ayrılmış, bir at, kale ya da vezir kendi piyonlarıyla kutulanmış, sırası gelen
   tarafın şahı bir piyon şahına girmiş, iki şah da herhangi bir yere taşınmış. Her kilit ve her
-  değişiklik için kuralın ispatladığı bir pozisyon ve ispatlamadığı bir pozisyon.
+  değişiklik için kuralın ispatladığı bir pozisyon ve ispatlamadığı bir pozisyon;
+- kutulu bir taşın piyon olmayan duvarları: Lichess kilitlerine aynı biçimde konmuş, kısmen
+  kendi renginden hareketsiz bir filin ya da kendi şahının kutuladığı bir at, kale ya da vezir;
+  piyonu ve bir filin kutuladığı bir kale ile birbirini tutan bir şah, kale ve fil, her biri filsiz
+  ya da şahsız hâliyle de; aynıları bir rok hakkı kalmış olarak ve tahtanın taşıyamayacağı bir hakla;
+  iki kale arasında bir şah, bir rokun şahı ve kaleyi bıraktığı yerde ve bırakmadığı yerde.
 
-37.793 "asla mat edilemez" cevabının 31.252'si ilk sürümün. Kalanı yeni kurallardan:
+38.265 "asla mat edilemez" cevabının 31.256'sı ilk sürümün. Kalanı yeni kurallardan:
 
 | kural | cevap |
 |---|---|
-| yeni seviye: ikiz filler, pat bekçisi, piyon şahı tohumu | 5.651 |
+| yeni seviye: ikiz filler, pat bekçisi, piyon şahı tohumu | 5.653 |
 | zorunlu adım | 618 |
-| kutulu at, kale ve vezir | 114 |
+| kutulu at, kale ve vezir (466'sının duvarlarında hareketsiz bir fil ya da şah var) | 580 |
 | önü açık piyon çiftleri | 92 |
 | hamlesiz rakip | 66 |
+
+Her dil ayrıca 183.461 başka pozisyonda ve rok alanını denemek için yazılmış 206.149 pozisyonda
+(bir piyon zinciri üstünde ilk yatayda şah, kaleler ve filler, tahtanın izin verdiği her rok alanıyla)
+Mateless'in cevaplarını veriyor.
 
 Dosyayı Mateless reposundaki `tools/lock-positions.js` yazıyor.
 

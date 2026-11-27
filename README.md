@@ -395,8 +395,8 @@ the detector alone, in its simplest form, in 20 languages: C, C++, C#, Crystal, 
 JavaScript, Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Each
 is about two hundred lines on its language's standard library, and all give the same answers on the
 same 36,406 test positions ([lock/README.md](lock/README.md)). Its folder `second/` holds the
-second version the same way: 430 to 650 lines in each of the same 20 languages, the same answers on
-60,471 test positions ([lock/second/README.md](lock/second/README.md)). The table below is the fast
+second version the same way: 470 to 730 lines in each of the same 20 languages, the same answers on
+65,956 test positions ([lock/second/README.md](lock/second/README.md)). The table below is the fast
 versions inside Mateless.
 
 **What it needs:** the bitboards of the pawns, kings and bishops (by colour), whether any knight,
@@ -553,7 +553,7 @@ measured, and only where its own situation is on the board.
 | rule | runs only when | proves (of the first version's 36 unproven rows) | cost elsewhere |
 |---|---|---|---|
 | **open pawn pairs**: a white and a black pawn on a file with one square between them, the rest locked; the reachable positions split into three families by what the pair's pawns have done (neither moved, the white one stepped into the gap, the black one did), each an ordinary level with walls of its own, up to 3 pairs | the pawns hold such a pair (two shifts tell) | 3 (and the death of 5 drawn games of August and September at the ply it happens) | none measurable |
-| **boxed knights, rooks and queens**: a piece whose every step square holds its own fixed pawn or boxed piece never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history); its king is never a wall, so castling, Chess960's too, never moves a boxed rook (`test/chess960_boxed_check.js`). A rook beside its own king may look boxed and still castle: `8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1` is dead, and with the castling right (`w K`, Chess960) it has a mate in four (1.O-O exf1=N 2.Bb2 Ne3 3.dxe3 d2 4.Kh1 dxe1=Q#); no test claims it, and the same check keeps it so | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
+| **boxed knights, rooks and queens**: a piece whose every step square holds one of its own men that never moves never moves and attacks only its own men's squares, so it may stay on the board (the golfed engine's rule, from the history). Such a man is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held the same way, and no enemy king or bishop reaching it) or its own king, when the king is frozen, its side has no castling right left and it does not stand where a castle leaves it beside its rook (g1 and f1, c1 and d1; g8, f8, c8, d8: no static test is asked after a castle). So castling, Chess960's too, never moves a boxed rook (`test/chess960_boxed_check.js`). A rook beside its own king may look boxed and still castle: `8/8/8/4k3/p1p5/P1Pp1p1p/3PpP1P/2B1B1KR w - - 0 1` is dead, and with the castling right (`w K`, Chess960) it has a mate in four (1.O-O exf1=N 2.Bb2 Ne3 3.dxe3 d2 4.Kh1 dxe1=Q#); no test claims it, and the same check keeps it so | a knight, rook or queen stands, past a look at the squares beside each rook and queen (96% of game positions end there) | 1 (hPiwD75i), and 84 composed locks of chasolver's test positions; the still bishop and the king, 72 more lock answers there (66 proven by nothing else) | ~2 ns (Rust) / ~10 ns (JS) per lock test with such a piece |
 | **after the Domino search, the stuck mater move by move and a second tier**: the flagged side is to move and the mater has only its king and pawns; after each of the flagged side's moves, made on the bitboards, the mater has no legal move (no pins are possible against the flagged side; the mater's pawns are tried with their pins and checks). Then the search again at 9 plies and 5,000 nodes | the search failed without a mate (budget or horizon); the stuck mater only with the flagged side to move, the mater left with king and pawns, and no castling right for the flagged side | 27 (the second tier); on the list of 19 November, of the 645 rows the full version's first search leaves without a mate, the stuck mater 345 and the second tier all but 2 of the other 300 (bKHPqNEw and RwnQJq1k) | a game's failing searches go on to 9 plies: ~6 µs a move in JavaScript, both sides; the stuck mater is bit work |
 | **the stalemate guard**: a pawn the enemy king may take stays a wall if taking it always stalemates its owner (its king, wherever it may stand, defends the pawn or has no square left; nothing else of the owner's moves; the capture uncovers no bishop's check) | the cycle meets a takeable fixed pawn of a side without bishops | 3 (chikSuUd, f6c1lu7R, FKr42ZRT) | |
 | **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
@@ -639,7 +639,15 @@ The four rules of November (stalemate guard, check seed, stuck mater, forced ste
 was checked by walking all the positions reachable from it, chasolver's labels give no false draw,
 and the invariant check knows their certificates ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
 They are in the JavaScript, Rust and WebAssembly engines, with the same answers and node counts, and
-in the simple detector's 20 languages (`lock/second/`, the same answers on 60,471 positions).
+in the simple detector's 20 languages (`lock/second/`, the same answers on 65,956 positions).
+
+The walls of a boxed piece that are not pawns (27 November): a still bishop of its colour and its
+own frozen king, as in the table above. A rook shut in by its pawn and its bishop
+(`rb2k3/p1p1p1p1/P1P1P1P1/8/8/1K6/8/8`) is now a lock. They prove none of the Lichess rows (no row
+needs them) and 72 more answers of chasolver's composed positions; every new lock of the test
+files was checked by walking all the positions reachable from it, by chasolver's full analysis and
+by the invariant check ([docs/RESULTS.md](docs/RESULTS.md#the-walls-of-a-boxed-piece)). The same in
+JavaScript, Rust, WebAssembly and the 20 languages.
 
 **What comes next**, in order: the 2 cages left (RwnQJq1k, bKHPqNEw), a bounded full closure for
 what stays open, and a written proof of soundness for the detector and the rules above.

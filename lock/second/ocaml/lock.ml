@@ -14,7 +14,10 @@
        the reachable positions split into families by what the pair's pawns have done (neither
        moved, the white one stepped into the gap, the black one did), up to 3 pairs;
      - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-       that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+       that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a
+       man is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so,
+       and out of the enemy king's and bishops' reach) or the piece's own frozen king (its side
+       with no castling right left and not standing where a castle leaves it beside its rook);
      - twin bishops: two bishops of one side on one colour no longer fail it; the mating net
        leaves out its second flight rule where they may hold both flights;
      - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -35,6 +38,8 @@ type pieces = {
   white_queens : int64; black_queens : int64;
   white_to_move : bool;
   en_passant : bool;  (* the side to move can capture en passant *)
+  white_castles : bool;  (* White has a castling right (its king and that rook in place) *)
+  black_castles : bool;
 }
 
 (* What one level leaves for the mating net (and for the families after it). *)
@@ -77,6 +82,9 @@ let count s =
   go s 0
 let lowest s = s &&& Int64.neg s                                    (* the lowest square of s *)
 let rest s = s &&& Int64.sub s 1L                                   (* s without its lowest square *)
+let square_of s =                                                   (* the lowest square's number *)
+  let rec go i = if Int64.logand (Int64.shift_right_logical s i) 1L = 1L then i else go (i + 1) in
+  go 0
 
 (* The squares a knight on s goes to. *)
 let knight s =
@@ -126,16 +134,60 @@ let from_fen fen =
       else (sideways (north target) &&& s 'p') <> 0L
     | _ -> false
   in
+  (* A castling right counts only with its king and a rook of its side on the back rank. *)
+  let castles white =
+    let home = if white then rank_1 else rank_8 in
+    let king = s (if white then 'K' else 'k') &&& home in
+    let rec files r = if r = 0L then [] else (square_of r mod 8) :: files (rest r) in
+    let files = files (s (if white then 'R' else 'r') &&& home) in
+    let right c =
+      let kf = square_of king mod 8 in
+      match Char.uppercase_ascii c with
+      | 'K' -> List.exists (fun f -> f > kf) files
+      | 'Q' -> List.exists (fun f -> f < kf) files
+      | u -> let f = Char.code u - Char.code 'A' in f <> kf && List.mem f files
+    in
+    match List.nth_opt fields 2 with
+    | Some rights when king <> 0L ->
+      String.fold_left (fun ok c -> ok || (c <> '-' && (c >= 'A' && c <= 'Z') = white && right c)) false rights
+    | _ -> false
+  in
   { white_pawns = s 'P'; black_pawns = s 'p'; white_king = s 'K'; black_king = s 'k';
     white_bishops = s 'B'; black_bishops = s 'b'; white_knights = s 'N'; black_knights = s 'n';
     white_rooks = s 'R'; black_rooks = s 'r'; white_queens = s 'Q'; black_queens = s 'q';
-    white_to_move; en_passant }
+    white_to_move; en_passant; white_castles = castles true; black_castles = castles false }
 
 (* The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-   when every square around it is held or attacked by a pawn. *)
-let levels p =
+   when every square around it is held or attacked by a pawn (or holds one of its own pieces, w_own
+   or b_own, where boxed pieces are on the board). *)
+let levels ?(w_own = 0L) ?(b_own = 0L) p =
   let held = p.white_pawns ||| p.black_pawns ||| sideways (north p.white_pawns ||| south p.black_pawns) in
-  0L :: List.filter (fun king -> (steps king &&& ~~~held) = 0L) [ p.white_king; p.black_king ]
+  0L :: List.filter_map (fun (king, own) -> if (steps king &&& ~~~(held ||| own)) = 0L then Some king else None)
+          [ (p.white_king, w_own); (p.black_king, b_own) ]
+
+(* May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+   left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+   where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+   d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one. *)
+let king_wall p white =
+  let king, rooks, castles, g, c =
+    if white then (p.white_king, p.white_rooks, p.white_castles, 1L <<< 6, 1L <<< 2)
+    else (p.black_king, p.black_rooks, p.black_castles, 1L <<< 62, 1L <<< 58)
+  in
+  (not castles) && (rooks &&& (((king &&& g) >>> 1) ||| ((king &&& c) <<< 1))) = 0L
+
+(* The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+   pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+   reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+   test). The largest such set. *)
+let still_bishops b held reach =
+  let rec go s =
+    let rec keep m n = if m = 0L then n else
+        let q = lowest m in keep (rest m) (if (diagonal q &&& ~~~(held ||| s)) = 0L then n ||| q else n) in
+    let n = keep s 0L in
+    if n = s then s else go n
+  in
+  go (b &&& ~~~reach)
 
 (* The check seed: the side to move is in a pawn's check, so its king must step now, to a square it
    can step to (not its own pawn, not a square an enemy pawn attacks, not next to the enemy king);
@@ -222,10 +274,16 @@ let level ?pawns ?(v = 0L) ?start ?(wx = 0L) ?(bx = 0L) ?(ws = 0L) ?(bs = 0L) ?(
     let nw_fixed = !w_fixed &&& w_wall &&& south (b_wall ||| !w_fixed) in
     let nb_fixed = !b_fixed &&& b_wall &&& north (w_wall ||| !b_fixed) in
     let nw_cone = fill_north !w_cone ~~~b_wall and nb_cone = fill_south !b_cone ~~~w_wall in
-    (* The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king. *)
+    (* The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king; with
+       boxed pieces on the board, never onto its own boxed pieces and still bishops either. *)
     let b_hit = sideways (south nb_fixed) and w_hit = sideways (north nw_fixed) in
-    let nw_king = flood !w_king ~~~(nw_fixed ||| b_hit ||| near_frozen_black) in
-    let nb_king = flood !b_king ~~~(nb_fixed ||| w_hit ||| near_frozen_white) in
+    let w_still, b_still =
+      if (wx ||| bx) = 0L then (0L, 0L)
+      else (still_bishops p.white_bishops (nw_fixed ||| (wx &&& boxed)) (!b_king ||| !b_bish),
+            still_bishops p.black_bishops (nb_fixed ||| (bx &&& boxed)) (!w_king ||| !w_bish))
+    in
+    let nw_king = flood !w_king ~~~(nw_fixed ||| b_hit ||| near_frozen_black ||| (wx &&& boxed) ||| w_still) in
+    let nb_king = flood !b_king ~~~(nb_fixed ||| w_hit ||| near_frozen_white ||| (bx &&& boxed) ||| b_still) in
     let open_squares = ~~~(nw_fixed ||| nb_fixed) in
     let rec bishops a d =
       let a' = a ||| (diagonal a &&& open_squares) and d' = d ||| (diagonal d &&& open_squares) in
@@ -252,11 +310,23 @@ let level ?pawns ?(v = 0L) ?start ?(wx = 0L) ?(bx = 0L) ?(ws = 0L) ?(bs = 0L) ?(
     w_bish := nw_bish; b_bish := nb_bish; w_take := nw_take; b_take := nb_take; w_guard := nw_guard; b_guard := nb_guard
   done;
   let boxed = (wx &&& ~~~(!b_king ||| !b_bish)) ||| (bx &&& ~~~(!w_king ||| !w_bish)) in
+  (* A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+     its colour, or by its frozen king (where the king may be a wall). *)
+  let step_held () =
+    let w_still, b_still =
+      if (wx ||| bx) = 0L then (0L, 0L)
+      else (still_bishops p.white_bishops (!w_fixed ||| (wx &&& boxed)) (!b_king ||| !b_bish),
+            still_bishops p.black_bishops (!b_fixed ||| (bx &&& boxed)) (!w_king ||| !w_bish))
+    in
+    let w_kw = if frozen_white && king_wall p true then wk else 0L in
+    let b_kw = if frozen_black && king_wall p false then bk else 0L in
+    (!w_fixed ||| (wx &&& boxed) ||| w_still ||| w_kw, !b_fixed ||| (bx &&& boxed) ||| b_still ||| b_kw)
+  in
   if ((!w_cone &&& rank_8) ||| (!b_cone &&& rank_1)) <> 0L then None                             (* a pawn can promote *)
   else if ((north (sideways !w_cone) &&& (!b_cone ||| bx)) ||| (south (sideways !b_cone) &&& wx)) <> 0L then None  (* a pawn can capture *)
   else if (frozen_white && !w_king <> wk) || (frozen_black && !b_king <> bk) then None           (* the frozen king can move *)
   else if ((diagonal !w_bish &&& !b_cone) ||| (diagonal !b_bish &&& !w_cone)) <> 0L then None    (* a bishop meets a pawn's path *)
-  else if ((ws &&& ~~~(!w_fixed ||| (wx &&& boxed))) ||| (bs &&& ~~~(!b_fixed ||| (bx &&& boxed)))) <> 0L then None  (* a piece may step *)
+  else if (let w_held, b_held = step_held () in ((ws &&& ~~~w_held) ||| (bs &&& ~~~b_held)) <> 0L) then None  (* a piece may step *)
   else begin
     if (!w_guard ||| !b_guard) <> 0L then begin
       (* A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches
@@ -347,17 +417,20 @@ let families p gaps frozen white =
 let box_steps knights o queens = sideways o ||| north o ||| south o ||| diagonal queens ||| knight knights
 
 (* With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
-   and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares. *)
+   and pieces (bishops and the king among them: the level checks that they never move); then the
+   levels, with the boxed pieces as walls and no flight onto their squares. *)
 let boxed_lock p white wx bx =
   let ws = box_steps p.white_knights (p.white_rooks ||| p.white_queens) p.white_queens in
   let bs = box_steps p.black_knights (p.black_rooks ||| p.black_queens) p.black_queens in
-  (ws &&& ~~~(p.white_pawns ||| wx)) = 0L && (bs &&& ~~~(p.black_pawns ||| bx)) = 0L && not p.en_passant &&
+  let w_own = p.white_pawns ||| wx ||| p.white_bishops ||| (if king_wall p true then p.white_king else 0L) in
+  let b_own = p.black_pawns ||| bx ||| p.black_bishops ||| (if king_wall p false then p.black_king else 0L) in
+  (ws &&& ~~~w_own) = 0L && (bs &&& ~~~b_own) = 0L && not p.en_passant &&
   List.exists
     (fun frozen ->
       match level ~wx ~bx ~ws ~bs p frozen with
       | Some s -> not (net_leaks p s white (wx ||| bx))
       | None -> false)
-    (levels p)
+    (levels ~w_own:(wx ||| p.white_bishops) ~b_own:(bx ||| p.black_bishops) p)
 
 (* The stuck mater: the flagged side is to move and, whatever it plays, the mater has no legal move
    left (kings and pawns only): the game ends at the mater's turn. *)

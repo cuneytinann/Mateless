@@ -14,7 +14,10 @@
 #     the reachable positions split into families by what the pair's pawns have done (neither
 #     moved, the white one stepped into the gap, the black one did), up to 3 pairs;
 #   - boxed knights, rooks and queens: a piece whose every step square holds one of its own men
-#     that never moves, and that no enemy king or bishop reaches, never moves nor falls;
+#     that never moves, and that no enemy king or bishop reaches, never moves nor falls; such a man
+#     is a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held so, and out
+#     of the enemy king's and bishops' reach) or the piece's own frozen king (its side with no
+#     castling right left and not standing where a castle leaves it beside its rook);
 #   - twin bishops: two bishops of one side on one colour no longer fail it; the mating net leaves
 #     out its second flight rule where they may hold both flights;
 #   - the stalemate guard: a pawn the enemy king may take stays a wall if taking it always
@@ -115,7 +118,9 @@ module Lock
     white_rooks : UInt64, black_rooks : UInt64,
     white_queens : UInt64, black_queens : UInt64,
     white_to_move : Bool,
-    en_passant : Bool # the side to move can capture en passant
+    en_passant : Bool,            # the side to move can capture en passant
+    white_castles : Bool = false, # White has a castling right (its king and that rook in place)
+    black_castles : Bool = false
   )
 
   # What one level leaves for the mating net (and for the families after it).
@@ -146,8 +151,34 @@ module Lock
         en_passant = (sideways(north(target)) & sets['p']) != 0
       end
     end
+    castles = {true => false, false => false}
+    (fields.size > 2 && fields[2] != "-" ? fields[2] : "").each_char do |c|
+      white = c.uppercase?
+      home = white ? RANK_1 : RANK_8
+      king = sets[white ? 'K' : 'k'] & home
+      next if king == 0 # a right without its king in place does not count
+      kf = king.trailing_zeros_count % 8
+      files = squares(sets[white ? 'R' : 'r'] & home).map { |r| r.trailing_zeros_count % 8 }
+      up = c.upcase
+      castles[white] |= case up
+                        when 'K' then files.any? { |f| f > kf }
+                        when 'Q' then files.any? { |f| f < kf }
+                        else          (up - 'A') != kf && files.includes?(up - 'A')
+                        end
+    end
     Pieces.new(sets['P'], sets['p'], sets['K'], sets['k'], sets['B'], sets['b'], sets['N'], sets['n'],
-      sets['R'], sets['r'], sets['Q'], sets['q'], white_to_move, en_passant)
+      sets['R'], sets['r'], sets['Q'], sets['q'], white_to_move, en_passant, castles[true], castles[false])
+  end
+
+  # The one-square sets of s.
+  private def squares(s : UInt64) : Array(UInt64)
+    out = [] of UInt64
+    while s != 0
+      b = lowest(s)
+      out << b
+      s ^= b
+    end
+    out
   end
 
   # Can White (white = true) or Black never be mated, by the lock detector?
@@ -173,10 +204,33 @@ module Lock
   end
 
   # The levels: both kings free (0), then each king frozen on its square (a wall for both sides)
-  # when every square around it is held or attacked by a pawn.
-  private def levels(p : Pieces) : Array(UInt64)
+  # when every square around it is held or attacked by a pawn (or holds one of its own pieces,
+  # w_own or b_own, where boxed pieces are on the board).
+  private def levels(p : Pieces, w_own : UInt64 = 0_u64, b_own : UInt64 = 0_u64) : Array(UInt64)
     held = p.white_pawns | p.black_pawns | sideways(north(p.white_pawns) | south(p.black_pawns))
-    [0_u64] + [p.white_king, p.black_king].select { |king| (steps(king) & ~held) == 0 }
+    [0_u64] + [{p.white_king, w_own}, {p.black_king, b_own}].select { |(king, own)| (steps(king) & ~(held | own)) == 0 }.map(&.[0])
+  end
+
+  # May this side's king hold a boxed piece's step square (when frozen)? Not with a castling right
+  # left (a castling rook may stand beside its king, in Chess960, and castling moves it), and not
+  # where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8, f8, c8,
+  # d8): a castle leaves the halfmove clock as it is, so the lock is not asked after one.
+  private def king_wall(p : Pieces, white : Bool) : Bool
+    king, rooks, castles, g, c = white ? {p.white_king, p.white_rooks, p.white_castles, 1_u64 << 6, 1_u64 << 2} : {p.black_king, p.black_rooks, p.black_castles, 1_u64 << 62, 1_u64 << 58}
+    !castles && (rooks & (((king & g) >> 1) | ((king & c) << 1))) == 0
+  end
+
+  # The still bishops among b: every diagonal neighbour held for good (held: fixed pawns and boxed
+  # pieces of their colour) or by another still bishop, and out of the enemy king's and bishops'
+  # reach. Such a bishop never moves and is never taken (a pawn taking it fails the bishop contact
+  # test). The largest such set.
+  private def still_bishops(b : UInt64, held : UInt64, reach : UInt64) : UInt64
+    s = b & ~reach
+    loop do
+      n = squares(s).select { |q| (diagonal(q) & ~(held | s)) == 0 }.reduce(0_u64) { |a, q| a | q }
+      return s if n == s
+      s = n
+    end
   end
 
   # One level: the fixed point of the walls, the pawns that can never move, the kings' reaches, the
@@ -212,11 +266,14 @@ module Lock
       nb_fixed = b_fixed & b_wall & north(w_wall | b_fixed)
       nw_cone = fill_north(w_cone, ~b_wall)
       nb_cone = fill_south(b_cone, ~w_wall)
-      # The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king.
+      # The kings: never onto a fixed pawn, a square it attacks, or next to the frozen king; with
+      # boxed pieces on the board, never onto its own boxed pieces and still bishops either.
       b_hit = sideways(south(nb_fixed))
       w_hit = sideways(north(nw_fixed))
-      nw_king = flood(w_king, ~(nw_fixed | b_hit | near_frozen_black))
-      nb_king = flood(b_king, ~(nb_fixed | w_hit | near_frozen_white))
+      w_still = (wx | bx) != 0 ? still_bishops(p.white_bishops, nw_fixed | (wx & boxed), b_king | b_bish) : 0_u64
+      b_still = (wx | bx) != 0 ? still_bishops(p.black_bishops, nb_fixed | (bx & boxed), w_king | w_bish) : 0_u64
+      nw_king = flood(w_king, ~(nw_fixed | b_hit | near_frozen_black | (wx & boxed) | w_still))
+      nb_king = flood(b_king, ~(nb_fixed | w_hit | near_frozen_white | (bx & boxed) | b_still))
       nw_bish, nb_bish = w_bish, b_bish
       open = ~(nw_fixed | nb_fixed)
       loop do
@@ -249,7 +306,13 @@ module Lock
     return nil if ((north(sideways(w_cone)) & (b_cone | bx)) | (south(sideways(b_cone)) & wx)) != 0 # a pawn can capture
     return nil if (frozen_white && w_king != wk) || (frozen_black && b_king != bk)              # the frozen king can move
     return nil if ((diagonal(w_bish) & b_cone) | (diagonal(b_bish) & w_cone)) != 0               # a bishop meets a pawn's path
-    return nil if ((ws & ~(w_fixed | (wx & boxed))) | (bs & ~(b_fixed | (bx & boxed)))) != 0     # a piece may step
+    # A piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of
+    # its colour, or by its frozen king (where the king may be a wall).
+    w_still = (wx | bx) != 0 ? still_bishops(p.white_bishops, w_fixed | (wx & boxed), b_king | b_bish) : 0_u64
+    b_still = (wx | bx) != 0 ? still_bishops(p.black_bishops, b_fixed | (bx & boxed), w_king | w_bish) : 0_u64
+    w_kw = frozen_white && king_wall(p, true) ? wk : 0_u64
+    b_kw = frozen_black && king_wall(p, false) ? bk : 0_u64
+    return nil if ((ws & ~(w_fixed | (wx & boxed) | w_still | w_kw)) | (bs & ~(b_fixed | (bx & boxed) | b_still | b_kw))) != 0
     if (w_guard | b_guard) != 0
       # A king that takes a guarded pawn ends the game: for the mating net, the kings' reaches
       # again, now stopping at the enemy's guarded pawns.
@@ -408,12 +471,15 @@ module Lock
   end
 
   # With knights, rooks or queens on the board: every one of them must be boxed in by its own pawns
-  # and pieces; then the levels, with the boxed pieces as walls and no flight onto their squares.
+  # and pieces (bishops and the king among them: the level checks that they never move); then the
+  # levels, with the boxed pieces as walls and no flight onto their squares.
   private def boxed_lock(p : Pieces, white : Bool, wx : UInt64, bx : UInt64) : Bool
     ws = box_steps(p.white_knights, p.white_rooks | p.white_queens, p.white_queens)
     bs = box_steps(p.black_knights, p.black_rooks | p.black_queens, p.black_queens)
-    return false if (ws & ~(p.white_pawns | wx)) != 0 || (bs & ~(p.black_pawns | bx)) != 0 || p.en_passant
-    levels(p).any? do |frozen|
+    w_own = p.white_pawns | wx | p.white_bishops | (king_wall(p, true) ? p.white_king : 0_u64)
+    b_own = p.black_pawns | bx | p.black_bishops | (king_wall(p, false) ? p.black_king : 0_u64)
+    return false if (ws & ~w_own) != 0 || (bs & ~b_own) != 0 || p.en_passant
+    levels(p, wx | p.white_bishops, bx | p.black_bishops).any? do |frozen|
       s = level(p, frozen, wx: wx, bx: bx, ws: ws, bs: bs)
       !s.nil? && !net_leaks(p, s, white, wx | bx)
     end

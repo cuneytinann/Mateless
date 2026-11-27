@@ -35,10 +35,11 @@ fn no_pair_squares(b: u64) -> u64 {
 /// What the lock detector reads of a position: the bitboards, the side to move, the en passant
 /// square (a position after the forced step is one of these, not a Position).
 #[derive(Clone, Copy)]
-struct View<'a> { bb: &'a [u64; 16], side: u8, ep: i32 }
+/// castling: the castling rights (the boxed pieces' test reads them).
+struct View<'a> { bb: &'a [u64; 16], side: u8, ep: i32, castling: u8 }
 impl<'a> View<'a> {
     #[inline(always)]
-    fn of(pos: &'a Position) -> View<'a> { View { bb: &pos.bb, side: pos.side, ep: pos.ep } }
+    fn of(pos: &'a Position) -> View<'a> { View { bb: &pos.bb, side: pos.side, ep: pos.ep, castling: pos.castling } }
 }
 
 /// The census: the pawns, kings and bishops, the side to move (the check seed reads it), and each
@@ -584,10 +585,14 @@ fn gap_pairs(mut gaps: u64) -> Option<([(u64, u64, u64); MAX_GAP_PAIRS], usize)>
 // good: it only stands in the way. Only with such a piece on the board, and only past a quick check
 // that all of them are boxed in by their own pawns and pieces, a level is computed: the plain loop,
 // with the bishops in the cycle (the boxed pieces are those no enemy king or bishop reaches), boxed
-// pieces walls for the pawns of both sides, two more leaks (a pawn can capture on a piece's square;
-// a piece has a step square not held by a fixed pawn or a boxed piece of its colour) and no flight
-// onto a piece's square. A quiet move of such a piece leaves it an empty step square, so the trigger
-// (tests_after) is unchanged.
+// pieces walls for the pawns of both sides, own boxed pieces and still bishops squares the king
+// never steps to, two more leaks (a pawn can capture on a piece's square; a piece has a step square
+// not held by a fixed pawn, a boxed piece or a still bishop of its colour, or its frozen king when
+// its side has no castling right left and the king does not stand where a castle leaves it beside
+// its rook) and no flight onto a piece's square. A quiet move of such a piece leaves it an empty step
+// square; a bishop that has just moved has one empty diagonal neighbour, and a king that has just
+// stepped can step back; a castle leaves king and rook on g1 and f1 or c1 and d1 (g8, f8, c8, d8),
+// where the king holds nothing. So the trigger (tests_after) is unchanged.
 
 /// Is every knight, rook and queen of one side boxed in by its own pawns and pieces (`own`)? Their
 /// step squares, or None. Rooks' and queens' orthogonal neighbours first: in a game one of them
@@ -609,8 +614,25 @@ fn boxed_in(n: u64, r: u64, q: u64, own: u64) -> Option<u64> {
     Some(s)
 }
 
-/// A side's knights, rooks and queens (x) and the squares they step to (steps).
-struct Boxes { wx: u64, bx: u64, ws: u64, bs: u64 }
+/// A side's knights, rooks and queens (x), the squares they step to (steps), and whether its king may
+/// hold a step square when frozen (no castling right left, not beside its rook where a castle leaves them).
+struct Boxes { wx: u64, bx: u64, ws: u64, bs: u64, wk_wall: bool, bk_wall: bool }
+
+/// The still bishops among `b` (stillBishops): every diagonal neighbour held for good by `held`
+/// (fixed pawns and boxed pieces of their colour) or by another still bishop, and out of the enemy
+/// king's and bishops' `reach`. Such a bishop never moves and is never taken (a pawn taking it fails
+/// the bishop contact test). The largest such set.
+#[inline]
+fn still_bishops(b: u64, held: u64, reach: u64) -> u64 {
+    let mut s = b & !reach;
+    loop {
+        let h = held | s;
+        let (mut n, mut m) = (0, s);
+        while m != 0 { let q = m & m.wrapping_neg(); m &= m - 1; if diagonal(q) & !h == 0 { n |= q; } }
+        if n == s { return s; }
+        s = n;
+    }
+}
 
 /// One level with boxed pieces (boxedLevelLeaks), king `fr` frozen (0: none): None when the
 /// structure leaks whichever side is flagged, otherwise the net's sets and the boxed pieces.
@@ -631,8 +653,11 @@ fn boxed_level(c: &Census, x: &Boxes, fr: u64) -> Option<(LockSets, u64, u64, u6
         let nb_fixed = b_fixed & b_wall & north(w_wall | b_fixed);
         let nw_cone = fill_north(w_cone, !b_wall);
         let nb_cone = fill_south(b_cone, !w_wall);
-        let mw = !(nw_fixed | sideways(south(nb_fixed)) | near_frozen_black);
-        let mb = !(nb_fixed | sideways(north(nw_fixed)) | near_frozen_white);
+        // Own boxed pieces and still bishops (as of the sets before this pass) are squares the king never steps to.
+        let w_still = still_bishops(c.wb, nw_fixed | (wx & boxed), b_king | b_bish);
+        let b_still = still_bishops(c.bb, nb_fixed | (bx & boxed), w_king | w_bish);
+        let mw = !(nw_fixed | sideways(south(nb_fixed)) | near_frozen_black | (wx & boxed) | w_still);
+        let mb = !(nb_fixed | sideways(north(nw_fixed)) | near_frozen_white | (bx & boxed) | b_still);
         let (nw_king, nb_king) = king_fill2(w_king, mw, b_king, mb);
         let (mut nw_bish, mut nb_bish) = (w_bish, b_bish);
         if nw_bish | nb_bish != 0 {
@@ -662,7 +687,13 @@ fn boxed_level(c: &Census, x: &Boxes, fr: u64) -> Option<(LockSets, u64, u64, u6
     if south(sideways(b_cone)) & wx != 0 { return None; }                                  // a black pawn can take a piece
     if (frozen_white && w_king != wk) || (frozen_black && b_king != bk) { return None; }  // the frozen king can move
     if diagonal(w_bish) & b_cone != 0 || diagonal(b_bish) & w_cone != 0 { return None; }  // a bishop meets a pawn's path
-    if x.ws & !(w_fixed | (wx & boxed)) != 0 || x.bs & !(b_fixed | (bx & boxed)) != 0 { return None; }   // a piece may step
+    // a piece may step: a step square not held by a fixed pawn, a boxed piece or a still bishop of its
+    // colour, or by its frozen king (where a king may be such a wall)
+    let w_still = still_bishops(c.wb, w_fixed | (wx & boxed), b_king | b_bish);
+    let b_still = still_bishops(c.bb, b_fixed | (bx & boxed), w_king | w_bish);
+    let w_kw = if frozen_white && x.wk_wall { wk } else { 0 };
+    let b_kw = if frozen_black && x.bk_wall { bk } else { 0 };
+    if x.ws & !(w_fixed | (wx & boxed) | w_still | w_kw) != 0 || x.bs & !(b_fixed | (bx & boxed) | b_still | b_kw) != 0 { return None; }
     Some((LockSets { w_cone, b_cone, w_king, b_king, w_bish, b_bish, occ: wx | bx, w_np: c.w_np, b_np: c.b_np }, boxed, w_fixed, b_fixed))
 }
 
@@ -671,9 +702,11 @@ fn boxed_level(c: &Census, x: &Boxes, fr: u64) -> Option<(LockSets, u64, u64, u6
 /// settles it nearly always (96% of chasolver's Lichess positions with such pieces).
 #[inline(always)]
 fn rook_or_queen_free(b: &[u64; 16]) -> bool {
+    // Own men: pawns, knights, rooks, queens, bishops and the king (whether a bishop or the king
+    // really holds the square for good is the level's question).
     let (wo, bo) = (b[(WHITE | ROOK) as usize] | b[(WHITE | QUEEN) as usize], b[(BLACK | ROOK) as usize] | b[(BLACK | QUEEN) as usize]);
-    let w_own = wo | b[(WHITE | PAWN) as usize] | b[(WHITE | KNIGHT) as usize];
-    let b_own = bo | b[(BLACK | PAWN) as usize] | b[(BLACK | KNIGHT) as usize];
+    let w_own = wo | b[(WHITE | PAWN) as usize] | b[(WHITE | KNIGHT) as usize] | b[(WHITE | BISHOP) as usize] | b[(WHITE | KING) as usize];
+    let b_own = bo | b[(BLACK | PAWN) as usize] | b[(BLACK | KNIGHT) as usize] | b[(BLACK | BISHOP) as usize] | b[(BLACK | KING) as usize];
     sideways(wo) & !w_own != 0 || sideways(bo) & !b_own != 0
 }
 
@@ -685,18 +718,28 @@ fn boxed_test(x: &View, ask: u8) -> u8 {
     let (wn, wr, wq) = (b[(WHITE | KNIGHT) as usize], b[(WHITE | ROOK) as usize], b[(WHITE | QUEEN) as usize]);
     let (bn, br, bq) = (b[(BLACK | KNIGHT) as usize], b[(BLACK | ROOK) as usize], b[(BLACK | QUEEN) as usize]);
     let (wx, bx) = (wn | wr | wq, bn | br | bq);
-    let (w_own, b_own) = (b[(WHITE | PAWN) as usize] | wx, b[(BLACK | PAWN) as usize] | bx);
+    // A king may hold a step square (when frozen) only if its side has no castling right left (a
+    // castling rook may stand beside its king, Chess960, and castling moves it) and if it does not
+    // stand where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8,
+    // f8, c8, d8): the static tests are not asked after a castle (tests_after), so no lock may need it.
+    let (wk, bk) = (b[(WHITE | KING) as usize], b[(BLACK | KING) as usize]);
+    let wk_wall = x.castling & 3 == 0 && wr & (((wk & (1 << 6)) >> 1) | ((wk & (1 << 2)) << 1)) == 0;
+    let bk_wall = x.castling & 12 == 0 && br & (((bk & (1 << 62)) >> 1) | ((bk & (1 << 58)) << 1)) == 0;
+    let w_own = b[(WHITE | PAWN) as usize] | wx | b[(WHITE | BISHOP) as usize] | if wk_wall { wk } else { 0 };
+    let b_own = b[(BLACK | PAWN) as usize] | bx | b[(BLACK | BISHOP) as usize] | if bk_wall { bk } else { 0 };
     let ws = match boxed_in(wn, wr, wq, w_own) { Some(s) => s, None => return 0 };
     let bs = match boxed_in(bn, br, bq, b_own) { Some(s) => s, None => return 0 };
     if x.ep != NO_SQUARE { return 0; }
     let c = census(x);
-    let x = Boxes { wx, bx, ws, bs };
+    let x = Boxes { wx, bx, ws, bs, wk_wall, bk_wall };
     let held = c.wp | c.bp | sideways(north(c.wp) | south(c.bp));
     let t = tables();
     let mut open = ask;
     for fr in [0, c.wk, c.bk] {
         if open == 0 { break; }
-        if fr != 0 && t.king[lsb(fr)] & !held != 0 { continue; }
+        // the frozen king's own knights, rooks, queens and bishops may hold its neighbours too
+        let own = if fr == c.wk { wx | c.wb } else { bx | c.bb };
+        if fr != 0 && t.king[lsb(fr)] & !(held | own) != 0 { continue; }
         if let Some((s, _, _, _)) = boxed_level(&c, &x, fr) {
             if open & FLAGGED_WHITE != 0 && !net_leaks(&s, WHITE) { open &= !FLAGGED_WHITE; }
             if open & FLAGGED_BLACK != 0 && !net_leaks(&s, BLACK) { open &= !FLAGGED_BLACK; }
@@ -719,7 +762,7 @@ pub fn lock_test(pos: &Position, flagged: u8) -> bool {
 #[cold]
 #[inline(never)]
 fn lock_test_after<F: Fn(&Census, u8, u64) -> bool, G: Fn(&Census, &GapIn, u64) -> Option<GapOut>>(bb: &[u64; 16], side: u8, flagged: u8, leaks: &F, gap: &G) -> bool {
-    let x = View { bb, side, ep: NO_SQUARE };
+    let x = View { bb, side, ep: NO_SQUARE, castling: 0 };
     if let Some((nb, ns)) = forced_step(&x) { return lock_test_after(&nb, ns, flagged, leaks, gap); }
     lock_test_with(&x, flagged, leaks, gap)
 }
@@ -905,7 +948,7 @@ pub fn lock_test2(pos: &Position, ask: u8) -> u8 {
 #[cold]
 #[inline(never)]
 fn lock_test2_after(bb: &[u64; 16], side: u8, ask: u8) -> u8 {
-    let x = View { bb, side, ep: NO_SQUARE };
+    let x = View { bb, side, ep: NO_SQUARE, castling: 0 };
     if let Some((nb, ns)) = forced_step(&x) { return lock_test2_after(&nb, ns, ask); }
     lock_test2_view(&x, ask)
 }

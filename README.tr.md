@@ -551,7 +551,8 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 Bu sürüm, hızlı olanı, bir oyun sunucusu için yapılan katman: sağlam, küçük ve her hamleden sonra
 çalışmak için yapıldı. Yanında `second-version` dalında tam sürüm duruyor; hakem sayfası, seçilince
 onu çalıştırıyor. O da tam değil; "tam" hedefinin adı ve yeni kurallar eklendikçe büyüyor: önü açık
-piyon çiftleri, kutulu at, kale ve vezir, ikiz filler, şah ve piyonlu bir oyunun pata gidiş yolları
+piyon çiftleri, kutulu at, kale ve vezir (kendi piyonları ve taşlarıyla, aralarında hareketsiz bir fil
+ya da donmuş şahlarıyla kapanmış), ikiz filler, şah ve piyonlu bir oyunun pata gidiş yolları
 için dört kural, Domino aramasının mat bulmadan başarısız olduğu yerde hamle hamle hamlesiz rakip
 (bayrağı düşen ne oynarsa oynasın, şahı ve piyonlarıyla kalan öbür tarafın hamlesi yok) ve aramanın
 ikinci bir kademesi (9 ply ve 5.000 düğüm), ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da

@@ -2169,7 +2169,9 @@ function gapLevel(ask, k, frL, frH) {
 /* ─── Boxed knights, rooks and queens (the second version) ────────────────────────────────
 
    A knight, rook or queen is boxed in when every square it could step to holds one of its own men
-   that never moves: a fixed pawn, or another boxed piece. It never moves, and it attacks only the
+   that never moves: a fixed pawn, another boxed piece, a still bishop (every diagonal neighbour held
+   so, and out of the enemy king's and bishops' reach), or its own king when that king is frozen and
+   may be a wall (see castling below). It never moves, and it attacks only the
    squares its own men hold for good, so it never gives check and takes no part in a mate: it only
    stands in the way. The levels above fail at once with a knight, rook or queen on the board; this
    rule lets boxed ones stay. In practice they are rare: one row of chasolver's 201,060 Lichess rows
@@ -2185,8 +2187,13 @@ function gapLevel(ask, k, frL, frH) {
 
    Castling, Chess960's too, never moves a boxed rook: a castling rook needs the square beside it
    towards its king or its destination empty or holding the king, and a boxed rook has its own
-   men on both sides (its king is never one of them). test/chess960_boxed_check.js tries every
-   castling layout of Chess960 with the engine's own moves.
+   men on both sides. Its king is one of them only when frozen, when its side has no castling right
+   left (under Chess960 rules a rook beside its king may castle: 256 of the 896 such layouts), and
+   when it does not stand where a castle leaves it beside its rook (g1 with a rook on f1, c1 with a
+   rook on d1; g8 and f8, c8 and d8 for Black). (In standard chess a castling rook never stands
+   beside its king and a frozen king never castles, but a lock with a castling right left is too
+   rare to be worth the difference.)
+   test/chess960_boxed_check.js tries every castling layout of Chess960 with the engine's own moves.
 
    A level is the plain loop (every set updated on every pass, as rust/src/lock.rs keeps it in
    lock_leaks_reference), with these additions:
@@ -2194,21 +2201,48 @@ function gapLevel(ask, k, frL, frH) {
              It depends on the bishops' reaches, so here the bishops are in the cycle.
      walls   boxed pieces are walls for the pawns of both sides (a pawn they block is fixed, and
              the capture squares stop at them).
+     kings   own boxed pieces and still bishops are squares the king never steps to, so they may
+             hold a frozen king's neighbours.
      leaks   a pawn can capture on a boxed piece's square; a piece has a step square not held by a
-             fixed pawn or a boxed piece of its colour.
+             fixed pawn, a boxed piece or a still bishop of its colour, or its frozen king.
      the net no flight onto any knight, rook or queen's square.
    A piece whose step squares are all held but that an enemy king or bishop may reach is no wall: it
    may be taken (by the king or bishop that reaches it), and until then it stands still.
 
    Where the trigger stands (testsAfter): a knight, rook or queen that has just moved quietly has an
-   empty step square, the square it came from or one it slid over (a rook castling stands next to
-   its king), so the quick check fails after any such move: only a capture or a pawn move (a
-   promotion included) can complete a boxed lock, and those already ask the lock detector. */
+   empty step square, the square it came from or one it slid over, so the quick check fails after
+   any such move: only a capture or a pawn move (a promotion included) can complete a boxed lock,
+   and those already ask the lock detector. A bishop that has just moved has that square empty
+   beside it, so it is no still bishop. A king that has just stepped can step back to the square it
+   came from (an enemy pawn attacking it would have been a check, after which the lock detector is
+   asked), so its frozen level fails. A castle is the one move that leaves the king's square or the
+   rook's next to it filled: it leaves the two on g1 and f1 or on c1 and d1 (g8, f8, c8, d8), where
+   the king holds nothing; the rook then has its king beside it and is not boxed. */
 const BOX = new Int32Array(8);
 const X_WHITE = 0, X_BLACK = 2, X_WHITE_STEPS = 4, X_BLACK_STEPS = 6;
 // The boxed pieces of the last level that did not leak, and (lockSets) where the level that proves
 // a side records its certificate.
 let netBoxedL = 0, netBoxedH = 0, boxedRecord = null;
+// The still bishops of that level, and the kings that may hold a boxed piece's step square when
+// frozen (see boxedTest).
+let netStillL = 0, netStillH = 0, kingWallWhite = false, kingWallBlack = false;
+
+/** The still bishops among bishops bL/bH: every diagonal neighbour held for good by heldL/heldH
+    (fixed pawns and boxed pieces of their colour) or by another still bishop, and out of the enemy
+    king's and bishops' reach (reachL/reachH). Such a bishop never moves and is never taken (a pawn
+    taking it fails the bishop contact test). The largest such set, as [lo, hi]. */
+function stillBishops(bL, bH, heldL, heldH, reachL, reachH) {
+  let sL = bL & ~reachL, sH = bH & ~reachH;
+  for (;;) {
+    let nL = 0, nH = 0, m = sL;
+    const hL = heldL | sL, hH = heldH | sH;
+    while (m) { const b = m & -m; m ^= b; if (((diagonalLo(b, 0) & ~hL) | (diagonalHi(b, 0) & ~hH)) === 0) nL |= b; }
+    m = sH;
+    while (m) { const b = m & -m; m ^= b; if (((diagonalLo(0, b) & ~hL) | (diagonalHi(0, b) & ~hH)) === 0) nH |= b; }
+    if (nL === sL && nH === sH) return [sL, sH];
+    sL = nL; sH = nH;
+  }
+}
 let stepLo = 0, stepHi = 0;
 
 /** Is every knight, rook and queen of one side boxed in by its own pawns and pieces (ownL/ownH)?
@@ -2269,8 +2303,11 @@ function boxedLevelLeaks(frL, frH) {
     fillSouth(bConeL, bConeH, ~wWallL, ~wWallH); const nbConeL = fillLo, nbConeH = fillHi;
     const bHitL = sideways(southLo(nbFixedL, nbFixedH)), bHitH = sideways(southHi(nbFixedH));
     const wHitL = sideways(northLo(nwFixedL)), wHitH = sideways(northHi(nwFixedL, nwFixedH));
-    const mwL = ~(nwFixedL | bHitL | nearFrozenBlackL), mwH = ~(nwFixedH | bHitH | nearFrozenBlackH);
-    const mbL = ~(nbFixedL | wHitL | nearFrozenWhiteL), mbH = ~(nbFixedH | wHitH | nearFrozenWhiteH);
+    // Own boxed pieces and still bishops (as of the sets before this pass) are squares the king never steps to.
+    const [wsbL, wsbH] = stillBishops(c[C_WHITE_BISHOPS], c[C_WHITE_BISHOPS + 1], nwFixedL | (wxL & boxedL), nwFixedH | (wxH & boxedH), bKingL | bBishL, bKingH | bBishH);
+    const [bsbL, bsbH] = stillBishops(c[C_BLACK_BISHOPS], c[C_BLACK_BISHOPS + 1], nbFixedL | (bxL & boxedL), nbFixedH | (bxH & boxedH), wKingL | wBishL, wKingH | wBishH);
+    const mwL = ~(nwFixedL | bHitL | nearFrozenBlackL | (wxL & boxedL) | wsbL), mwH = ~(nwFixedH | bHitH | nearFrozenBlackH | (wxH & boxedH) | wsbH);
+    const mbL = ~(nbFixedL | wHitL | nearFrozenWhiteL | (bxL & boxedL) | bsbL), mbH = ~(nbFixedH | wHitH | nearFrozenWhiteH | (bxH & boxedH) | bsbH);
     let nwKingL = wKingL, nwKingH = wKingH, nbKingL = bKingL, nbKingH = bKingH;
     for (;;) {
       const aL = nwKingL | (zoneLo(nwKingL, nwKingH) & mwL), aH = nwKingH | (zoneHi(nwKingL, nwKingH) & mwH);
@@ -2322,16 +2359,22 @@ function boxedLevelLeaks(frL, frH) {
   // A bishop is diagonally next to a square an enemy pawn may reach.
   if ((diagonalLo(wBishL, wBishH) & bConeL) | (diagonalHi(wBishL, wBishH) & bConeH)) return true;
   if ((diagonalLo(bBishL, bBishH) & wConeL) | (diagonalHi(bBishL, bBishH) & wConeH)) return true;
-  // A piece has a step square not held by a fixed pawn or a boxed piece of its colour.
+  // A piece has a step square not held by a fixed pawn, a boxed piece or a still bishop of its
+  // colour, or by its frozen king (where a king may be such a wall: kingWallWhite, kingWallBlack).
+  const [wsbL, wsbH] = stillBishops(c[C_WHITE_BISHOPS], c[C_WHITE_BISHOPS + 1], wFixedL | (wxL & boxedL), wFixedH | (wxH & boxedH), bKingL | bBishL, bKingH | bBishH);
+  const [bsbL, bsbH] = stillBishops(c[C_BLACK_BISHOPS], c[C_BLACK_BISHOPS + 1], bFixedL | (bxL & boxedL), bFixedH | (bxH & boxedH), wKingL | wBishL, wKingH | wBishH);
+  const wkwL = frozenWhite && kingWallWhite ? wkL : 0, wkwH = frozenWhite && kingWallWhite ? wkH : 0;
+  const bkwL = frozenBlack && kingWallBlack ? bkL : 0, bkwH = frozenBlack && kingWallBlack ? bkH : 0;
   const wsL = x[X_WHITE_STEPS], wsH = x[X_WHITE_STEPS + 1], bsL = x[X_BLACK_STEPS], bsH = x[X_BLACK_STEPS + 1];
-  if ((wsL & ~(wFixedL | (wxL & boxedL))) | (wsH & ~(wFixedH | (wxH & boxedH)))) return true;
-  if ((bsL & ~(bFixedL | (bxL & boxedL))) | (bsH & ~(bFixedH | (bxH & boxedH)))) return true;
+  if ((wsL & ~(wFixedL | (wxL & boxedL) | wsbL | wkwL)) | (wsH & ~(wFixedH | (wxH & boxedH) | wsbH | wkwH))) return true;
+  if ((bsL & ~(bFixedL | (bxL & boxedL) | bsbL | bkwL)) | (bsH & ~(bFixedH | (bxH & boxedH) | bsbH | bkwH))) return true;
 
   netWConeL = wConeL; netWConeH = wConeH; netBConeL = bConeL; netBConeH = bConeH;
   netWKingL = wKingL; netWKingH = wKingH; netBKingL = bKingL; netBKingH = bKingH;
   netWBishL = wBishL; netWBishH = wBishH; netBBishL = bBishL; netBBishH = bBishH;
   netWFixedL = wFixedL; netWFixedH = wFixedH; netBFixedL = bFixedL; netBFixedH = bFixedH;
   netBoxedL = boxedL; netBoxedH = boxedH;
+  netStillL = wsbL | bsbL; netStillH = wsbH | bsbH;
   return false;
 }
 
@@ -2341,10 +2384,21 @@ function boxedTest(pos, ask) {
   const lo = pos.lo, hi = pos.hi;
   const wnL = lo[WHITE | KNIGHT], wnH = hi[WHITE | KNIGHT], wrL = lo[WHITE | ROOK], wrH = hi[WHITE | ROOK];
   const wqL = lo[WHITE | QUEEN], wqH = hi[WHITE | QUEEN];
-  const wxL = wnL | wrL | wqL, wxH = wnH | wrH | wqH, wownL = lo[WHITE | PAWN] | wxL, wownH = hi[WHITE | PAWN] | wxH;
   const bnL = lo[BLACK | KNIGHT], bnH = hi[BLACK | KNIGHT], brL = lo[BLACK | ROOK], brH = hi[BLACK | ROOK];
   const bqL = lo[BLACK | QUEEN], bqH = hi[BLACK | QUEEN];
-  const bxL = bnL | brL | bqL, bxH = bnH | brH | bqH, bownL = lo[BLACK | PAWN] | bxL, bownH = hi[BLACK | PAWN] | bxH;
+  // A king may hold a step square (when frozen) only if its side has no castling right left (a
+  // castling rook may stand beside its king, Chess960, and castling moves it) and if it does not
+  // stand where a castle leaves it beside its rook (g1 with a rook on f1, c1 with one on d1; g8,
+  // f8, c8, d8): the static tests are not asked after a castle (testsAfter), so no lock may need it.
+  const wkL = lo[WHITE | KING], bkH = hi[BLACK | KING];
+  kingWallWhite = (pos.castling & 3) === 0 && (wrL & (((wkL & 0x40) >>> 1) | ((wkL & 0x04) << 1))) === 0;
+  kingWallBlack = (pos.castling & 12) === 0 && (brH & (((bkH & 0x40000000) >>> 1) | ((bkH & 0x04000000) << 1))) === 0;
+  const wxL = wnL | wrL | wqL, wxH = wnH | wrH | wqH;
+  const wownL = lo[WHITE | PAWN] | wxL | lo[WHITE | BISHOP] | (kingWallWhite ? wkL : 0);
+  const wownH = hi[WHITE | PAWN] | wxH | hi[WHITE | BISHOP] | (kingWallWhite ? hi[WHITE | KING] : 0);
+  const bxL = bnL | brL | bqL, bxH = bnH | brH | bqH;
+  const bownL = lo[BLACK | PAWN] | bxL | lo[BLACK | BISHOP] | (kingWallBlack ? lo[BLACK | KING] : 0);
+  const bownH = hi[BLACK | PAWN] | bxH | hi[BLACK | BISHOP] | (kingWallBlack ? bkH : 0);
   // A first look: a rook or queen with a square beside it (east or west) not held by its own men.
   // In a game that ends it nearly always (96% of chasolver's Lichess positions with such pieces),
   // with no shift across the two words.
@@ -2368,14 +2422,17 @@ function boxedTest(pos, ask) {
       frL = c[kingAt]; frH = c[kingAt + 1];
       const wpL = c[C_WHITE_PAWNS], wpH = c[C_WHITE_PAWNS + 1], bpL = c[C_BLACK_PAWNS], bpH = c[C_BLACK_PAWNS + 1];
       const pawnL = northLo(wpL) | southLo(bpL, bpH), pawnH = northHi(wpL, wpH) | southHi(bpH);
-      const heldL = wpL | bpL | sideways(pawnL), heldH = wpH | bpH | sideways(pawnH), sq = firstSquare(frL, frH);
+      // its own knights, rooks, queens and bishops may hold its neighbours too (checked in the level)
+      const ownL = level === 1 ? wxL | c[C_WHITE_BISHOPS] : bxL | c[C_BLACK_BISHOPS];
+      const ownH = level === 1 ? wxH | c[C_WHITE_BISHOPS + 1] : bxH | c[C_BLACK_BISHOPS + 1];
+      const heldL = wpL | bpL | sideways(pawnL) | ownL, heldH = wpH | bpH | sideways(pawnH) | ownH, sq = firstSquare(frL, frH);
       if ((KING_STEPS[2 * sq] & ~heldL) | (KING_STEPS[2 * sq + 1] & ~heldH)) continue;
     }
     if (boxedLevelLeaks(frL, frH)) continue;
     const was = open;
     if ((open & FLAGGED_WHITE) && !netLeaks(WHITE, occL, occH)) open &= ~FLAGGED_WHITE;
     if ((open & FLAGGED_BLACK) && !netLeaks(BLACK, occL, occH)) open &= ~FLAGGED_BLACK;
-    if (boxedRecord && open !== was) boxedRecord.push({ ...levelSets(frL, frH), boxed: [netBoxedL, netBoxedH] });
+    if (boxedRecord && open !== was) boxedRecord.push({ ...levelSets(frL, frH), boxed: [netBoxedL, netBoxedH], still: [netStillL, netStillH] });
   }
   return ask & ~open;
 }

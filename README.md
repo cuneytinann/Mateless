@@ -554,7 +554,8 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # the invariant check, 
 This version, the fast one, is the layer for a game server: sound, small, and meant to run after
 every move. The full version stands beside it, on the `second-version` branch, and the arbiter page
 runs it when it is chosen. It is not complete either; "full" names its goal, and it keeps growing as
-new rules are added: open pawn pairs, boxed knights, rooks and queens, twin bishops, four rules for
+new rules are added: open pawn pairs, boxed knights, rooks and queens (walled in by their own pawns
+and pieces, a still bishop or their frozen king among them), twin bishops, four rules for
 the ways a game of kings and pawns runs into a stalemate, and, where the Domino search fails
 without a mate, the stuck mater move by move (whatever the flagged side plays, the other side, left
 with its king and pawns, has no move) and a second tier of the search (9 plies and 5,000 nodes),

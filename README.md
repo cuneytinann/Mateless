@@ -556,7 +556,9 @@ every move. The full version stands beside it, on the `second-version` branch, a
 runs it when it is chosen. It is not complete either; "full" names its goal, and it keeps growing as
 new rules are added: open pawn pairs, boxed knights, rooks and queens (walled in by their own pawns
 and pieces, a still bishop or their frozen king among them), twin bishops, four rules for
-the ways a game of kings and pawns runs into a stalemate, and, where the Domino search fails
+the ways a game of kings and pawns runs into a stalemate, the stalemated flagged side (whatever the
+mater plays, the flagged side, left with its king and pawns, has no move and stands in no check,
+now or after the one move it has), and, where the Domino search fails
 without a mate, the stuck mater move by move (whatever the flagged side plays, the other side, left
 with its king and pawns, has no move) and a second tier of the search (9 plies and 5,000 nodes),
 and, on request, the 75- or 50-move rule and fivefold or threefold repetition (in JavaScript, Rust

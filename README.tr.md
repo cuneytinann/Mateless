@@ -551,16 +551,18 @@ node lock_invariant.js ../data/locked_positions.tsv 50   # değişmez kontrolü,
 Bu sürüm, hızlı olanı, bir oyun sunucusu için yapılan katman: sağlam, küçük ve her hamleden sonra
 çalışmak için yapıldı. Yanında `second-version` dalında tam sürüm duruyor; hakem sayfası, seçilince
 onu çalıştırıyor. O da tam değil; "tam" hedefinin adı ve yeni kurallar eklendikçe büyüyor: önü açık
-piyon çiftleri, kutulu at, kale ve vezir (kendi piyonları ve taşlarıyla, aralarında hareketsiz bir fil
-ya da donmuş şahlarıyla kapanmış), ikiz filler, şah ve piyonlu bir oyunun pata gidiş yolları
-için dört kural, Domino aramasının mat bulmadan başarısız olduğu yerde hamle hamle hamlesiz rakip
-(bayrağı düşen ne oynarsa oynasın, şahı ve piyonlarıyla kalan öbür tarafın hamlesi yok) ve aramanın
-ikinci bir kademesi (9 ply ve 5.000 düğüm), ve istenirse 75 ya da 50 hamle kuralı ile beşli ya da
-üçlü tekrar (JavaScript, Rust ve WebAssembly'de). chasolver'ın 19 Kasım listesinde (204.484 satır)
-bu sürüm 656 satırı ispatsız bırakıyor, tam olan 2'sini; hakem sayfasının 3. kapısıyla (150 ply,
-5.000.000 düğüm, oyun sonrası analiz için, motorda yok) 75 hamle kuralı altında hiçbirini. Yani oyun
-içinde tam sürüm de, çok nadiren, mat edilemeyen bir pozisyonu ispatsız bırakabilir; oyun sonrası
-analiz onu yakalar.
+piyon çiftleri, kutulu at, kale ve vezir (kendi piyonları ve taşlarıyla, aralarında hareketsiz bir
+fil ya da donmuş şahlarıyla kapanmış), ikiz filler, şah ve piyonlu bir oyunun pata gidiş yolları
+için dört kural, bayrağı düşen tarafın patı (mat edecek taraf ne oynarsa oynasın, şahı ve
+piyonlarıyla kalan bayrağı düşen tarafın hamlesi kalmıyor ve şahı tehdit altında olmuyor; şimdi ya
+da elindeki tek hamleden sonra), Domino aramasının mat bulmadan başarısız olduğu yerde hamle hamle
+hamlesiz rakip (bayrağı düşen ne oynarsa oynasın, şahı ve piyonlarıyla kalan öbür tarafın hamlesi
+yok) ve aramanın ikinci bir kademesi (9 ply ve 5.000 düğüm), ve istenirse 75 ya da 50 hamle kuralı
+ile beşli ya da üçlü tekrar (JavaScript, Rust ve WebAssembly'de). chasolver'ın 19 Kasım listesinde
+(204.484 satır) bu sürüm 656 satırı ispatsız bırakıyor, tam olan 2'sini; hakem sayfasının 3.
+kapısıyla (150 ply, 5.000.000 düğüm, oyun sonrası analiz için, motorda yok) 75 hamle kuralı altında
+hiçbirini. Yani oyun içinde tam sürüm de, çok nadiren, mat edilemeyen bir pozisyonu ispatsız
+bırakabilir; oyun sonrası analiz onu yakalar.
 Hamle sınırına yakınken matın zamanında gelip gelemeyeceğine, saatin kendisiyle sınırlı ve mata ya
 da bir alışa veya piyon hamlesine kalan yarım hamlelerin alt sınırıyla budanan bir arama karar
 veriyor: üç ile beş taşlı oyun sonlarında, kural uzaklıklarının çevresinde, zamanında mat

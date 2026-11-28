@@ -10,7 +10,7 @@ site.css                      the look every tab shares: colours, type, forms, b
 shell.html, shell.css         the bar (tabs, language, download) and the six tab containers
 shell.js                      the frame: which tab shows, the language, the address
 arbiter/                      the arbiter: arbiter.html, arbiter.css, arbiter.js
-second/                       the full version (the second-version branch, 13d5531): mateless.js, for the arbiter;
+second/                       the full version (the second-version branch, e1bfa8b): mateless.js, for the arbiter;
                               mateless.d.ts, mateless-wasm.js, mateless.wasm and rust/src, for the Engine tab
 lock/                         the lock detector explained: lock.html, lock.css, lock.js, and
                               lockviz.js, a display copy of the detector (test/lockviz_check.js)

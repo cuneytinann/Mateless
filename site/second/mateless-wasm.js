@@ -250,7 +250,7 @@ function instantiate(source) {
     QUEEN, KNIGHT, ROOK, BISHOP, RESULT_NAMES, Result, Claim,
     Position, fromFen, toFen, legalMoves, Game,
     materialCannotMate: (p, flagged) => withPosition(p, h => x.material_test(h, flagged) === 1),
-    lockCannotMate: (p, flagged) => withPosition(p, h => x.lock_test(h, flagged) === 1),
+    lockCannotMate: (p, flagged) => withPosition(p, h => x.lock_cannot_mate(h, flagged) === 1),
     cannotMate: (p, flagged) => withPosition(p, h => x.cannot_mate(h, flagged) === 1),
     cannotMate2: (p, ask) => withPosition(p, h => x.cannot_mate2(h, ask)),
     proveCannotBeMated, proveBoth, isDeadPosition,

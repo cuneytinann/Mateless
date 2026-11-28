@@ -9,6 +9,7 @@ use crate::board::{BISHOP, BLACK, DARK_SQUARES, diagonal, FILE_A, FILE_H, KING, 
     NO_SQUARE, north, PAWN, Position, QUEEN, RANK_1, RANK_8, ROOK, sideways, south, tables, WHITE,
     zone};
 use crate::material::material_test;
+use crate::stuck::tempo_stalemate;
 
 /// Bits naming the side that is to be proven unable to be mated (the flagged side), for the
 /// functions that answer for both sides at once (cannot_mate2, Domino::run2, prove_both): a game's
@@ -1002,11 +1003,25 @@ fn lock_test2_pairs_first(c: &Census, ask: u8, gaps: u64) -> u8 {
 
 /// The static tests for both sides at once: of the sides in `ask` (FLAGGED_* bits), those that
 /// cannot be mated by the material test or the lock detector (cannot_mate with each side flagged).
-pub fn cannot_mate2(pos: &Position, ask: u8) -> u8 { static_tests2(pos, ask, TESTS_BOTH) }
+pub fn cannot_mate2(pos: &Position, ask: u8) -> u8 { tempo2(pos, ask, static_tests2(pos, ask, TESTS_BOTH)) }
 
-/// The static tests: either of the two. (cannotMate)
+/// Of the sides in `ask` the static tests left open (not in `proven`), those the stalemated flagged
+/// side proves: `proven` with them. Not part of the static tests inside the search (static_tests,
+/// static_tests2): a quiet move can complete it, where the search does not ask them. (tempo2)
 #[inline]
-pub fn cannot_mate(pos: &Position, flagged: u8) -> bool { material_test(pos, flagged) || lock_test(pos, flagged) }
+pub fn tempo2(pos: &Position, ask: u8, mut proven: u8) -> u8 {
+    if ask & !proven & FLAGGED_WHITE != 0 && tempo_stalemate(pos, WHITE) { proven |= FLAGGED_WHITE; }
+    if ask & !proven & FLAGGED_BLACK != 0 && tempo_stalemate(pos, BLACK) { proven |= FLAGGED_BLACK; }
+    proven
+}
+
+/// The flagged side cannot be mated: the lock detector certifies it, or the stalemated flagged side. (lockCannotMate)
+#[inline]
+pub fn lock_cannot_mate(pos: &Position, flagged: u8) -> bool { lock_test(pos, flagged) || tempo_stalemate(pos, flagged) }
+
+/// The static tests: either of the two (the lock with the stalemated flagged side). (cannotMate)
+#[inline]
+pub fn cannot_mate(pos: &Position, flagged: u8) -> bool { material_test(pos, flagged) || lock_test(pos, flagged) || tempo_stalemate(pos, flagged) }
 
 // ─── When the static tests can change ────────────────────────────────────────────────────
 

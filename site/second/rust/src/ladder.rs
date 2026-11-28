@@ -8,7 +8,7 @@
 
 use crate::board::{BLACK, Key, NO_SQUARE, Position, WHITE};
 use crate::lock::{cannot_mate, cannot_mate2, FLAGGED_BLACK, FLAGGED_WHITE, pawn_check,
-    static_tests2, TEST_LOCK, TEST_MATERIAL, TESTS_BOTH};
+    static_tests2, tempo2, TEST_LOCK, TEST_MATERIAL, TESTS_BOTH};
 use crate::domino::{Domino, DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_RULE_BUDGET, Failure, SearchResult};
 use crate::stuck::stuck_every;
 use crate::clock::{ClockSearch, REGION_REACH};
@@ -314,6 +314,8 @@ impl Flags {
         if open == 0 { return; }
         let asked = if self.rungs == 1 { tests & TEST_MATERIAL } else { tests };
         let mut proven = if asked != 0 { static_tests2(pos, open, asked) } else { 0 };
+        // The stalemated flagged side at every ply (whatever the last move was: a quiet move can complete it).
+        if self.rungs >= 2 { proven = tempo2(pos, open, proven); }
         if open & !proven != 0 && self.rungs == 3 {
             let r = self.search.run2(pos, open & !proven, DOMINO_PLY, DOMINO_BUDGET, false);
             if r[0].proven { proven |= FLAGGED_WHITE; }

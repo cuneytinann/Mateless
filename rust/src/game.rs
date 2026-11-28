@@ -136,8 +136,8 @@ impl Game {
         Ok(self.status())
     }
     /// The game status of the current position (the result codes above); brings the flags up to
-    /// date. Checkmate and stalemate first, then a dead position (both flags down), then the
-    /// repetition rule and the move rule.
+    /// date. Checkmate and stalemate first, then the move rule and the repetition rule, then a
+    /// dead position (both flags down).
     pub fn status(&mut self) -> u8 {
         let mut ctx = compute_context(&self.position);
         if !has_legal_move(&self.position, &mut ctx) {
@@ -145,10 +145,10 @@ impl Game {
             return if self.position.side == WHITE { result::BLACK_MATES } else { result::WHITE_MATES };
         }
         self.update_flags();
-        if self.never_mates(WHITE) && self.never_mates(BLACK) { return result::DEAD_POSITION; }
         let (rep, rule) = (if self.options.repetition == 3 { 3 } else { 5 }, if self.options.move_rule == 100 { 100 } else { 150 });
-        if self.repetitions >= rep { return if rep == 3 { result::THREEFOLD } else { result::FIVEFOLD }; }
         if self.position.halfmove >= rule { return if rule == 100 { result::FIFTY_MOVES } else { result::SEVENTY_FIVE_MOVES }; }
+        if self.repetitions >= rep { return if rep == 3 { result::THREEFOLD } else { result::FIVEFOLD }; }
+        if self.never_mates(WHITE) && self.never_mates(BLACK) { return result::DEAD_POSITION; }
         result::NONE
     }
     /// The draws a player may claim in the current position (CLAIM_* bits). Whether the game is

@@ -152,23 +152,22 @@ impl Game {
         Ok(self.status())
     }
     /// The game status of the current position (the result codes above); brings the flags up to
-    /// date. Checkmate and stalemate first; then the game's own rules, which end it there (under a
-    /// rule every side is proven unable to mate at its end, but the rule says why); then a dead
-    /// position (both flags down); then fivefold repetition and the 75-move rule.
+    /// date. Checkmate and stalemate first; then the move rule and repetition (the game's own, or
+    /// FIDE's 75 moves and fivefold), which end it there (under a rule every side is proven unable
+    /// to mate at its end, but the rule says why); then a dead position (both flags down).
     pub fn status(&mut self) -> u8 {
         let mut ctx = compute_context(&self.position);
         if !has_legal_move(&self.position, &mut ctx) {
             if ctx.checks == 0 { return result::STALEMATE; }
             return if self.position.side == WHITE { result::BLACK_MATES } else { result::WHITE_MATES };
         }
-        let (rule, rep) = (self.options.move_rule, self.options.repetition);
-        let at_rule = |r: u32| if r == 100 { result::FIFTY_MOVES } else { result::SEVENTY_FIVE_MOVES };
-        if rule != 0 && self.position.halfmove >= rule { return at_rule(rule); }
-        if rep != 0 && self.repetitions >= rep { return if rep == 3 { result::THREEFOLD } else { result::FIVEFOLD }; }
+        // the move rule, then repetition, before the dead position (without a rule, FIDE's)
         self.update_flags();
+        let rule = if self.options.move_rule != 0 { self.options.move_rule } else { 150 };
+        let rep = if self.options.repetition != 0 { self.options.repetition } else { 5 };
+        if self.position.halfmove >= rule { return if rule == 100 { result::FIFTY_MOVES } else { result::SEVENTY_FIVE_MOVES }; }
+        if self.repetitions >= rep { return if rep == 3 { result::THREEFOLD } else { result::FIVEFOLD }; }
         if self.never_mates(WHITE) && self.never_mates(BLACK) { return result::DEAD_POSITION; }
-        if self.repetitions >= 5 { return result::FIVEFOLD; }
-        if self.position.halfmove >= if rule != 0 { rule } else { 150 } { return at_rule(rule); }
         result::NONE
     }
     /// The draws a player may claim in the current position (CLAIM_* bits). Whether the game is

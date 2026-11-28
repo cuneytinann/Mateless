@@ -147,7 +147,7 @@ hiç mat edemeyeceğini ispatlayan ilk basamak bayrağını indiriyor, kalıcı 
 > düşen bayraklar yeniden kalkar.
 
 **Oyun sonu kuralları.** Mateless yalnızca iddia gerektirmeyen bitişlere karar veriyor: mat, pat,
-ölü pozisyon, 75 hamle kuralı ve beşli tekrar (FIDE 9.6). Üçlü tekrar (9.2) ve 50 hamle kuralı
+75 hamle kuralı, beşli tekrar ve ölü pozisyon, bu sırayla (FIDE 9.6). Üçlü tekrar (9.2) ve 50 hamle kuralı
 (9.3) iddiayla, anlaşmalı beraberlik anlaşmayla olur: bunlar platformun işi. `Game` tekrar
 sayısını, her pozisyon kendi yarım hamle sayacını tutuyor.
 

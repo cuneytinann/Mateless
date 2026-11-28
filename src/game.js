@@ -1,8 +1,8 @@
 /* ═══ Mateless · game.js — a reference game: results, repetitions, the move rules ═════════════
 
    What the ladder's answers mean for the result of a game, and the endings that need no claim:
-   checkmate, stalemate, a dead position (both flags down), the 75-move rule and fivefold
-   repetition. Claims (threefold repetition, the 50-move rule) and agreed draws are left to the
+   checkmate, stalemate, the 75-move rule, fivefold repetition and a dead position (both flags
+   down). Claims (threefold repetition, the 50-move rule) and agreed draws are left to the
    platform, which has the repetition count and the halfmove clock to decide them.
      repetition    a game keeps an exact code of every position and counts repetitions by looking
                    back only over the moves since the last capture or pawn move, every other ply
@@ -46,8 +46,9 @@ function checkGameOptions({ moveRule, repetition, claimMoves, claimRepetition, r
 }
 
 
-/** How the game stands: checkmate, stalemate, dead position, fivefold repetition,
-    the 75-move rule, in that order: the endings that need no claim. Returns a Result code, 0
+/** How the game stands: checkmate, stalemate, the move rule, repetition, dead position, in
+    that order: the endings that need no claim (a mate on the move that reaches the move rule
+    stands, FIDE 9.6.2; the rules cost nothing, a dead position a proof). Returns a Result code, 0
     while the game goes on. Threefold repetition and the 50-move rule are claims, left to the
     platform.
       repetitions         how many times the current position has occurred;
@@ -59,16 +60,17 @@ export function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, me
     if (SHARED_CONTEXT.checks === 0) return Result.STALEMATE;
     return pos.side === WHITE ? Result.BLACK_MATES : Result.WHITE_MATES;
   }
+  // The move rule, then repetition (a Game's own rules may end it sooner: the 50-move rule,
+  // threefold repetition), before the dead position.
+  if (memory) memory.updateFlags();
+  const rep = memory && memory.repetition === 3 ? 3 : 5, rule = memory && memory.moveRule === 100 ? 100 : 150;
+  if (pos.halfmove >= rule) return rule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
+  if (repetitions >= rep) return rep === 3 ? Result.THREEFOLD : Result.FIVEFOLD;
   let dead;
-  if (memory) { memory.updateFlags(); dead = memory.neverMates(WHITE) && memory.neverMates(BLACK); }
+  if (memory) dead = memory.neverMates(WHITE) && memory.neverMates(BLACK);
   else if (deadPositionSearch) dead = isDeadPosition(pos);
   else dead = cannotMate(pos, WHITE) && cannotMate(pos, BLACK);
-  if (dead) return Result.DEAD_POSITION;
-  // A Game's own rules may end it sooner: threefold repetition, the 50-move rule.
-  const rep = memory && memory.repetition === 3 ? 3 : 5, rule = memory && memory.moveRule === 100 ? 100 : 150;
-  if (repetitions >= rep) return rep === 3 ? Result.THREEFOLD : Result.FIVEFOLD;
-  if (pos.halfmove >= rule) return rule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
-  return Result.NONE;
+  return dead ? Result.DEAD_POSITION : Result.NONE;
 }
 
 /** The verdict when the flag of `side` falls (FIDE 6.9), or `side` resigns (FIDE 5.1.2), in a

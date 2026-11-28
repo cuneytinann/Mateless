@@ -289,7 +289,7 @@ declare namespace Mateless {
     repetition?: Repetition;
   }
 
-  /** How the game stands: mate, stalemate, dead position, fivefold repetition, the 75-move rule (the endings that need no claim); 0 while it goes on. */
+  /** How the game stands: mate, stalemate, the move rule, repetition, dead position, in that order (the endings that need no claim); 0 while it goes on. */
   function gameStatus(pos: Position, options?: StatusOptions): ResultCode;
 
   interface VerdictOptions {

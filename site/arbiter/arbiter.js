@@ -528,7 +528,7 @@ en: {
  res5: "fivefold repetition",
  res6: "a dead position",
  secPgn: "Games",
- pgnSub: "A test of its own, separate from the positions above. Every game is replayed move by move with Mateless. After each move it checks the endings that need no claim: checkmate, stalemate, a dead position, the 75-move rule and fivefold repetition. The first one met is where the rules end the game, and any moves played after it are reported. If none comes first, the final position is judged as a flag fall: the side whose flag fell is the loser named in the Result tag, or the side to move when the result is a draw or <code>*</code>. After every move Mateless also keeps a flag per side: once a side is proven unable to mate, it stays so for the rest of the game, and the other side’s flag fall is a draw at once.",
+ pgnSub: "A test of its own, separate from the positions above. Every game is replayed move by move with Mateless. After each move it checks the endings that need no claim, in this order: checkmate, stalemate, the 75-move rule, fivefold repetition and a dead position. The first one met is where the rules end the game, and any moves played after it are reported. If none comes first, the final position is judged as a flag fall: the side whose flag fell is the loser named in the Result tag, or the side to move when the result is a draw or <code>*</code>. After every move Mateless also keeps a flag per side: once a side is proven unable to mate, it stays so for the rest of the game, and the other side’s flag fall is a draw at once.",
  pgnHPaste: "PGN",
  pgnDropBig: "Drop PGN files here, or click to choose",
  pgnDropSmall: "Any number of games per file. Comments, variations and NAGs are skipped; the <code>FEN</code> and <code>Variant</code> tags are read. Chess960 works too: castling is <code>O-O</code> / <code>O-O-O</code>, and the FEN tag may give the rights as KQkq or as Shredder file letters.",
@@ -941,7 +941,7 @@ tr: {
  res5: "beşli tekrar",
  res6: "ölü pozisyon",
  secPgn: "Oyunlar",
- pgnSub: "Yukarıdaki pozisyonlardan ayrı, kendi başına bir test. Her oyun Mateless ile hamle hamle yeniden oynanır. Her hamleden sonra talep gerektirmeyen bitişlere bakılır: mat, pat, ölü pozisyon, 75 hamle kuralı ve beşli tekrar. İlk karşılaşılan, kuralların oyunu bitirdiği yerdir; ondan sonra oynanan hamleler raporlanır. Hiçbiri önce gelmezse son pozisyon bayrak düşüşü olarak değerlendirilir: bayrağı düşen, Result etiketindeki kaybedendir; sonuç berabere ya da <code>*</code> ise sırası gelen taraftır. Mateless her hamleden sonra taraf başına bir bayrak da tutar: bir tarafın mat edemeyeceği ispatlanınca oyunun geri kalanında da öyle kalır ve öbür tarafın bayrak düşüşü o an beraberliktir.",
+ pgnSub: "Yukarıdaki pozisyonlardan ayrı, kendi başına bir test. Her oyun Mateless ile hamle hamle yeniden oynanır. Her hamleden sonra talep gerektirmeyen bitişlere bu sırayla bakılır: mat, pat, 75 hamle kuralı, beşli tekrar ve ölü pozisyon. İlk karşılaşılan, kuralların oyunu bitirdiği yerdir; ondan sonra oynanan hamleler raporlanır. Hiçbiri önce gelmezse son pozisyon bayrak düşüşü olarak değerlendirilir: bayrağı düşen, Result etiketindeki kaybedendir; sonuç berabere ya da <code>*</code> ise sırası gelen taraftır. Mateless her hamleden sonra taraf başına bir bayrak da tutar: bir tarafın mat edemeyeceği ispatlanınca oyunun geri kalanında da öyle kalır ve öbür tarafın bayrak düşüşü o an beraberliktir.",
  pgnHPaste: "PGN",
  pgnDropBig: "PGN dosyalarını buraya bırak ya da seçmek için tıkla",
  pgnDropSmall: "Bir dosyada istediğin kadar oyun olabilir. Yorumlar, varyantlar ve NAG’ler atlanır; <code>FEN</code> ve <code>Variant</code> etiketleri okunur. Chess960 da olur: rok <code>O-O</code> / <code>O-O-O</code> diye yazılır, FEN etiketi de hakları KQkq ya da Shredder sütun harfleriyle verebilir.",
@@ -1572,8 +1572,8 @@ $('expInv').onclick = function () { if (!results) return;
 
 /* ═══════════════════════════════ games (PGN): a test of its own ═══════════════════════════════
    Every game is replayed move by move with the engine's Game, whose play() returns the game
-   status after the move: checkmate, stalemate, a dead position, the 75-move rule or fivefold
-   repetition, the endings that need no claim. The first one met is where the rules end the game.
+   status after the move: checkmate, stalemate, the 75-move rule, fivefold repetition or a dead
+   position, the endings that need no claim. The first one met is where the rules end the game.
    If none comes first, the final position is judged as a flag fall: the loser named by Result is
    the side whose flag fell (on a draw or *, the side to move). Time-outs and resignations are not
    told apart; both ask whether the opponent can still mate. Nothing here reads or writes the

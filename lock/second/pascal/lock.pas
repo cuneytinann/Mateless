@@ -3,7 +3,8 @@
   Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
   knights, rooks or queens boxed in by their own men) form a structure that no series of legal
   moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-  move: it generates no move and searches nothing.
+  move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+  two plies at most.
 
   The first version (../../pascal/lock.pas) grows each king's reach, the pawns that can never move,
   and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -25,7 +26,10 @@
     - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
     - the stuck mater: whatever the flagged side plays, the mater is left without a move;
     - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-      position after it.
+      position after it;
+    - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+      bishops) plays, is left without a legal move and out of check, now or after the one legal
+      move it has.
   A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
   never be opened; one it fails may still be dead.
 
@@ -704,7 +708,260 @@ begin
   Result := True;
 end;
 
-function CannotBeMated(const p: TPieces; white: Boolean): Boolean;
+{ ─── The stalemated flagged side ─────────────────────────────────────────────────────────────
+  Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's. }
+const
+  PawnK = 0; KnightK = 1; BishopK = 2; RookK = 3; QueenK = 4; KingK = 5;
+  DiagF: array[0..3] of Integer = (1, -1, 1, -1);
+  DiagR: array[0..3] of Integer = (1, 1, -1, -1);
+  LineF: array[0..3] of Integer = (1, -1, 0, 0);
+  LineR: array[0..3] of Integer = (0, 0, 1, -1);
+  MaxMoves = 256;
+
+type
+  TMen = array[0..11] of QWord;
+  { A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it. }
+  TMove = record
+    Src, Dst, Victim, Passed: QWord;
+    Kind, KindAfter: Integer;
+  end;
+  TMoves = record
+    N: Integer;
+    M: array[0..MaxMoves - 1] of TMove;
+  end;
+
+{ The squares from the square s in the direction (df, dr), up to the first man (included). }
+function Ray(s: QWord; df, dr: Integer; occ: QWord): QWord;
+var sq, f, r: Integer;
+    t: QWord;
+begin
+  sq := BsfQWord(s);
+  f := (sq and 7) + df;
+  r := (sq shr 3) + dr;
+  Result := 0;
+  while (f >= 0) and (f < 8) and (r >= 0) and (r < 8) do
+  begin
+    t := QWord(1) shl (8 * r + f);
+    Result := Result or t;
+    if (occ and t) <> 0 then Break;
+    Inc(f, df);
+    Inc(r, dr);
+  end;
+end;
+
+{ Every man of side (0 White, 1 Black). }
+function MenOf(const m: TMen; side: Integer): QWord;
+var b: Integer;
+begin
+  b := 6 * side;
+  Result := m[b] or m[b + 1] or m[b + 2] or m[b + 3] or m[b + 4] or m[b + 5];
+end;
+
+{ Every square the men of side attack, the board occupied as occ. }
+function Attacks(const m: TMen; side: Integer; occ: QWord): QWord;
+var b, d: Integer;
+    s: QWord;
+begin
+  b := 6 * side;
+  Result := Sideways(Fwd(side = 0, m[b])) or Knight(m[b + KnightK]) or Steps(m[b + KingK]);
+  s := m[b + BishopK] or m[b + QueenK];
+  while s <> 0 do
+  begin
+    for d := 0 to 3 do Result := Result or Ray(Lowest(s), DiagF[d], DiagR[d], occ);
+    s := s and (s - 1);
+  end;
+  s := m[b + RookK] or m[b + QueenK];
+  while s <> 0 do
+  begin
+    for d := 0 to 3 do Result := Result or Ray(Lowest(s), LineF[d], LineR[d], occ);
+    s := s and (s - 1);
+  end;
+end;
+
+procedure AddMove(var mv: TMoves; src, dst: QWord; kind, kindAfter: Integer; victim, passed: QWord);
+begin
+  mv.M[mv.N].Src := src;
+  mv.M[mv.N].Dst := dst;
+  mv.M[mv.N].Kind := kind;
+  mv.M[mv.N].KindAfter := kindAfter;
+  mv.M[mv.N].Victim := victim;
+  mv.M[mv.N].Passed := passed;
+  Inc(mv.N);
+end;
+
+{ The legal moves of side, to move, which has a king, pawns and bishops only, into mv. A promotion
+  is four moves. ep: the square behind the other side's double step (0: none). }
+procedure LegalMoves(const m: TMen; side: Integer; ep: QWord; out mv: TMoves);
+const Promotions: array[0..3] of Integer = (QueenK, RookK, BishopK, KnightK);
+var b, o, l, d, i, df, dr, pins: Integer;
+    own, occ, k, them, t, checkers, block, sliders, r, first, beyond, evade, s, src, dst, line, one, two, hit, e, victim: QWord;
+    pinned, pinLine: array[0..7] of QWord;
+begin
+  mv.N := 0;
+  b := 6 * side;
+  o := 6 * (1 - side);
+  own := MenOf(m, side);
+  occ := MenOf(m, 0) or MenOf(m, 1);
+  k := m[b + KingK];
+  them := MenOf(m, 1 - side) and not m[o + KingK];
+  t := Steps(k) and not own and not Attacks(m, 1 - side, occ and not k);
+  while t <> 0 do
+  begin
+    AddMove(mv, k, Lowest(t), KingK, KingK, 0, 0);
+    t := t and (t - 1);
+  end;
+  { checks on the king, and the men pinned to it (each may move along its line only) }
+  checkers := (Sideways(Fwd(side = 0, k)) and m[o + PawnK]) or (Knight(k) and m[o + KnightK]);
+  block := not QWord(0);
+  pins := 0;
+  for l := 0 to 1 do
+  begin
+    if l = 0 then sliders := m[o + BishopK] or m[o + QueenK] else sliders := m[o + RookK] or m[o + QueenK];
+    for d := 0 to 3 do
+    begin
+      if l = 0 then begin df := DiagF[d]; dr := DiagR[d]; end else begin df := LineF[d]; dr := LineR[d]; end;
+      r := Ray(k, df, dr, occ);
+      first := r and occ;
+      if (first and sliders) <> 0 then
+      begin
+        checkers := checkers or first;
+        block := r;
+      end
+      else if (first and own) <> 0 then
+      begin
+        beyond := Ray(first, df, dr, occ);
+        if (beyond and occ and sliders) <> 0 then
+        begin
+          pinned[pins] := first;
+          pinLine[pins] := r or beyond;
+          Inc(pins);
+        end;
+      end;
+    end;
+  end;
+  if Count(checkers) >= 2 then Exit;
+  if checkers = 0 then evade := not QWord(0)
+  else if block <> not QWord(0) then evade := block
+  else evade := checkers;
+  s := m[b + BishopK];
+  while s <> 0 do
+  begin
+    src := Lowest(s);
+    line := not QWord(0);
+    for i := 0 to pins - 1 do if pinned[i] = src then line := pinLine[i];
+    t := 0;
+    for d := 0 to 3 do t := t or Ray(src, DiagF[d], DiagR[d], occ);
+    t := t and not own and not m[o + KingK] and evade and line;
+    while t <> 0 do
+    begin
+      AddMove(mv, src, Lowest(t), BishopK, BishopK, 0, 0);
+      t := t and (t - 1);
+    end;
+    s := s and (s - 1);
+  end;
+  s := m[b + PawnK];
+  while s <> 0 do
+  begin
+    src := Lowest(s);
+    line := not QWord(0);
+    for i := 0 to pins - 1 do if pinned[i] = src then line := pinLine[i];
+    one := Fwd(side = 0, src) and not occ;
+    if side = 0 then two := North(one and Rank3) and not occ else two := South(one and Rank6) and not occ;
+    hit := Sideways(Fwd(side = 0, src));
+    t := (one or (hit and them)) and evade and line;
+    while t <> 0 do
+    begin
+      dst := Lowest(t);
+      if (dst and (Rank1 or Rank8)) <> 0 then
+      begin
+        for i := 0 to 3 do AddMove(mv, src, dst, PawnK, Promotions[i], 0, 0);
+      end
+      else AddMove(mv, src, dst, PawnK, PawnK, 0, 0);
+      t := t and (t - 1);
+    end;
+    t := two and evade and line;
+    while t <> 0 do
+    begin
+      AddMove(mv, src, Lowest(t), PawnK, PawnK, 0, one);
+      t := t and (t - 1);
+    end;
+    e := hit and ep and line;
+    if e <> 0 then
+    begin
+      if side = 0 then victim := South(e) else victim := North(e);
+      if (checkers = 0) or ((checkers and victim) <> 0) or ((e and evade) <> 0) then
+        AddMove(mv, src, e, PawnK, PawnK, victim, 0);
+    end;
+    s := s and (s - 1);
+  end;
+end;
+
+{ The men after side plays mv, into r. }
+procedure Play(const m: TMen; side: Integer; const mv: TMove; out r: TMen);
+var i, o: Integer;
+begin
+  r := m;
+  o := 6 * (1 - side);
+  for i := o to o + 5 do r[i] := r[i] and not (mv.Dst or mv.Victim);
+  r[6 * side + mv.Kind] := r[6 * side + mv.Kind] and not mv.Src;
+  r[6 * side + mv.KindAfter] := r[6 * side + mv.KindAfter] or mv.Dst;
+end;
+
+{ Has side, to move, no legal move, its king in no check? }
+function Stalemated(const m: TMen; side: Integer; ep: QWord): Boolean;
+var mv: TMoves;
+begin
+  if (Attacks(m, 1 - side, MenOf(m, 0) or MenOf(m, 1)) and m[6 * side + KingK]) <> 0 then Exit(False);
+  LegalMoves(m, side, ep, mv);
+  Result := mv.N = 0;
+end;
+
+{ Does every move of mv (side's) leave the other side stalemated? }
+function EveryMoveStalemates(const m: TMen; side: Integer; const mv: TMoves): Boolean;
+var i: Integer;
+    r: TMen;
+begin
+  for i := 0 to mv.N - 1 do
+  begin
+    Play(m, side, mv.M[i], r);
+    if not Stalemated(r, 1 - side, mv.M[i].Passed) then Exit(False);
+  end;
+  Result := True;
+end;
+
+{ The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+  bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+  move: it has a legal move, and each one does that. With the flagged side to move: it has exactly
+  one legal move (a promotion is four), after which every move of the mater's, if it has any, does
+  that (with none, that one move ended the game). Not with an en passant right. }
+function StalematedFlagged(const p: TPieces; white: Boolean): Boolean;
+var m, q: TMen;
+    f, b, o: Integer;
+    mv, answers: TMoves;
+begin
+  m[0] := p.WhitePawns;  m[1] := p.WhiteKnights;  m[2] := p.WhiteBishops;
+  m[3] := p.WhiteRooks;  m[4] := p.WhiteQueens;   m[5] := p.WhiteKing;
+  m[6] := p.BlackPawns;  m[7] := p.BlackKnights;  m[8] := p.BlackBishops;
+  m[9] := p.BlackRooks;  m[10] := p.BlackQueens;  m[11] := p.BlackKing;
+  if white then f := 0 else f := 1;
+  b := 6 * f;
+  o := 6 * (1 - f);
+  if p.EnPassant or ((m[b + KnightK] or m[b + BishopK] or m[b + RookK] or m[b + QueenK]) <> 0)
+     or ((m[o + KnightK] or m[o + RookK] or m[o + QueenK]) <> 0) then Exit(False);
+  if p.WhiteToMove <> white then
+  begin
+    LegalMoves(m, 1 - f, 0, mv);
+    Exit((mv.N > 0) and EveryMoveStalemates(m, 1 - f, mv));
+  end;
+  LegalMoves(m, f, 0, mv);
+  if mv.N <> 1 then Exit(False);
+  Play(m, f, mv.M[0], q);
+  LegalMoves(q, 1 - f, mv.M[0].Passed, answers);
+  Result := EveryMoveStalemates(q, 1 - f, answers);
+end;
+
+{ The lock: no series of legal moves opens the structure for the side asked about. }
+function Locked(const p: TPieces; white: Boolean): Boolean;
 var after: TPieces;
     wx, bx, gaps: QWord;
     lv: array[0..2] of QWord;
@@ -713,7 +970,7 @@ var after: TPieces;
     o: TLevel;
     s: TSets;
 begin
-  if ForcedStep(p, after) then Exit(CannotBeMated(after, white));
+  if ForcedStep(p, after) then Exit(Locked(after, white));
   wx := p.WhiteKnights or p.WhiteRooks or p.WhiteQueens;
   bx := p.BlackKnights or p.BlackRooks or p.BlackQueens;
   if (wx or bx) <> 0 then Exit(BoxedLock(p, white, wx, bx));
@@ -733,6 +990,11 @@ begin
     if Level(p, lv[i], o, s) and not NetLeaks(p, s, white, 0) then Exit(True);
   end;
   Result := StuckMater(p, white);
+end;
+
+function CannotBeMated(const p: TPieces; white: Boolean): Boolean;
+begin
+  Result := Locked(p, white) or StalematedFlagged(p, white);
 end;
 
 end.

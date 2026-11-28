@@ -3,7 +3,8 @@
 -- Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 -- knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 -- moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
--- move: it generates no move and searches nothing.
+-- move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+-- two plies at most.
 --
 -- The first version (../../lua/lock.lua) grows each king's reach, the pawns that can never move,
 -- and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -25,7 +26,10 @@
 --   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
 --   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
 --   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
---     position after it.
+--     position after it;
+--   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+--     bishops) plays, is left without a legal move and out of check, now or after the one legal
+--     move it has.
 -- A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 -- never be opened; one it fails may still be dead.
 --
@@ -541,10 +545,153 @@ local function forced_step(p)
   return q
 end
 
--- Can White (white = true) or Black never be mated, by the lock detector?
-function lock.cannot_be_mated(p, white)
+-- ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+-- Men as 12 sets, from index 0: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+local PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING = 0, 1, 2, 3, 4, 5
+local DIAGONALS = { { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } }
+local LINES = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+
+-- The squares from the square s in the direction (df, dr), up to the first man (included).
+local function ray(s, df, dr, occ)
+  local sq = square_of(s)
+  local f, r, out = sq % 8 + df, sq // 8 + dr, 0
+  while f >= 0 and f < 8 and r >= 0 and r < 8 do
+    local t = 1 << (8 * r + f)
+    out = out | t
+    if occ & t ~= 0 then break end
+    f, r = f + df, r + dr
+  end
+  return out
+end
+
+-- Every man of side (0 White, 1 Black).
+local function men(m, side)
+  local b = 6 * side
+  return m[b] | m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] | m[b + 5]
+end
+
+local function forward(side, s) if side == 0 then return north(s) end return south(s) end
+
+-- Every square the men of side attack, the board occupied as occ.
+local function attacks(m, side, occ)
+  local b = 6 * side
+  local a = sideways(forward(side, m[b])) | knight(m[b + KNIGHT]) | steps(m[b + KING])
+  for _, s in ipairs(squares(m[b + BISHOP] | m[b + QUEEN])) do
+    for _, d in ipairs(DIAGONALS) do a = a | ray(s, d[1], d[2], occ) end
+  end
+  for _, s in ipairs(squares(m[b + ROOK] | m[b + QUEEN])) do
+    for _, d in ipairs(LINES) do a = a | ray(s, d[1], d[2], occ) end
+  end
+  return a
+end
+
+-- The legal moves of side, to move, which has a king, pawns and bishops only: { from, to, kind, now
+-- (the kind after it), victim (a pawn taken en passant), passed (the square a double step passes) };
+-- a promotion is four moves. ep: the square behind the other side's double step (0: none).
+local function legal_moves(m, side, ep)
+  local b, o = 6 * side, 6 * (1 - side)
+  local own, occ, k = men(m, side), men(m, 0) | men(m, 1), m[b + KING]
+  local them = men(m, 1 - side) & ~m[o + KING]
+  local moves = {}
+  local function add(from, to, kind, now, victim, passed)
+    moves[#moves + 1] = { from = from, to = to, kind = kind, now = now, victim = victim, passed = passed }
+  end
+  for _, t in ipairs(squares(steps(k) & ~own & ~attacks(m, 1 - side, occ & ~k))) do add(k, t, KING, KING, 0, 0) end
+  -- checks on the king, and the men pinned to it (each may move along its line only)
+  local checkers = (sideways(forward(side, k)) & m[o + PAWN]) | (knight(k) & m[o + KNIGHT])
+  local block, pins = ~0, {}
+  for l = 1, 2 do
+    local sliders = l == 1 and (m[o + BISHOP] | m[o + QUEEN]) or (m[o + ROOK] | m[o + QUEEN])
+    for _, d in ipairs(l == 1 and DIAGONALS or LINES) do
+      local r = ray(k, d[1], d[2], occ)
+      local first = r & occ
+      if first & sliders ~= 0 then
+        checkers, block = checkers | first, r
+      elseif first & own ~= 0 then
+        local beyond = ray(first, d[1], d[2], occ)
+        if beyond & occ & sliders ~= 0 then pins[first] = r | beyond end
+      end
+    end
+  end
+  if count(checkers) >= 2 then return moves end
+  local evade = ~0
+  if checkers ~= 0 then evade = block ~= ~0 and block or checkers end
+  for _, s in ipairs(squares(m[b + BISHOP])) do
+    local to = 0
+    for _, d in ipairs(DIAGONALS) do to = to | ray(s, d[1], d[2], occ) end
+    for _, t in ipairs(squares(to & ~own & ~m[o + KING] & evade & (pins[s] or ~0))) do add(s, t, BISHOP, BISHOP, 0, 0) end
+  end
+  for _, s in ipairs(squares(m[b + PAWN])) do
+    local line = pins[s] or ~0
+    local one = forward(side, s) & ~occ
+    local two = forward(side, one & (side == 0 and RANK_3 or RANK_6)) & ~occ
+    local hit = sideways(forward(side, s))
+    for _, t in ipairs(squares((one | (hit & them)) & evade & line)) do
+      if t & (RANK_1 | RANK_8) ~= 0 then
+        for _, now in ipairs({ QUEEN, ROOK, BISHOP, KNIGHT }) do add(s, t, PAWN, now, 0, 0) end
+      else
+        add(s, t, PAWN, PAWN, 0, 0)
+      end
+    end
+    for _, t in ipairs(squares(two & evade & line)) do add(s, t, PAWN, PAWN, 0, one) end
+    local e = hit & ep & line
+    if e ~= 0 then
+      local victim = side == 0 and south(e) or north(e)
+      if checkers == 0 or checkers & victim ~= 0 or e & evade ~= 0 then add(s, e, PAWN, PAWN, victim, 0) end
+    end
+  end
+  return moves
+end
+
+-- The men after side plays mv.
+local function play(m, side, mv)
+  local r, o = {}, 6 * (1 - side)
+  for i = 0, 11 do r[i] = m[i] end
+  for i = o, o + 5 do r[i] = r[i] & ~(mv.to | mv.victim) end
+  r[6 * side + mv.kind] = r[6 * side + mv.kind] & ~mv.from
+  r[6 * side + mv.now] = r[6 * side + mv.now] | mv.to
+  return r
+end
+
+-- Has side, to move, no legal move, its king in no check?
+local function stalemated(m, side, ep)
+  return attacks(m, 1 - side, men(m, 0) | men(m, 1)) & m[6 * side + KING] == 0 and #legal_moves(m, side, ep) == 0
+end
+
+-- Does every move of moves (side's) leave the other side stalemated?
+local function every_move_stalemates(m, side, moves)
+  for _, mv in ipairs(moves) do
+    if not stalemated(play(m, side, mv), 1 - side, mv.passed) then return false end
+  end
+  return true
+end
+
+-- The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+-- bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+-- move: it has a legal move, and each one does that. With the flagged side to move: it has exactly
+-- one legal move (a promotion is four), after which every move of the mater's, if it has any, does
+-- that (with none, that one move ended the game). Not with an en passant right.
+local function stalemated_flagged(p, white)
+  local m = { [0] = p.white_pawns, p.white_knights, p.white_bishops, p.white_rooks, p.white_queens, p.white_king,
+              p.black_pawns, p.black_knights, p.black_bishops, p.black_rooks, p.black_queens, p.black_king }
+  local f = white and 0 or 1
+  local b, o = 6 * f, 6 * (1 - f)
+  if p.en_passant or m[b + KNIGHT] | m[b + BISHOP] | m[b + ROOK] | m[b + QUEEN] ~= 0
+     or m[o + KNIGHT] | m[o + ROOK] | m[o + QUEEN] ~= 0 then return false end
+  if p.white_to_move ~= white then
+    local moves = legal_moves(m, 1 - f, 0)
+    return #moves > 0 and every_move_stalemates(m, 1 - f, moves)
+  end
+  local only = legal_moves(m, f, 0)
+  if #only ~= 1 then return false end
+  local q = play(m, f, only[1])
+  return every_move_stalemates(q, 1 - f, legal_moves(q, 1 - f, only[1].passed))
+end
+
+-- The lock: no series of legal moves opens the structure for the side asked about.
+local function locked(p, white)
   local after = forced_step(p)
-  if after then return lock.cannot_be_mated(after, white) end
+  if after then return locked(after, white) end
   local wx = p.white_knights | p.white_rooks | p.white_queens
   local bx = p.black_knights | p.black_rooks | p.black_queens
   if wx | bx ~= 0 then return boxed_lock(p, white, wx, bx) end
@@ -559,6 +706,11 @@ function lock.cannot_be_mated(p, white)
     end
   end
   return stuck_mater(p, white)
+end
+
+-- Can White (white = true) or Black never be mated, by the lock detector?
+function lock.cannot_be_mated(p, white)
+  return locked(p, white) or stalemated_flagged(p, white)
 end
 
 return lock

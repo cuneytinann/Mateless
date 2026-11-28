@@ -332,7 +332,9 @@ ladder, and a game without options plays exactly as before.
   ever assumes it: a player who does not claim plays on, and a mate may still come.
 - `rungs` (1, 2 or 3): how much of the ladder the flags climb: the material test; and the lock
   detector; the whole ladder. Rungs 1 and 2 are asked only when their answer can change (section
-  6), so they cost almost nothing; a lower rung gives fewer draws, never a wrong one.
+  6), so they cost almost nothing; a lower rung gives fewer draws, never a wrong one. The
+  stalemated flagged side (section 12), part of rung 2, is asked at every ply: a quiet move can
+  complete it, and it stops at once outside kings, pawns and bishops.
 - `dominoAtEnd`: the searches (the first, the stuck mater, the second tier, the rules') run only
   when a flag falls or a side resigns (`flagVerdict`), not after every move; a dead position is
   then found by the static tests alone.
@@ -577,6 +579,48 @@ board, and `_internal.coreLockTest` leaves them out with the rest of the second 
 `{ stuck: true }`, `{ forced: <the certificate after the step> }`. `test/lock_invariant.js` checks
 them as they claim: the stuck mater move by move, the forced step from the position after it, and a
 position without a legal move (where a guarded pawn falls) for I7 only.
+
+### The stalemated flagged side
+
+The stuck mater's other side (28 November 2026): whatever the mater plays, the flagged side is left
+without a legal move and out of check, a stalemate, so it is never mated (`tempoStalemate`; Rust
+`stuck::tempo_stalemate`; the certificate `{ tempo: true }`). The flagged side has its king and
+pawns only, the mater no knight, rook or queen (a king, pawns and bishops), and no en passant right
+stands.
+- **The mater to move.** It has a legal move, and after each one the flagged side has none and
+  stands in no check. This is `stuckEvery` with the roles swapped and `quiet`: every move must also
+  give no check (a check with no answer would be a mate); the quick refusals are left out and a
+  double check (composed positions only) is answered exactly, so the answer is exact.
+- **The flagged side to move.** It has exactly one legal move (`kpMoves`; a promotion counts four):
+  a king or a pawn with one move left, the tempo. After it every move of the mater's leaves the
+  flagged side so. If the mater has none, that one move ended the game (a stalemate, or the mater
+  mated), and the flagged side was not mated either. At the root the mater must have a move: a game
+  already over needs no proof.
+
+It is exact for these men. The flagged side pins nothing and checks only with a pawn, so the mater's
+moves are counted exactly; the mater's bishops, and whatever it promotes to, pin and check along
+their lines, and the flagged side's moves are counted with them. An en passant capture comes only
+after a double step of the two moves looked at, and no rook is on the board to pin it along a rank.
+A brute force with the engine's own move generator (the moves made, every promotion) agrees on every
+one of 1.34 million sides of 670,236 positions: chasolver's two files, `lock/second/positions.tsv`,
+the list of 19 November, and positions one and two moves on; the rule proves 832 of them, and the
+brute force no other.
+
+**Not in the search.** A quiet move can complete it (a king's step that leaves its opponent one
+move), and the search asks its static tests only after a capture, a pawn move, a lapse of an en
+passant right or a pawn's check (section 6), with the clock rule as the reference the trigger is
+held to. Inside the static tests the two parted (40 problems in `trigger_check.js`). So it stands
+beside them: `lockCannotMate`, `cannotMate` and `cannotMate2` ask it after the lock (and with them
+`proveCannotBeMated` and `proveBoth` at the root, and the ladder at a clock search's exits), and a
+game's flags ask it at every ply, whatever the last move was: a rule with no memory, so the two
+triggers still agree. `lockTest`, `lockTest2` and `staticTests2`, the search's, leave it out; the
+search proves those positions anyway, a ply or two later.
+
+In the 20 languages of `lock/second/` it is the only rule that looks at moves: a small generator
+of the legal moves of kings, pawns and bishops (against any men, for the positions after a
+promotion), the flagged side's one move, then each of the mater's answers. It is exact there too, so
+every language gives the engine's answers without copying its shortcuts (848,240 positions of kings,
+pawns and bishops, 785 sides proven by the rule: the same in all 20).
 
 ### What it costs
 

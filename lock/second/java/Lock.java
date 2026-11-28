@@ -7,7 +7,8 @@ import java.util.List;
  * <p>Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
  * knights, rooks or queens boxed in by their own men) form a structure that no series of legal
  * moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
- * move: it generates no move and searches nothing.
+ * move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+ * two plies at most.
  *
  * <p>The first version (../../java/Lock.java) grows each king's reach, the pawns that can never
  * move, and the squares where each side may take a pawn, until nothing changes; the structure leaks
@@ -30,7 +31,10 @@ import java.util.List;
  * <li>the check seed: a king in a pawn's check starts its reach from the squares it can step to;
  * <li>the stuck mater: whatever the flagged side plays, the mater is left without a move;
  * <li>the forced step: a king in a pawn's check with one legal move, a step: the lock of the
- *     position after it.
+ *     position after it;
+ * <li>the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+ *     bishops) plays, is left without a legal move and out of check, now or after the one legal
+ *     move it has.
  * </ul>
  * A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
  * never be opened; one it fails may still be dead.
@@ -148,8 +152,13 @@ public final class Lock {
 
     /** Can White (white = true) or Black never be mated, by the lock detector? */
     public static boolean cannotBeMated(Pieces p, boolean white) {
+        return locked(p, white) || stalematedFlagged(p, white);
+    }
+
+    /** The lock: no series of legal moves opens the structure for the side asked about. */
+    private static boolean locked(Pieces p, boolean white) {
         Pieces after = forcedStep(p);
-        if (after != null) return cannotBeMated(after, white);
+        if (after != null) return locked(after, white);
         long wx = p.whiteKnights() | p.whiteRooks() | p.whiteQueens(), bx = p.blackKnights() | p.blackRooks() | p.blackQueens();
         if ((wx | bx) != 0) return boxedLock(p, white, wx, bx);
         if (p.enPassant()) return false;
@@ -506,5 +515,138 @@ public final class Lock {
         return white
                 ? new Pieces(p.whitePawns(), p.blackPawns() & ~to, to, p.blackKing(), 0, 0, 0, 0, 0, 0, 0, 0, false, false, false, false)
                 : new Pieces(p.whitePawns() & ~to, p.blackPawns(), p.whiteKing(), to, 0, 0, 0, 0, 0, 0, 0, 0, true, false, false, false);
+    }
+
+    // ─── The stalemated flagged side ─────────────────────────────────────────────────────────
+    // Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+    private static final int PAWN = 0, KNIGHT = 1, BISHOP = 2, ROOK = 3, QUEEN = 4, KING = 5;
+    private static final int[][] DIAGONALS = {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
+    private static final int[][] LINES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+    /** A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it. */
+    private record Move(long from, long to, long victim, long passed, int kind, int now) {}
+
+    /** The squares from the square s in the direction (df, dr), up to the first man (included). */
+    private static long ray(long s, int df, int dr, long occ) {
+        int sq = Long.numberOfTrailingZeros(s), f = sq % 8 + df, r = sq / 8 + dr;
+        long out = 0;
+        while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+            long t = 1L << (8 * r + f);
+            out |= t;
+            if ((occ & t) != 0) break;
+            f += df; r += dr;
+        }
+        return out;
+    }
+
+    /** Every man of side (0 White, 1 Black). */
+    private static long men(long[] m, int side) {
+        int b = 6 * side;
+        return m[b] | m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] | m[b + 5];
+    }
+
+    /** Every square the men of side attack, the board occupied as occ. */
+    private static long attacks(long[] m, int side, long occ) {
+        int b = 6 * side;
+        long a = sideways(side == 0 ? north(m[b]) : south(m[b])) | knight(m[b + KNIGHT]) | steps(m[b + KING]);
+        for (long s = m[b + BISHOP] | m[b + QUEEN]; s != 0; s &= s - 1)
+            for (int[] d : DIAGONALS) a |= ray(s & -s, d[0], d[1], occ);
+        for (long s = m[b + ROOK] | m[b + QUEEN]; s != 0; s &= s - 1)
+            for (int[] d : LINES) a |= ray(s & -s, d[0], d[1], occ);
+        return a;
+    }
+
+    /** The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is
+        four moves. ep: the square behind the other side's double step (0: none). */
+    private static List<Move> legalMoves(long[] m, int side, long ep) {
+        int b = 6 * side, o = 6 * (1 - side);
+        long own = men(m, side), occ = men(m, 0) | men(m, 1), k = m[b + KING];
+        long them = men(m, 1 - side) & ~m[o + KING];
+        List<Move> moves = new ArrayList<>();
+        for (long t = steps(k) & ~own & ~attacks(m, 1 - side, occ & ~k); t != 0; t &= t - 1) moves.add(new Move(k, t & -t, 0, 0, KING, KING));
+        // checks on the king, and the men pinned to it (each may move along its line only)
+        long checkers = (sideways(side == 0 ? north(k) : south(k)) & m[o + PAWN]) | (knight(k) & m[o + KNIGHT]), block = ~0L;
+        long[] pinned = new long[8], pinLine = new long[8];
+        int pins = 0;
+        for (int l = 0; l < 2; l++) {
+            long sliders = l == 0 ? m[o + BISHOP] | m[o + QUEEN] : m[o + ROOK] | m[o + QUEEN];
+            for (int[] d : l == 0 ? DIAGONALS : LINES) {
+                long r = ray(k, d[0], d[1], occ), first = r & occ;
+                if ((first & sliders) != 0) { checkers |= first; block = r; }
+                else if ((first & own) != 0) {
+                    long beyond = ray(first, d[0], d[1], occ);
+                    if ((beyond & occ & sliders) != 0) { pinned[pins] = first; pinLine[pins++] = r | beyond; }
+                }
+            }
+        }
+        if (count(checkers) >= 2) return moves;
+        long evade = checkers != 0 ? (block != ~0L ? block : checkers) : ~0L;
+        for (long s = m[b + BISHOP]; s != 0; s &= s - 1) {
+            long from = s & -s, to = 0, line = ~0L;
+            for (int i = 0; i < pins; i++) if (pinned[i] == from) line = pinLine[i];
+            for (int[] d : DIAGONALS) to |= ray(from, d[0], d[1], occ);
+            for (long t = to & ~own & ~m[o + KING] & evade & line; t != 0; t &= t - 1) moves.add(new Move(from, t & -t, 0, 0, BISHOP, BISHOP));
+        }
+        for (long s = m[b + PAWN]; s != 0; s &= s - 1) {
+            long from = s & -s, line = ~0L;
+            for (int i = 0; i < pins; i++) if (pinned[i] == from) line = pinLine[i];
+            long one = (side == 0 ? north(from) : south(from)) & ~occ;
+            long two = (side == 0 ? north(one & RANK_3) : south(one & RANK_6)) & ~occ;
+            long hit = sideways(side == 0 ? north(from) : south(from));
+            for (long t = (one | (hit & them)) & evade & line; t != 0; t &= t - 1) {
+                long to = t & -t;
+                if ((to & (RANK_1 | RANK_8)) != 0) for (int now : new int[] {QUEEN, ROOK, BISHOP, KNIGHT}) moves.add(new Move(from, to, 0, 0, PAWN, now));
+                else moves.add(new Move(from, to, 0, 0, PAWN, PAWN));
+            }
+            for (long t = two & evade & line; t != 0; t &= t - 1) moves.add(new Move(from, t & -t, 0, one, PAWN, PAWN));
+            long e = hit & ep & line;
+            if (e != 0) {
+                long victim = side == 0 ? south(e) : north(e);
+                if (checkers == 0 || (checkers & victim) != 0 || (e & evade) != 0) moves.add(new Move(from, e, victim, 0, PAWN, PAWN));
+            }
+        }
+        return moves;
+    }
+
+    /** The men after side plays mv. */
+    private static long[] play(long[] m, int side, Move mv) {
+        long[] r = m.clone();
+        int o = 6 * (1 - side);
+        for (int i = o; i < o + 6; i++) r[i] &= ~(mv.to() | mv.victim());
+        r[6 * side + mv.kind()] &= ~mv.from();
+        r[6 * side + mv.now()] |= mv.to();
+        return r;
+    }
+
+    /** Has side, to move, no legal move, its king in no check? */
+    private static boolean stalemated(long[] m, int side, long ep) {
+        return (attacks(m, 1 - side, men(m, 0) | men(m, 1)) & m[6 * side + KING]) == 0 && legalMoves(m, side, ep).isEmpty();
+    }
+
+    /** Does every move of moves (side's) leave the other side stalemated? */
+    private static boolean everyMoveStalemates(long[] m, int side, List<Move> moves) {
+        for (Move mv : moves) if (!stalemated(play(m, side, mv), 1 - side, mv.passed())) return false;
+        return true;
+    }
+
+    /** The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+        bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+        move: it has a legal move, and each one does that. With the flagged side to move: it has
+        exactly one legal move (a promotion is four), after which every move of the mater's, if it
+        has any, does that (with none, that one move ended the game). Not with an en passant right. */
+    private static boolean stalematedFlagged(Pieces p, boolean white) {
+        long[] m = {p.whitePawns(), p.whiteKnights(), p.whiteBishops(), p.whiteRooks(), p.whiteQueens(), p.whiteKing(),
+                    p.blackPawns(), p.blackKnights(), p.blackBishops(), p.blackRooks(), p.blackQueens(), p.blackKing()};
+        int f = white ? 0 : 1, b = 6 * f, o = 6 * (1 - f);
+        if (p.enPassant() || (m[b + KNIGHT] | m[b + BISHOP] | m[b + ROOK] | m[b + QUEEN]) != 0 || (m[o + KNIGHT] | m[o + ROOK] | m[o + QUEEN]) != 0)
+            return false;
+        if (p.whiteToMove() != white) {
+            List<Move> moves = legalMoves(m, 1 - f, 0);
+            return !moves.isEmpty() && everyMoveStalemates(m, 1 - f, moves);
+        }
+        List<Move> only = legalMoves(m, f, 0);
+        if (only.size() != 1) return false;
+        long[] q = play(m, f, only.get(0));
+        return everyMoveStalemates(q, 1 - f, legalMoves(q, 1 - f, only.get(0).passed()));
     }
 }

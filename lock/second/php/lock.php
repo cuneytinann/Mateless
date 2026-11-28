@@ -5,7 +5,8 @@
  * Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
  * knights, rooks or queens boxed in by their own men) form a structure that no series of legal
  * moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
- * move: it generates no move and searches nothing.
+ * move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+ * two plies at most.
  *
  * The first version (../../php/lock.php) grows each king's reach, the pawns that can never move,
  * and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -27,7 +28,10 @@
  *   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
  *   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
  *   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
- *     position after it.
+ *     position after it;
+ *   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+ *     bishops) plays, is left without a legal move and out of check, now or after the one legal
+ *     move it has.
  * A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
  * never be opened; one it fails may still be dead.
  *
@@ -183,8 +187,14 @@ function squareOf(int $b): int { return strlen(decbin($b)) - 1; }
 /** Can White ($white = true) or Black never be mated, by the lock detector? */
 function cannotBeMated(Pieces $p, bool $white): bool
 {
+    return locked($p, $white) || stalematedFlagged($p, $white);
+}
+
+/** The lock: no series of legal moves opens the structure for the side asked about. */
+function locked(Pieces $p, bool $white): bool
+{
     $after = forcedStep($p);
-    if ($after !== null) return cannotBeMated($after, $white);
+    if ($after !== null) return locked($after, $white);
     $wx = $p->whiteKnights | $p->whiteRooks | $p->whiteQueens;
     $bx = $p->blackKnights | $p->blackRooks | $p->blackQueens;
     if (($wx | $bx) !== 0) return boxedLock($p, $white, $wx, $bx);
@@ -545,4 +555,147 @@ function forcedStep(Pieces $p): ?Pieces
     if ($white) { $q->whiteKing = $to; $q->blackPawns = $p->blackPawns & ~$to; }
     else { $q->blackKing = $to; $q->whitePawns = $p->whitePawns & ~$to; }
     return $q;
+}
+
+// ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+// Men as an array of 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+// A move: [from, to, kind, kind after it, a pawn taken en passant, the square a double step passes].
+const PAWN = 0, KNIGHT = 1, BISHOP = 2, ROOK = 3, QUEEN = 4, KING = 5;
+const DIAGONALS = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
+const LINES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/** The squares from the square s in the direction (df, dr), up to the first man (included). */
+function ray(int $s, int $df, int $dr, int $occ): int
+{
+    $sq = squareOf($s);
+    $f = $sq % 8 + $df;
+    $r = intdiv($sq, 8) + $dr;
+    $out = 0;
+    while ($f >= 0 && $f < 8 && $r >= 0 && $r < 8) {
+        $t = 1 << (8 * $r + $f);
+        $out |= $t;
+        if (($occ & $t) !== 0) break;
+        $f += $df;
+        $r += $dr;
+    }
+    return $out;
+}
+
+/** Every man of side (0 White, 1 Black). */
+function men(array $m, int $side): int
+{
+    $b = 6 * $side;
+    return $m[$b] | $m[$b + 1] | $m[$b + 2] | $m[$b + 3] | $m[$b + 4] | $m[$b + 5];
+}
+
+function forward(int $side, int $s): int { return $side === 0 ? north($s) : south($s); }
+
+/** Every square the men of side attack, the board occupied as occ. */
+function attacks(array $m, int $side, int $occ): int
+{
+    $b = 6 * $side;
+    $a = sideways(forward($side, $m[$b])) | knight($m[$b + KNIGHT]) | steps($m[$b + KING]);
+    foreach (squares($m[$b + BISHOP] | $m[$b + QUEEN]) as $s) foreach (DIAGONALS as [$df, $dr]) $a |= ray($s, $df, $dr, $occ);
+    foreach (squares($m[$b + ROOK] | $m[$b + QUEEN]) as $s) foreach (LINES as [$df, $dr]) $a |= ray($s, $df, $dr, $occ);
+    return $a;
+}
+
+/** The legal moves of side, to move, which has a king, pawns and bishops only; a promotion is four
+    moves. ep: the square behind the other side's double step (0: none). */
+function legalMoves(array $m, int $side, int $ep): array
+{
+    $b = 6 * $side;
+    $o = 6 * (1 - $side);
+    $own = men($m, $side);
+    $occ = men($m, 0) | men($m, 1);
+    $k = $m[$b + KING];
+    $them = men($m, 1 - $side) & ~$m[$o + KING];
+    $moves = [];
+    foreach (squares(steps($k) & ~$own & ~attacks($m, 1 - $side, $occ & ~$k)) as $t) $moves[] = [$k, $t, KING, KING, 0, 0];
+    // checks on the king, and the men pinned to it (each may move along its line only)
+    $checkers = (sideways(forward($side, $k)) & $m[$o + PAWN]) | (knight($k) & $m[$o + KNIGHT]);
+    $block = -1;
+    $pins = [];
+    foreach ([[DIAGONALS, $m[$o + BISHOP] | $m[$o + QUEEN]], [LINES, $m[$o + ROOK] | $m[$o + QUEEN]]] as [$dirs, $sliders]) {
+        foreach ($dirs as [$df, $dr]) {
+            $r = ray($k, $df, $dr, $occ);
+            $first = $r & $occ;
+            if (($first & $sliders) !== 0) { $checkers |= $first; $block = $r; }
+            elseif (($first & $own) !== 0) {
+                $beyond = ray($first, $df, $dr, $occ);
+                if (($beyond & $occ & $sliders) !== 0) $pins[$first] = $r | $beyond;
+            }
+        }
+    }
+    if (count($checkers) >= 2) return $moves;
+    $evade = $checkers !== 0 ? ($block !== -1 ? $block : $checkers) : -1;
+    foreach (squares($m[$b + BISHOP]) as $s) {
+        $to = 0;
+        foreach (DIAGONALS as [$df, $dr]) $to |= ray($s, $df, $dr, $occ);
+        foreach (squares($to & ~$own & ~$m[$o + KING] & $evade & ($pins[$s] ?? -1)) as $t) $moves[] = [$s, $t, BISHOP, BISHOP, 0, 0];
+    }
+    foreach (squares($m[$b + PAWN]) as $s) {
+        $line = $pins[$s] ?? -1;
+        $one = forward($side, $s) & ~$occ;
+        $two = forward($side, $one & ($side === 0 ? RANK_3 : RANK_6)) & ~$occ;
+        $hit = sideways(forward($side, $s));
+        foreach (squares(($one | ($hit & $them)) & $evade & $line) as $t) {
+            foreach (($t & (RANK_1 | RANK_8)) !== 0 ? [QUEEN, ROOK, BISHOP, KNIGHT] : [PAWN] as $now) $moves[] = [$s, $t, PAWN, $now, 0, 0];
+        }
+        foreach (squares($two & $evade & $line) as $t) $moves[] = [$s, $t, PAWN, PAWN, 0, $one];
+        $e = $hit & $ep & $line;
+        if ($e !== 0) {
+            $victim = $side === 0 ? south($e) : north($e);
+            if ($checkers === 0 || ($checkers & $victim) !== 0 || ($e & $evade) !== 0) $moves[] = [$s, $e, PAWN, PAWN, $victim, 0];
+        }
+    }
+    return $moves;
+}
+
+/** The men after side plays move. */
+function play(array $m, int $side, array $move): array
+{
+    [$s, $t, $kind, $now, $victim] = $move;
+    $o = 6 * (1 - $side);
+    for ($i = $o; $i < $o + 6; $i++) $m[$i] &= ~($t | $victim);
+    $m[6 * $side + $kind] &= ~$s;
+    $m[6 * $side + $now] |= $t;
+    return $m;
+}
+
+/** Has side, to move, no legal move, its king in no check? */
+function stalemated(array $m, int $side, int $ep): bool
+{
+    return (attacks($m, 1 - $side, men($m, 0) | men($m, 1)) & $m[6 * $side + KING]) === 0 && legalMoves($m, $side, $ep) === [];
+}
+
+/** Does every move of moves (side's) leave the other side stalemated? */
+function everyMoveStalemates(array $m, int $side, array $moves): bool
+{
+    foreach ($moves as $mv) if (!stalemated(play($m, $side, $mv), 1 - $side, $mv[5])) return false;
+    return true;
+}
+
+/** The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+    bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+    move: it has a legal move, and each one does that. With the flagged side to move: it has
+    exactly one legal move (a promotion is four), after which every move of the mater's, if it has
+    any, does that (with none, that one move ended the game). Not with an en passant right. */
+function stalematedFlagged(Pieces $p, bool $white): bool
+{
+    $m = [$p->whitePawns, $p->whiteKnights, $p->whiteBishops, $p->whiteRooks, $p->whiteQueens, $p->whiteKing,
+          $p->blackPawns, $p->blackKnights, $p->blackBishops, $p->blackRooks, $p->blackQueens, $p->blackKing];
+    $f = $white ? 0 : 1;
+    $b = 6 * $f;
+    $o = 6 * (1 - $f);
+    if ($p->enPassant || ($m[$b + KNIGHT] | $m[$b + BISHOP] | $m[$b + ROOK] | $m[$b + QUEEN]) !== 0
+        || ($m[$o + KNIGHT] | $m[$o + ROOK] | $m[$o + QUEEN]) !== 0) return false;
+    if ($p->whiteToMove !== $white) {
+        $moves = legalMoves($m, 1 - $f, 0);
+        return $moves !== [] && everyMoveStalemates($m, 1 - $f, $moves);
+    }
+    $only = legalMoves($m, $f, 0);
+    if (\count($only) !== 1) return false;
+    $q = play($m, $f, $only[0]);
+    return everyMoveStalemates($q, 1 - $f, legalMoves($q, 1 - $f, $only[0][5]));
 }

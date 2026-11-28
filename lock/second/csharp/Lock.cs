@@ -3,7 +3,8 @@
 // Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 // knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 // moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-// move: it generates no move and searches nothing.
+// move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+// two plies at most.
 //
 // The first version (../../csharp/Lock.cs) grows each king's reach, the pawns that can never move,
 // and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -25,7 +26,10 @@
 //   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
 //   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
 //   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-//     position after it.
+//     position after it;
+//   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+//     bishops) plays, is left without a legal move and out of check, now or after the one legal
+//     move it has.
 // A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 // never be opened; one it fails may still be dead.
 //
@@ -157,9 +161,12 @@ public static class Lock
     }
 
     /// <summary>Can White (white = true) or Black never be mated, by the lock detector?</summary>
-    public static bool CannotBeMated(Pieces p, bool white)
+    public static bool CannotBeMated(Pieces p, bool white) => Locked(p, white) || StalematedFlagged(p, white);
+
+    // The lock: no series of legal moves opens the structure for the side asked about.
+    static bool Locked(Pieces p, bool white)
     {
-        if (ForcedStep(p) is Pieces after) return CannotBeMated(after, white);
+        if (ForcedStep(p) is Pieces after) return Locked(after, white);
         ulong wx = p.WhiteKnights | p.WhiteRooks | p.WhiteQueens, bx = p.BlackKnights | p.BlackRooks | p.BlackQueens;
         if ((wx | bx) != 0) return BoxedLock(p, white, wx, bx);
         if (p.EnPassant) return false;
@@ -529,5 +536,151 @@ public static class Lock
         if (((white ? Sideways(South(checkers)) : Sideways(North(checkers))) & own) != 0) return null;  // a pawn may take instead
         return white ? p with { WhiteKing = to, BlackPawns = p.BlackPawns & ~to, WhiteToMove = false, EnPassant = false }
                      : p with { BlackKing = to, WhitePawns = p.WhitePawns & ~to, WhiteToMove = true, EnPassant = false };
+    }
+
+    // ─── The stalemated flagged side ───────────────────────────────────────────────────────
+    // Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+    static class K { public const int Pawn = 0, Knight = 1, Bishop = 2, Rook = 3, Queen = 4, King = 5; }   // the kinds of men
+    static readonly int[][] Diagonals = { new[] { 1, 1 }, new[] { -1, 1 }, new[] { 1, -1 }, new[] { -1, -1 } };
+    static readonly int[][] Lines = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } };
+
+    // A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it.
+    readonly record struct Move(ulong From, ulong To, ulong Victim, ulong Passed, int Kind, int Now);
+
+    // The squares from the square s in the direction (df, dr), up to the first man (included).
+    static ulong Ray(ulong s, int df, int dr, ulong occ)
+    {
+        int sq = BitOperations.TrailingZeroCount(s), f = sq % 8 + df, r = sq / 8 + dr;
+        ulong o = 0;
+        while (f >= 0 && f < 8 && r >= 0 && r < 8)
+        {
+            ulong t = 1UL << (8 * r + f);
+            o |= t;
+            if ((occ & t) != 0) break;
+            f += df; r += dr;
+        }
+        return o;
+    }
+
+    // Every man of side (0 White, 1 Black).
+    static ulong Men(ulong[] m, int side)
+    {
+        int b = 6 * side;
+        return m[b] | m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] | m[b + 5];
+    }
+
+    // Every square the men of side attack, the board occupied as occ.
+    static ulong Attacks(ulong[] m, int side, ulong occ)
+    {
+        int b = 6 * side;
+        ulong a = Sideways(side == 0 ? North(m[b]) : South(m[b])) | Knight(m[b + K.Knight]) | Steps(m[b + K.King]);
+        for (ulong s = m[b + K.Bishop] | m[b + K.Queen]; s != 0; s &= s - 1)
+            foreach (var d in Diagonals) a |= Ray(Lowest(s), d[0], d[1], occ);
+        for (ulong s = m[b + K.Rook] | m[b + K.Queen]; s != 0; s &= s - 1)
+            foreach (var d in Lines) a |= Ray(Lowest(s), d[0], d[1], occ);
+        return a;
+    }
+
+    // The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is
+    // four moves. ep: the square behind the other side's double step (0: none).
+    static List<Move> LegalMoves(ulong[] m, int side, ulong ep)
+    {
+        int b = 6 * side, o = 6 * (1 - side);
+        ulong own = Men(m, side), occ = Men(m, 0) | Men(m, 1), k = m[b + K.King];
+        ulong them = Men(m, 1 - side) & ~m[o + K.King];
+        var moves = new List<Move>();
+        for (ulong t = Steps(k) & ~own & ~Attacks(m, 1 - side, occ & ~k); t != 0; t &= t - 1) moves.Add(new Move(k, Lowest(t), 0, 0, K.King, K.King));
+        // checks on the king, and the men pinned to it (each may move along its line only)
+        ulong checkers = (Sideways(side == 0 ? North(k) : South(k)) & m[o + K.Pawn]) | (Knight(k) & m[o + K.Knight]), block = ~0UL;
+        var pins = new Dictionary<ulong, ulong>();
+        for (int l = 0; l < 2; l++)
+        {
+            ulong sliders = l == 0 ? m[o + K.Bishop] | m[o + K.Queen] : m[o + K.Rook] | m[o + K.Queen];
+            foreach (var d in l == 0 ? Diagonals : Lines)
+            {
+                ulong r = Ray(k, d[0], d[1], occ), first = r & occ;
+                if ((first & sliders) != 0) { checkers |= first; block = r; }
+                else if ((first & own) != 0)
+                {
+                    ulong beyond = Ray(first, d[0], d[1], occ);
+                    if ((beyond & occ & sliders) != 0) pins[first] = r | beyond;
+                }
+            }
+        }
+        if (Count(checkers) >= 2) return moves;
+        ulong evade = checkers != 0 ? (block != ~0UL ? block : checkers) : ~0UL;
+        for (ulong s = m[b + K.Bishop]; s != 0; s &= s - 1)
+        {
+            ulong from = Lowest(s), to = 0;
+            foreach (var d in Diagonals) to |= Ray(from, d[0], d[1], occ);
+            for (ulong t = to & ~own & ~m[o + K.King] & evade & pins.GetValueOrDefault(from, ~0UL); t != 0; t &= t - 1)
+                moves.Add(new Move(from, Lowest(t), 0, 0, K.Bishop, K.Bishop));
+        }
+        for (ulong s = m[b + K.Pawn]; s != 0; s &= s - 1)
+        {
+            ulong from = Lowest(s), line = pins.GetValueOrDefault(from, ~0UL);
+            ulong one = (side == 0 ? North(from) : South(from)) & ~occ;
+            ulong two = (side == 0 ? North(one & Rank3) : South(one & Rank6)) & ~occ;
+            ulong hit = Sideways(side == 0 ? North(from) : South(from));
+            for (ulong t = (one | (hit & them)) & evade & line; t != 0; t &= t - 1)
+            {
+                ulong to = Lowest(t);
+                if ((to & (Rank1 | Rank8)) != 0) foreach (int now in new[] { K.Queen, K.Rook, K.Bishop, K.Knight }) moves.Add(new Move(from, to, 0, 0, K.Pawn, now));
+                else moves.Add(new Move(from, to, 0, 0, K.Pawn, K.Pawn));
+            }
+            for (ulong t = two & evade & line; t != 0; t &= t - 1) moves.Add(new Move(from, Lowest(t), 0, one, K.Pawn, K.Pawn));
+            ulong e = hit & ep & line;
+            if (e != 0)
+            {
+                ulong victim = side == 0 ? South(e) : North(e);
+                if (checkers == 0 || (checkers & victim) != 0 || (e & evade) != 0) moves.Add(new Move(from, e, victim, 0, K.Pawn, K.Pawn));
+            }
+        }
+        return moves;
+    }
+
+    // The men after side plays mv.
+    static ulong[] Play(ulong[] m, int side, Move mv)
+    {
+        var r = (ulong[])m.Clone();
+        int o = 6 * (1 - side);
+        for (int i = o; i < o + 6; i++) r[i] &= ~(mv.To | mv.Victim);
+        r[6 * side + mv.Kind] &= ~mv.From;
+        r[6 * side + mv.Now] |= mv.To;
+        return r;
+    }
+
+    // Has side, to move, no legal move, its king in no check?
+    static bool Stalemated(ulong[] m, int side, ulong ep) =>
+        (Attacks(m, 1 - side, Men(m, 0) | Men(m, 1)) & m[6 * side + K.King]) == 0 && LegalMoves(m, side, ep).Count == 0;
+
+    // Does every move of moves (side's) leave the other side stalemated?
+    static bool EveryMoveStalemates(ulong[] m, int side, List<Move> moves)
+    {
+        foreach (var mv in moves) if (!Stalemated(Play(m, side, mv), 1 - side, mv.Passed)) return false;
+        return true;
+    }
+
+    // The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+    // bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+    // move: it has a legal move, and each one does that. With the flagged side to move: it has
+    // exactly one legal move (a promotion is four), after which every move of the mater's, if it
+    // has any, does that (with none, that one move ended the game). Not with an en passant right.
+    static bool StalematedFlagged(Pieces p, bool white)
+    {
+        ulong[] m = { p.WhitePawns, p.WhiteKnights, p.WhiteBishops, p.WhiteRooks, p.WhiteQueens, p.WhiteKing,
+                      p.BlackPawns, p.BlackKnights, p.BlackBishops, p.BlackRooks, p.BlackQueens, p.BlackKing };
+        int f = white ? 0 : 1, b = 6 * f, o = 6 * (1 - f);
+        if (p.EnPassant || (m[b + K.Knight] | m[b + K.Bishop] | m[b + K.Rook] | m[b + K.Queen]) != 0 || (m[o + K.Knight] | m[o + K.Rook] | m[o + K.Queen]) != 0)
+            return false;
+        if (p.WhiteToMove != white)
+        {
+            var moves = LegalMoves(m, 1 - f, 0);
+            return moves.Count > 0 && EveryMoveStalemates(m, 1 - f, moves);
+        }
+        var only = LegalMoves(m, f, 0);
+        if (only.Count != 1) return false;
+        var q = Play(m, f, only[0]);
+        return EveryMoveStalemates(q, 1 - f, LegalMoves(q, 1 - f, only[0].Passed));
     }
 }

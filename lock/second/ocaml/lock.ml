@@ -3,7 +3,8 @@
    Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
    knights, rooks or queens boxed in by their own men) form a structure that no series of legal
    moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-   move: it generates no move and searches nothing.
+   move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+   two plies at most.
 
    The first version (../../ocaml/lock.ml) grows each king's reach, the pawns that can never move,
    and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -497,9 +498,145 @@ let forced_step p =
     else Some { p with black_king = dest; white_pawns = p.white_pawns &&& ~~~dest; white_to_move = true; en_passant = false }
   end
 
-let rec cannot_be_mated p white =
+(* ─── The stalemated flagged side ─────────────────────────────────────────────────────────
+   Men as an array of 12 sets: White's pawns, knights, bishops, rooks, queens and king, then
+   Black's. (The operators above share one precedence, left to right: hence the brackets.) *)
+let pawn_k = 0 and knight_k = 1 and bishop_k = 2 and rook_k = 3 and queen_k = 4 and king_k = 5
+let diagonal_steps = [ (1, 1); (-1, 1); (1, -1); (-1, -1) ]
+let line_steps = [ (1, 0); (-1, 0); (0, 1); (0, -1) ]
+
+(* A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it. *)
+type move = { src : int64; dst : int64; victim : int64; passed : int64; kind : int; now : int }
+
+(* The squares from the square s in the direction (df, dr), up to the first man (included). *)
+let ray s df dr occ =
+  let sq = square_of s in
+  let rec go f r out =
+    if f < 0 || f > 7 || r < 0 || r > 7 then out
+    else
+      let t = 1L <<< (8 * r + f) in
+      if occ &&& t <> 0L then out ||| t else go (f + df) (r + dr) (out ||| t)
+  in
+  go (sq mod 8 + df) (sq / 8 + dr) 0L
+
+(* The one-square sets of s. *)
+let rec squares s = if s = 0L then [] else lowest s :: squares (rest s)
+
+(* Every man of side (0 White, 1 Black). *)
+let men m side = let b = 6 * side in m.(b) ||| m.(b + 1) ||| m.(b + 2) ||| m.(b + 3) ||| m.(b + 4) ||| m.(b + 5)
+
+let forward side s = if side = 0 then north s else south s
+let union f l = List.fold_left (fun a x -> a ||| f x) 0L l
+
+(* Every square the men of side attack, the board occupied as occ. *)
+let attacks m side occ =
+  let b = 6 * side in
+  let slide sliders dirs = union (fun s -> union (fun (df, dr) -> ray s df dr occ) dirs) (squares sliders) in
+  sideways (forward side m.(b)) ||| knight m.(b + knight_k) ||| steps m.(b + king_k)
+  ||| slide (m.(b + bishop_k) ||| m.(b + queen_k)) diagonal_steps
+  ||| slide (m.(b + rook_k) ||| m.(b + queen_k)) line_steps
+
+(* The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is four
+   moves. ep: the square behind the other side's double step (0: none). *)
+let legal_moves m side ep =
+  let b = 6 * side and o = 6 * (1 - side) in
+  let own = men m side and occ = men m 0 ||| men m 1 and k = m.(b + king_k) in
+  let them = men m (1 - side) &&& ~~~(m.(o + king_k)) in
+  let mv src dst kind now victim passed = { src; dst; victim; passed; kind; now } in
+  let king_moves =
+    List.map (fun t -> mv k t king_k king_k 0L 0L) (squares (steps k &&& ~~~own &&& ~~~(attacks m (1 - side) (occ &&& ~~~k)))) in
+  (* checks on the king, and the men pinned to it (each may move along its line only) *)
+  let checkers = ref ((sideways (forward side k) &&& m.(o + pawn_k)) ||| (knight k &&& m.(o + knight_k))) in
+  let block = ref (-1L) and pins = ref [] in
+  List.iter
+    (fun (dirs, sliders) ->
+      List.iter
+        (fun (df, dr) ->
+          let r = ray k df dr occ in
+          let first = r &&& occ in
+          if first &&& sliders <> 0L then begin checkers := !checkers ||| first; block := r end
+          else if first &&& own <> 0L then begin
+            let beyond = ray first df dr occ in
+            if beyond &&& occ &&& sliders <> 0L then pins := (first, r ||| beyond) :: !pins
+          end)
+        dirs)
+    [ (diagonal_steps, m.(o + bishop_k) ||| m.(o + queen_k)); (line_steps, m.(o + rook_k) ||| m.(o + queen_k)) ];
+  let checkers = !checkers in
+  if count checkers >= 2 then king_moves
+  else begin
+    let evade = if checkers = 0L then -1L else if !block <> -1L then !block else checkers in
+    let line_of s = try List.assoc s !pins with Not_found -> -1L in
+    let bishop_moves =
+      List.concat_map
+        (fun s ->
+          let dest = union (fun (df, dr) -> ray s df dr occ) diagonal_steps in
+          List.map (fun t -> mv s t bishop_k bishop_k 0L 0L)
+            (squares (dest &&& ~~~own &&& ~~~(m.(o + king_k)) &&& evade &&& line_of s)))
+        (squares m.(b + bishop_k)) in
+    let pawn_moves =
+      List.concat_map
+        (fun s ->
+          let line = line_of s in
+          let one = forward side s &&& ~~~occ in
+          let two = forward side (one &&& (if side = 0 then rank_3 else rank_6)) &&& ~~~occ in
+          let hit = sideways (forward side s) in
+          let pushes_and_takes =
+            List.concat_map
+              (fun t ->
+                if t &&& (rank_1 ||| rank_8) <> 0L then
+                  List.map (fun now -> mv s t pawn_k now 0L 0L) [ queen_k; rook_k; bishop_k; knight_k ]
+                else [ mv s t pawn_k pawn_k 0L 0L ])
+              (squares ((one ||| (hit &&& them)) &&& evade &&& line)) in
+          let doubles = List.map (fun t -> mv s t pawn_k pawn_k 0L one) (squares (two &&& evade &&& line)) in
+          let e = hit &&& ep &&& line in
+          let victim = if side = 0 then south e else north e in
+          let takes_en_passant =
+            if e <> 0L && (checkers = 0L || checkers &&& victim <> 0L || e &&& evade <> 0L) then [ mv s e pawn_k pawn_k victim 0L ]
+            else [] in
+          pushes_and_takes @ doubles @ takes_en_passant)
+        (squares m.(b + pawn_k)) in
+    king_moves @ bishop_moves @ pawn_moves
+  end
+
+(* The men after side plays a move. *)
+let play m side mv =
+  let r = Array.copy m and o = 6 * (1 - side) in
+  for i = o to o + 5 do r.(i) <- r.(i) &&& ~~~(mv.dst ||| mv.victim) done;
+  r.(6 * side + mv.kind) <- r.(6 * side + mv.kind) &&& ~~~(mv.src);
+  r.(6 * side + mv.now) <- r.(6 * side + mv.now) ||| mv.dst;
+  r
+
+(* Has side, to move, no legal move, its king in no check? *)
+let stalemated m side ep =
+  attacks m (1 - side) (men m 0 ||| men m 1) &&& m.(6 * side + king_k) = 0L && legal_moves m side ep = []
+
+(* Does every move of moves (side's) leave the other side stalemated? *)
+let every_move_stalemates m side moves = List.for_all (fun mv -> stalemated (play m side mv) (1 - side) mv.passed) moves
+
+(* The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+   bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+   move: it has a legal move, and each one does that. With the flagged side to move: it has exactly
+   one legal move (a promotion is four), after which every move of the mater's, if it has any, does
+   that (with none, that one move ended the game). Not with an en passant right. *)
+let stalemated_flagged p white =
+  let m = [| p.white_pawns; p.white_knights; p.white_bishops; p.white_rooks; p.white_queens; p.white_king;
+             p.black_pawns; p.black_knights; p.black_bishops; p.black_rooks; p.black_queens; p.black_king |] in
+  let f = if white then 0 else 1 in
+  let b = 6 * f and o = 6 * (1 - f) in
+  if p.en_passant || (m.(b + knight_k) ||| m.(b + bishop_k) ||| m.(b + rook_k) ||| m.(b + queen_k)) <> 0L
+     || (m.(o + knight_k) ||| m.(o + rook_k) ||| m.(o + queen_k)) <> 0L then false
+  else if p.white_to_move <> white then
+    let moves = legal_moves m (1 - f) 0L in
+    moves <> [] && every_move_stalemates m (1 - f) moves
+  else
+    match legal_moves m f 0L with
+    | [ only ] -> let q = play m f only in every_move_stalemates q (1 - f) (legal_moves q (1 - f) only.passed)
+    | _ -> false
+
+(* The lock: no series of legal moves opens the structure for the side asked about. *)
+let rec locked p white =
   match forced_step p with
-  | Some after -> cannot_be_mated after white
+  | Some after -> locked after white
   | None ->
     let wx = p.white_knights ||| p.white_rooks ||| p.white_queens
     and bx = p.black_knights ||| p.black_rooks ||| p.black_queens in
@@ -519,3 +656,5 @@ let rec cannot_be_mated p white =
         (levels p)
       || stuck_mater p white
     end
+
+let cannot_be_mated p white = locked p white || stalemated_flagged p white

@@ -4,6 +4,54 @@ Measured on a shared cloud machine (2 vCPU Xeon 2.8 GHz, Node 22, rustc 1.97, on
 separate runs move by ±5–10%, so ranges are given where runs differed. How the engine works is in
 [DESIGN.md](DESIGN.md).
 
+<a id="the-stalemated-flagged-side"></a>
+
+## The stalemated flagged side (28 November 2026)
+
+The flagged side has its king and pawns only, and whatever the mater (a king, pawns and bishops)
+plays, it is left without a legal move and out of check: a stalemate, so it is never mated. With
+the mater to move, it has a legal move and each one does that; with the flagged side to move, it has
+exactly one legal move (a promotion counts four), after which every move of the mater's does that
+(none: that move ended the game). No en passant right. Exact: the legal moves of the two plies,
+pins and checks counted ([DESIGN.md](DESIGN.md), section 12). It is asked with the lock
+(`lockCannotMate`, `cannotMate`, `cannotMate2`) and by a game's flags at every ply, not inside the
+search. In JavaScript, Rust, WebAssembly and the 20 languages of `lock/second/`.
+
+| | lock answers before | now |
+|---|---|---|
+| chasolver's list of 19 November (204,484 rows, the flagged side to move) | 53,124 | **53,214** (+90; none lost) |
+| of its 331 rows proven only by the search in a lock-like structure: the flagged side stalemated within two plies | 0 of 76 | **75** (the other has two moves); 14 more of the other groups |
+| the Lichess rows of `data/` (locked positions, the second version's rows, August–September) | 53,236 | 53,238 (+2, August–September) |
+| chasolver's composed positions (`positions.txt`, both sides) | 1,007 | 1,014 |
+| chasolver's Lichess positions (`lichess.txt`) | 7 | 7 |
+| chasolver's labels (`classify.js 6 100 1`, both sides): static proofs | 3,674 | 3,680 (FALSE DRAWS 0) |
+
+| check | on | result |
+|---|---|---|
+| a brute force with the engine's own legal moves (the moves made, every promotion), against the rule's definition | 1.34 million sides of 670,236 positions: chasolver's two files, `lock/second/positions.tsv`, the list of 19 November, positions one and two moves on | the same answer on every one (832 proven) |
+| chasolver's full analysis (`rust/examples/oracle.rs`) and an independent walk of every reachable position (shakmaty) | the 1,217 proofs of 4.58 million positions of kings, pawns and bishops (those files, the 331 rows, the August–September scan, one and two moves on) | every one unwinnable; the walk: no mate |
+| the invariant (`lock_invariant.js`, a new `tempo` kind checked move by move) | the list of 19 November (53,214 certificates, 90 of them the new kind), `lock/second/positions.tsv` (38,403; 112), chasolver's positions, the 331 rows | 0 violations (547 million positions visited) |
+| the trigger (`trigger_check.js`, the clock rule against `testsAfter`) | 68,950 positions, 40,381 games, 55,357 takebacks | 0 problems (inside the static tests: 40) |
+| both sides at once = each alone (`twosided_check.js`) | 66,100 + chasolver's files | 0 mismatches |
+| JS = Rust (`rust_compare.js labels`, `fen`, `games`, `play`), node counts included; JS = WebAssembly (`lockCannotMate`, `wasm_check.js`, `game_check.js`) | the test files, the castling positions, 6,000 games (3,000 from endings, under the move rules too), 3,000 games from endings with every rung | byte for byte; 0 differences |
+| `game_flags_check.js`, `second_version_check.js` (four new positions), `types_check.js`, `chess960_boxed_check.js` | their usual inputs | 0 problems |
+| the 20 languages | 66,100 + 183,461 + 206,149 + 848,240 positions (the last of kings, pawns and bishops only, 785 sides proven by the rule) | 0 wrong each |
+
+**Why not in the search.** The search asks its static tests only after a capture, a pawn move, a
+lapse of an en passant right or a pawn's check, and holds that trigger to the clock rule (both
+tests whenever the halfmove clock is at most 1). A quiet move can complete this rule (a king's step
+that leaves the opponent one move), so inside the static tests the two parted: 40 problems, node
+counts and verdicts. Asked beside them, at every ply of a game and at the root of a proof, it needs
+no memory and the two triggers agree; inside the search the same positions are proven a ply or
+two later, as before.
+
+**What it costs** (alternated in one process, the median of 9 rounds): JavaScript `lockCannotMate`
+for both sides, chasolver's Lichess positions 146 → 160 ns, the list of 19 November 246 → 283 ns;
+`cannotMate2` 108 → 130 ns and 178 → 202 ns; a game's flags per ply the same within the noise
+(3,000 random games: 3,303 → 3,303 ns; 3,000 endings: 989 → 996 ns). Rust, the lock for both sides
+with and without the rule: 21.7 → 26.9 ns and 59.6 → 67.2 ns. Outside its men (a knight, rook or
+queen, a piece of the flagged side's) it stops after a few word reads.
+
 <a id="the-walls-of-a-boxed-piece"></a>
 
 ## The walls of a boxed piece: a still bishop, a frozen king (27 November 2026)

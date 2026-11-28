@@ -2,9 +2,9 @@
 
 The second version of [Mateless](https://github.com/cuneytinann/Mateless)'s lock detector, in its
 simplest form, in the same 20 languages as the first version (one folder up, [`../`](../)). Each
-version is 470 to 730 lines (Rust, as rustfmt lays it out, 920) and uses its language's standard
-library only. All of them are the same algorithm, line for line, and all give the answers of
-Mateless's second version on the 65,956 positions of `positions.tsv`.
+version is 600 to 1,000 lines (Rust, as rustfmt lays it out, 1,170) and uses its language's
+standard library only. All of them are the same algorithm, line for line, and all give the answers
+of Mateless's second version on the 66,100 positions of `positions.tsv`.
 
 [Türkçe](README.tr.md) · [The first version](../README.md)
 
@@ -12,11 +12,11 @@ Mateless's second version on the 65,956 positions of `positions.tsv`.
 
 The same question as the first version: **can this side never be mated?** Yes, when the men on
 the board form a structure that no series of legal moves can open (FIDE 5.2.2 dead position, 6.9
-flag fall). It reads bitboards and the side to move. It generates no move and searches nothing, and
-it is **sound, not complete**: a structure it passes can never be opened, but a position it fails
-may still be dead.
+flag fall). It reads bitboards and the side to move and searches nothing: only its last rule looks
+at moves, those of kings, pawns and bishops, two plies at most. It is **sound, not complete**: a
+structure it passes can never be opened, but a position it fails may still be dead.
 
-It keeps all of the first version and adds seven rules. Each runs only where its own situation is
+It keeps all of the first version and adds eight rules. Each runs only where its own situation is
 on the board, so on any other position it gives the first version's answer.
 
 - **Open pawn pairs.** A white and a black pawn on one file with one empty square between them.
@@ -39,12 +39,21 @@ on the board, so on any other position it gives the first version's answer.
 - **The stuck mater.** Whatever the flagged side plays, the mater is left without a legal move.
 - **The forced step.** A king in a pawn's check whose one legal move is a step: the answer is the
   lock of the position after it.
+- **The stalemated flagged side.** The flagged side has its king and pawns only, the mater no
+  knight, rook or queen, and whatever the mater plays, the flagged side is left without a legal
+  move and out of check: a stalemate. With the mater to move, it has a legal move and each one does
+  that. With the flagged side to move, it has exactly one legal move (a promotion counts four),
+  after which every move of the mater's does that; if the mater has none, that one move ended the
+  game. Only this rule looks at moves: the flagged side's one move, then each of the mater's
+  answers, with pins and checks counted.
 
 A possible en passant capture still fails it at once.
 
 When to ask it is as for the first version: when a flag falls, for the player whose time ran out;
 and after every move for both sides when the halfmove clock is 0 or 1 (both yes: the position is
-dead).
+dead). The stalemated flagged side can also come after a quiet move (a king's step that leaves its
+opponent one move): Mateless asks that rule after every move, so asked only at those times, the
+detector proves a little less, never wrongly.
 
 ## Calling it
 
@@ -104,7 +113,7 @@ right, so on such a FEN it may prove less than Mateless, never more.
 | Zig | [`zig/`](zig/) | `zig run -O ReleaseFast test.zig` | Zig 0.17 |
 
 `sh test-all.sh` runs every test whose compiler is installed. Each test answers both sides for
-every position and prints `<language>: 65956 positions, 0 wrong`.
+every position and prints `<language>: 66100 positions, 0 wrong`.
 
 ## How it was tested
 
@@ -123,22 +132,29 @@ the same for Black. Every one is labelled by the second version's detector in Ma
   bishop of its colour or by its own king, put into the Lichess locks the same way; a rook boxed in
   by its pawn and a bishop, and a king, rook and bishop holding one another, each also without the
   bishop or the king; the same with a castling right left, and with one the board cannot have; and
-  a king between two rooks, where a castle leaves king and rook and where it does not.
+  a king between two rooks, where a castle leaves king and rook and where it does not;
+- the stalemated flagged side: one or two positions of each kind (the one move a king's step, a
+  push, a double step, a capture, a check, or a move that ends the game at once; the mater with or
+  without bishops, with a promotion or a double step among its moves), from chasolver's list of 19
+  November and positions a move or two on, with their mirror images and near misses.
 
-Of the 38,265 answers "can never be mated", 31,256 are the first version's. The rest come from the
+Of the 38,403 answers "can never be mated", 31,260 are the first version's. The rest come from the
 new rules:
 
 | rule | answers |
 |---|---|
-| the new level: twin bishops, the stalemate guard, the check seed | 5,653 |
+| the new level: twin bishops, the stalemate guard, the check seed | 5,663 |
 | the forced step | 618 |
 | boxed knights, rooks and queens (466 of them with a still bishop or a king among the walls) | 580 |
+| the stalemated flagged side | 112 |
 | open pawn pairs | 92 |
-| the stuck mater | 66 |
+| the stuck mater | 78 |
 
-Every language also gives Mateless's answers on 183,461 other positions and on 206,149 positions
+Every language also gives Mateless's answers on 183,461 other positions, on 206,149 positions
 written to try the castling field (king, rooks and bishops on the first rank over a pawn chain,
-under every castling field the board allows).
+under every castling field the board allows) and on 848,240 positions of kings, pawns and bishops
+only (the endings of chasolver's lists and of Lichess, and positions one and two moves on), where
+the stalemated flagged side proves 785 answers.
 
 The file is written by `tools/lock-positions.js` in the Mateless repository.
 

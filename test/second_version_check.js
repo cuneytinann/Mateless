@@ -9,7 +9,8 @@
      ladder without the second tier (deepBudget 0) none of the domino-deep rows.
    - A few positions of each rule, with the answer for both sides, and the certificate's shape
      (lockSets: families for an open pair; boxed, the pieces no enemy king or bishop reaches,
-     for knights, rooks and queens; stuck for the stuck mater; forced for the forced step).
+     for knights, rooks and queens; stuck for the stuck mater; forced for the forced step; tempo
+     for the stalemated flagged side).
    - When the stuck mater and the second tier run: after every failure of the first search but a mate.
      node second_version_check.js        (ENGINE: the engine, default ../mateless.js) */
 const fs = require('fs'), path = require('path');
@@ -26,7 +27,7 @@ for (const line of rows) {
   const p = E.fromFen(fen, LOOSE).position, fl = p.side;
   kinds[want] = (kinds[want] || 0) + 1;
   const proof = E.proveCannotBeMated(p, fl), lock = E.lockCannotMate(p, fl), sets = I.lockSets(p, fl);
-  const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : sets.stuck ? 'lock-stuck' : sets.forced ? 'lock-forced' : 'lock')
+  const got = lock ? (sets.families ? 'lock-open-pair' : sets.boxed ? 'lock-boxed' : sets.stuck ? 'lock-stuck' : sets.forced ? 'lock-forced' : sets.tempo ? 'lock-tempo' : 'lock')
     : proof.proven ? (proof.stuck ? 'domino-stuck' : proof.deep ? 'domino-deep' : 'domino') : 'unproven';
   if (got !== want) problem(`${id}: ${got}, the file says ${want}`);
   if (!lock && proof.nodes !== +nodes) problem(`${id}: ${proof.nodes} nodes, the file says ${nodes}`);
@@ -35,7 +36,8 @@ for (const line of rows) {
   if (want === 'domino-stuck' && !I.stuckEvery(p, fl)) problem(`${id}: the stuck mater rule does not hold`);
 }
 
-// 2. Positions of each rule: [fen, white cannot be mated, black cannot be mated, certificate kind for each proven side].
+// 2. Positions of each rule: [fen, white cannot be mated, black cannot be mated, certificate kind for each
+//    proven side (or { w, b }: one for each)].
 const CASES = [
   // an open pair on the h-file (19dcoW9q, ply 64): dead, seen only by the open-pair rule
   ['8/4k1p1/1p2p1Pp/1p1pPp2/1P1P1P1P/4K3/8/8 w - - 0 33', true, true, 'families'],
@@ -58,14 +60,25 @@ const CASES = [
   ['8/8/5k2/p2p2p1/P2P1KP1/8/8/8 w - - 0 51', true, true, 'levels'],
   // no check and an open d-pawn to take: nothing to seed
   ['8/8/5k2/p2p4/P2P1K2/8/8/8 w - - 0 51', false, false, null],
-  // the stuck mater (kJOYLcJ5): whatever Black plays, White has no move
-  ['8/7p/5p1P/5kpK/6P1/8/8/8 b - - 0 48', false, true, 'stuck'],
+  // the stuck mater (kJOYLcJ5): whatever Black plays, White has no move. So White, the mater, cannot
+  // mate Black; and White, flagged, is stalemated by any Black move (the stalemated flagged side):
+  // Black cannot mate White either
+  ['8/7p/5p1P/5kpK/6P1/8/8/8 b - - 0 48', true, true, { w: 'tempo', b: 'stuck' }],
   // White's a-pawn moves: no stuck mater
   ['8/7p/5p1P/5kpK/6P1/8/P7/8 b - - 0 48', false, false, null],
   // the forced step: Kh1 is White's only move, then the king is frozen there
   ['8/8/8/8/8/6p1/4k1Pp/6K1 w - - 0 64', true, true, 'forced'],
   // with Black's king away, White has Kf1 too: no forced step
   ['8/8/8/8/8/6p1/k5Pp/6K1 w - - 0 64', false, false, null],
+  // the stalemated flagged side (CafxxY9E): Black's only move is c3+, and after each of White's king
+  // moves, the only answers to the check, Black has no move and stands in no check
+  ['7k/7P/5P2/8/2p2P2/8/1KB5/8 b - - 0 34', false, true, 'tempo'],
+  // without White's bishop the black king takes h7: no stalemate
+  ['7k/7P/5P2/8/2p2P2/8/1K6/8 b - - 0 34', false, false, null],
+  // F0wUPh4X: White's only move is f6+, and whatever Black answers, White has no move
+  ['8/1b2kp2/3b4/5Pp1/6P1/7K/8/8 w - - 0 48', true, false, 'tempo'],
+  // the white king on h2 has Kg1 and Kh3 too: no single move
+  ['8/1b2kp2/3b4/5Pp1/6P1/8/7K/8 w - - 0 48', false, false, null],
   // twin bishops (chasolver's positions.txt, dead): Black's four bishops, two on each colour, behind a lock;
   // the first version refuses any twins
   ['k3b1b1/Pp1b1b1p/1Pb1p1pP/1p1pP1P1/1P1P4/8/8/4K3 w - - 0 1', true, true, 'levels'],
@@ -73,20 +86,21 @@ const CASES = [
   // c6: a mate (chasolver, 23 plies), so no lock for Black; White, whom Black cannot mate, is proven
   ['5k2/2b4B/1p3b2/pPp1p1p1/P1P1P1P1/7K/8/8 w - - 0 1', true, false, 'levels'],
 ];
-for (const [fen, w, b, kind] of CASES) {
+for (const [fen, w, b, spec] of CASES) {
   const s = E.fromFen(fen, LOOSE); if (s.error) { problem('bad FEN ' + fen); continue; }
   const p = s.position;
   for (const [side, want] of [[E.WHITE, w], [E.BLACK, b]]) {
     const got = E.lockCannotMate(p, side);
     if (got !== want) { problem(`${fen} ${side === E.WHITE ? 'White' : 'Black'}: ${got}, want ${want}`); continue; }
     if (!got) continue;
-    const c = I.lockSets(p, side);
+    const c = I.lockSets(p, side), kind = spec && typeof spec === 'object' ? spec[side === E.WHITE ? 'w' : 'b'] : spec;
     if (kind === 'families' && !c.families) problem(`${fen}: no families in the certificate`);
     if ((kind === 'boxed' || kind === 'walls') && !c.boxed) problem(`${fen}: no boxed pieces in the certificate`);
     if (kind === 'walls' && !(c.boxed[0] | c.boxed[1])) problem(`${fen}: no boxed piece is a wall`);
     if (kind === 'stuck' && !c.stuck) problem(`${fen}: the certificate is not the stuck mater's`);
     if (kind === 'forced' && !c.forced) problem(`${fen}: the certificate is not the forced step's`);
-    if (kind === 'levels' && (c.stuck || c.forced || c.families || c.boxed)) problem(`${fen}: the certificate is not the levels'`);
+    if (kind === 'tempo' && !c.tempo) problem(`${fen}: the certificate is not the stalemated flagged side's`);
+    if (kind === 'levels' && (c.stuck || c.forced || c.families || c.boxed || c.tempo)) problem(`${fen}: the certificate is not the levels'`);
     if (I.coreLockTest(p, side)) problem(`${fen}: the first version proves it too`);
   }
 }

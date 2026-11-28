@@ -393,19 +393,20 @@ kendisini en sade hâliyle 20 dilde taşıyor: C, C++, C#, Crystal, Go, Haskell,
 Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Her biri kendi
 dilinin standart kütüphanesi üzerinde iki yüz kadar satır ve hepsi aynı 36.406 test pozisyonunda
 aynı cevapları veriyor ([lock/README.tr.md](lock/README.tr.md)). İçindeki `second/` klasörü
-ikinci sürümü aynı biçimde taşıyor: aynı 20 dilin her birinde 470 ile 730 satır arası, 65.956 test
+ikinci sürümü aynı biçimde taşıyor: aynı 20 dilin her birinde 600 ile 1.000 satır arası, 66.100 test
 pozisyonunda aynı cevaplar ([lock/second/README.tr.md](lock/second/README.tr.md)). Aşağıdaki tablo
 Mateless'in içindeki hızlı sürümler.
 
 **Ne istiyor:** piyonların, şahların ve fillerin (renkleriyle) bitboard'ları, tahtada at, kale ya
 da vezir olup olmadığı ve en passant karesi (yalnızca o kareye yasal bir alış varsa). Hamle
-üretmiyor, aramıyor.
+üretmiyor, aramıyor (ikinci sürümün son kuralı, bayrağı düşen tarafın patı, şahların, piyonların ve
+fillerin hamlelerine bakıyor, en fazla iki yarım hamle).
 
 | dil | fonksiyon |
 |---|---|
 | JS | `lockCannotMate(pos, flagged)` (`src/lock.js`) |
 | WebAssembly | `lockCannotMate(fen ya da Position, flagged)` (`mateless-wasm.js`) |
-| Rust | `lock_test(&pos, flagged)` (`rust/src/lock.rs`) |
+| Rust | `lock_cannot_mate(&pos, flagged)` (`rust/src/lock.rs`) |
 | Scala (scalachess) | `chess.mateless.Lock.cannotBeMated(position, flagged)` (mateless-scalachess: `in-game`, `a-lock`) |
 
 **Maliyeti** (çağrı başına):
@@ -559,9 +560,11 @@ giriyor ve yalnızca kendi durumu tahtadayken çalışıyor.
 | **piyon şahı tohumu**: piyon şahındaki bir şahın erişimi kendi karesinden değil, şimdi adım atabileceği karelerden başlıyor; kendi karesine sabit piyon saldırmaya devam ediyor | sırası gelen taraf piyon şahında (tahtada fil yok) | | |
 | **hamlesiz rakip**: sıra bayrağı düşen tarafta ve ne oynarsa oynasın mat edecek tarafın yasal hamlesi kalmıyor (oyun onun sırasında bitiyor); bitboard'dan okunuyor, hamle yapılmıyor | şah ve piyonlar, sıra bayrağı düşende, kilit bir şey bulmadı | | |
 | **zorunlu adım**: piyon şahındaki, tek yasal hamlesi bir şah adımı olan şah: adımdan sonraki pozisyonun kilidi | piyon şahı tohumundaki gibi, yalnız şah ve piyonla | | |
+| **bayrağı düşen tarafın patı**: mat edecek taraf ne oynarsa oynasın bayrağı düşen tarafın yasal hamlesi kalmıyor ve şahı tehdit altında olmuyor, pat; sıra bayrağı düşendeyse, elindeki tek yasal hamleden sonra (terfi dört sayılıyor; mat edecek tarafın o zaman hamlesi yoksa oyunu o hamle bitirmiş). Kesin: iki yarım hamlenin yasal hamleleri, açmazlar ve şahlar sayılarak, bitboard'larda. Aramada yok: sessiz bir hamle de onu tamamlayabiliyor, bu yüzden bir oyunun bayrakları her yarım hamlede soruyor | bayrağı düşen tarafın yalnız şahı ve piyonları var, mat edecek tarafta at, kale ya da vezir yok, en passant hakkı yok | 36'nın hiçbiri; chasolver'ın 19 Kasım listesinde 90 kilit cevabı daha (bayrağı düşenin iki yarım hamle içinde pat kaldığı 76 satırın 75'i), bestelenmiş pozisyonlarında 7 | böyle pozisyonların dışında çağrı başına ~15 ns (JS); bir oyunun bayrakları: ölçülemiyor |
 | **ikiz filler**: bir tarafın aynı renkte iki ya da daha fazla fili (yalnızca terfiyle olur) dedektörü artık düşürmüyor; mat ağı, bayrağı düşen tarafın ikizlerinin iki kaçışı birden tutabileceği şah karelerinde ikinci kaçış kuralını (şahın dikeyde ve yatayda birer boş komşusu, ikisi aynı renkte) saymıyor | bir tarafın ikiz fili var | Lichess verisinde yok; chasolver'ın etiketli pozisyonlarında 227 cevap daha (899'unda ikiz var) | |
 
-Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalıştırıyor;
+Kodda: `lockTest` ikinci sürümün kurallarını uygun olduğu yerde çalıştırıyor, `lockCannotMate` bunu
+ve bayrağı düşen tarafın patını (`_internal.tempoStalemate`);
 `_internal.coreLockTest` ilk sürümün dedektörü tek başına (`lock/`'taki, scalachess yamasındaki ve
 kilit sekmesinin çizdiği); `proveCannotBeMated(pos, side, { deepBudget: 0 })` ikinci kademeyi
 dışarıda bırakıyor (hamlesiz rakip yine çalışıyor), `_internal.stuckEvery(pos, side)` hamlesiz rakip
@@ -629,7 +632,7 @@ Kasım'ın dört kuralı (pat bekçisi, piyon şahı tohumu, hamlesiz rakip, zor
 ulaşılabilen bütün pozisyonlar dolaşılarak denetlendi, chasolver'ın etiketleri hiç yanlış beraberlik
 vermiyor ve değişmez kontrolü sertifikalarını tanıyor ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
 JavaScript, Rust ve WebAssembly motorlarında düğüm sayılarına kadar aynı cevaplarla, sade
-dedektörün 20 dilinde de var (`lock/second/`, 65.956 pozisyonda aynı cevaplar).
+dedektörün 20 dilinde de var (`lock/second/`, 66.100 pozisyonda aynı cevaplar).
 
 Kutulu bir taşın piyon olmayan duvarları (27 Kasım): kendi renginden hareketsiz bir fil ve kendi
 donmuş şahı, yukarıdaki tablodaki gibi. Piyonu ve filinin kapattığı bir kale
@@ -638,6 +641,15 @@ donmuş şahı, yukarıdaki tablodaki gibi. Piyonu ve filinin kapattığı bir k
 veriyorlar; test dosyalarındaki her yeni kilit, ondan ulaşılabilen bütün pozisyonlar dolaşılarak,
 chasolver'ın tam analiziyle ve değişmez kontrolüyle denetlendi
 ([docs/RESULTS.md](docs/RESULTS.md#the-walls-of-a-boxed-piece)). JavaScript, Rust, WebAssembly ve
+20 dilde aynı.
+
+Bayrağı düşen tarafın patı (28 Kasım), yukarıdaki tablodaki gibi: şah ve piyonlardan oluşan bayrağı
+düşen taraf, mat edecek taraf ne oynarsa oynasın, şimdi ya da tek yasal hamlesinden sonra pat
+kalıyor. chasolver'ın 19 Kasım listesinde 90 satırı aramadan kilide taşıyor (kaybedilen yok); kural
+kesin, motorun kendi hamleleriyle yapılan bir kaba kuvvet denemesi 1,34 milyon tarafta onunla aynı
+cevabı veriyor; chasolver'ın tam analizi ve bağımsız bir hamle üreteci (shakmaty) ispatlarının
+hiçbirinden sonra mat bulmuyor, değişmez kontrolü de sertifikasını tanıyor
+([docs/RESULTS.md](docs/RESULTS.md#the-stalemated-flagged-side)). JavaScript, Rust, WebAssembly ve
 20 dilde aynı.
 
 **Sırada ne var**, sırasıyla: kalan 2 kafes (RwnQJq1k, bKHPqNEw), açık kalan için sınırlı tam

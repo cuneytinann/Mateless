@@ -3,7 +3,8 @@
    Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
    knights, rooks or queens boxed in by their own men) form a structure that no series of legal
    moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-   move: it generates no move and searches nothing.
+   move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+   two plies at most.
 
    The first version (../../javascript/lock.mjs) grows each king's reach, the pawns that can never
    move, and the squares where each side may take a pawn, until nothing changes; the structure leaks
@@ -25,7 +26,10 @@
      - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
      - the stuck mater: whatever the flagged side plays, the mater is left without a move;
      - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-       position after it.
+       position after it;
+     - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+       bishops) plays, is left without a legal move and out of check, now or after the one legal
+       move it has.
    A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
    never be opened; one it fails may still be dead.
 
@@ -149,8 +153,13 @@ function squareOf(b) { return b.toString(2).length - 1; }
  * @returns {boolean}
  */
 export function cannotBeMated(p, white) {
+  return locked(p, white) || stalematedFlagged(p, white);
+}
+
+/** The lock: no series of legal moves opens the structure for the side asked about. */
+function locked(p, white) {
   const after = forcedStep(p);
-  if (after) return cannotBeMated(after, white);
+  if (after) return locked(after, white);
   const wx = p.whiteKnights | p.whiteRooks | p.whiteQueens, bx = p.blackKnights | p.blackRooks | p.blackQueens;
   if (wx | bx) return boxedLock(p, white, wx, bx);
   if (p.enPassant) return false;
@@ -483,4 +492,114 @@ function forcedStep(p) {
   if (white) { q.whiteKing = to; q.blackPawns = p.blackPawns & no(to); }
   else { q.blackKing = to; q.whitePawns = p.whitePawns & no(to); }
   return q;
+}
+
+/* ─── The stalemated flagged side ──────────────────────────────────────────────────────────
+   Men as an array of 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's. */
+const DIAGONALS = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
+const LINES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/** The squares from the square s in the direction (df, dr), up to the first man (included). */
+function ray(s, df, dr, occ) {
+  const sq = squareOf(s);
+  let f = sq % 8 + df, r = Math.floor(sq / 8) + dr, out = 0n;
+  while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+    const t = 1n << BigInt(8 * r + f);
+    out |= t;
+    if (occ & t) break;
+    f += df; r += dr;
+  }
+  return out;
+}
+
+/** Every man of side (0 White, 1 Black). */
+function men(m, side) { const b = 6 * side; return m[b] | m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] | m[b + 5]; }
+
+/** Every square the men of side attack, the board occupied as occ. */
+function attacks(m, side, occ) {
+  const b = 6 * side;
+  let a = sideways(side === 0 ? north(m[b]) : south(m[b])) | knight(m[b + 1]) | steps(m[b + 5]);
+  for (const s of squares(m[b + 2] | m[b + 4])) for (const [df, dr] of DIAGONALS) a |= ray(s, df, dr, occ);
+  for (const s of squares(m[b + 3] | m[b + 4])) for (const [df, dr] of LINES) a |= ray(s, df, dr, occ);
+  return a;
+}
+
+/** The legal moves of side, to move, which has a king, pawns and bishops only: [from, to, kind,
+    kind after it, a pawn taken en passant, the square a double step passes], the kinds 0 to 5
+    (pawn, knight, bishop, rook, queen, king); a promotion is four moves. ep: the square behind the
+    other side's double step (0: none). */
+function legalMoves(m, side, ep) {
+  const b = 6 * side, o = 6 * (1 - side);
+  const own = men(m, side), occ = men(m, 0) | men(m, 1), k = m[b + 5];
+  const them = men(m, 1 - side) & no(m[o + 5]);
+  const fwd = side === 0 ? north : south;
+  const moves = [];
+  for (const t of squares(steps(k) & no(own) & no(attacks(m, 1 - side, occ & no(k))))) moves.push([k, t, 5, 5, 0n, 0n]);
+  // checks on the king, and the men pinned to it (each may move along its line only)
+  let checkers = (sideways(fwd(k)) & m[o]) | (knight(k) & m[o + 1]), block = ALL;
+  const pins = new Map();
+  for (const [dirs, sliders] of [[DIAGONALS, m[o + 2] | m[o + 4]], [LINES, m[o + 3] | m[o + 4]]]) {
+    for (const [df, dr] of dirs) {
+      const r = ray(k, df, dr, occ), first = r & occ;
+      if (first & sliders) { checkers |= first; block = r; }
+      else if (first & own) {
+        const beyond = ray(first, df, dr, occ);
+        if (beyond & occ & sliders) pins.set(first, r | beyond);
+      }
+    }
+  }
+  if (count(checkers) >= 2) return moves;
+  const evade = checkers ? (block !== ALL ? block : checkers) : ALL;
+  for (const s of squares(m[b + 2])) {
+    let to = 0n;
+    for (const [df, dr] of DIAGONALS) to |= ray(s, df, dr, occ);
+    for (const t of squares(to & no(own) & no(m[o + 5]) & evade & (pins.get(s) ?? ALL))) moves.push([s, t, 2, 2, 0n, 0n]);
+  }
+  for (const s of squares(m[b])) {
+    const line = pins.get(s) ?? ALL;
+    const one = fwd(s) & no(occ), two = fwd(one & (side === 0 ? RANK_3 : RANK_6)) & no(occ), hit = sideways(fwd(s));
+    for (const t of squares((one | (hit & them)) & evade & line))
+      for (const now of t & (RANK_1 | RANK_8) ? [4, 3, 2, 1] : [0]) moves.push([s, t, 0, now, 0n, 0n]);
+    for (const t of squares(two & evade & line)) moves.push([s, t, 0, 0, 0n, one]);
+    const e = hit & ep & line;
+    if (e) {
+      const victim = side === 0 ? south(e) : north(e);
+      if (!checkers || checkers & victim || e & evade) moves.push([s, e, 0, 0, victim, 0n]);
+    }
+  }
+  return moves;
+}
+
+/** The men after side plays move. */
+function play(m, side, [s, t, kind, now, victim]) {
+  const r = m.slice(), o = 6 * (1 - side);
+  for (let i = o; i < o + 6; i++) r[i] &= no(t | victim);
+  r[6 * side + kind] &= no(s);
+  r[6 * side + now] |= t;
+  return r;
+}
+
+/** Has side, to move, no legal move, its king in no check? */
+function stalemated(m, side, ep) {
+  return !(attacks(m, 1 - side, men(m, 0) | men(m, 1)) & m[6 * side + 5]) && legalMoves(m, side, ep).length === 0;
+}
+
+/** The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+    bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+    move: it has a legal move, and each one does that. With the flagged side to move: it has
+    exactly one legal move (a promotion is four), after which every move of the mater's, if it has
+    any, does that (with none, that one move ended the game). Not with an en passant right. */
+function stalematedFlagged(p, white) {
+  const m = [p.whitePawns, p.whiteKnights, p.whiteBishops, p.whiteRooks, p.whiteQueens, p.whiteKing,
+             p.blackPawns, p.blackKnights, p.blackBishops, p.blackRooks, p.blackQueens, p.blackKing];
+  const f = white ? 0 : 1, b = 6 * f, o = 6 * (1 - f);
+  if (p.enPassant || m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] || m[o + 1] | m[o + 3] | m[o + 4]) return false;
+  if (p.whiteToMove !== white) {
+    const moves = legalMoves(m, 1 - f, 0n);
+    return moves.length > 0 && moves.every(mv => stalemated(play(m, 1 - f, mv), f, mv[5]));
+  }
+  const moves = legalMoves(m, f, 0n);
+  if (moves.length !== 1) return false;
+  const q = play(m, f, moves[0]);
+  return legalMoves(q, 1 - f, moves[0][5]).every(mv => stalemated(play(q, 1 - f, mv), f, mv[5]));
 }

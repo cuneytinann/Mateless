@@ -16,10 +16,8 @@
    From the board it needs nothing beyond what the rungs need, and the halfmove clock and the en
    passant square, which say when the static tests can have changed. */
 
-import { BETWEEN, BISHOP, bishopRay, BLACK, fail, firstSquare, hashKey, KEY_WORDS, keysEqual, KING, KING_STEPS, KNIGHT,
-         KNIGHT_STEPS, LINE, lowestBit, NO_SQUARE, northHi, northLo, PAWN, popcount, QUEEN, rayHi, rayLo, ROOK, rookRay,
-         sideways, southHi, southLo, WHITE } from './board.js';
-import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, pawnCheck, staticTests2, TEST_LOCK,
+import { BLACK, fail, hashKey, KEY_WORDS, keysEqual, NO_SQUARE, WHITE } from './board.js';
+import { cannotMate, cannotMate2, FLAGGED_BLACK, FLAGGED_WHITE, pawnCheck, staticTests2, stuckEvery, tempo2, TEST_LOCK,
          TEST_MATERIAL, TESTS_BOTH } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, DOMINO_RULE_BUDGET, Domino,
          PositionSet } from './domino.js';
@@ -36,9 +34,9 @@ const sharedClock = new ClockSearch();
 
    Where the first search (3 plies and 10 nodes, the first version's) fails without finding a
    mate, two more things can still prove the side, in this order: the stuck mater move by move
-   (below), on the bitboards, and the second tier, the same search at 9 plies and 5,000 nodes (a
-   king that must take a last queen or rook, and then a pawn ending that runs into stalemate or a
-   lock, takes more than 3 plies or 10 nodes). A search that found a mate has proven nothing can be
+   (stuckEvery, in lock.js), on the bitboards, and the second tier, the same search at 9 plies and
+   5,000 nodes (a king that must take a last queen or rook, and then a pawn ending that runs into
+   stalemate or a lock, takes more than 3 plies or 10 nodes). A search that found a mate has proven nothing can be
    proven: there the ladder stops. A budget is a ceiling, not a cost: a search ends when its lines
    do, by a proof, a mate, or lines that reach its ply ceiling.
 
@@ -70,233 +68,6 @@ function secondTier(pos, open, fw, fb) {
   if (!deep) return 0;
   const d = sharedSearch.run2(pos, deep, DOMINO_DEEP_PLY, DOMINO_DEEP_BUDGET, { rootStatic: false });
   return (d[0].proven ? FLAGGED_WHITE : 0) | (d[1].proven ? FLAGGED_BLACK : 0);
-}
-
-/* ─── The stuck mater, move by move (the second version) ──────────────────────────────────
-
-   With the flagged side to move and a mater of a king and pawns only: when every move of the
-   flagged side leaves the mater without a legal move, the game ends at the mater's turn (a
-   stalemate, or a mate of the mater) and the flagged side is never mated. There a search with
-   many flagged moves (a bishop free to go anywhere, a king free to step) runs out of its budget
-   before it has tried them all, though each is over at once: the lock-like rows of group D
-   (chasolver's list of 19 November: 183 rows, 175 of them proven here; of the 8 left, in 6 one
-   move leads to a lock, in 2 the mater has a bishop).
-
-   Decided on the bitboards; no move is made and no position searched. With a mater of a king and
-   pawns no flagged man is pinned, and the flagged king's steps are exact: not onto its own men,
-   not where a mater pawn or the mater's king attacks. In a pawn's check the flagged side has those
-   steps and the captures of the checking pawn (en passant too). For each move the bitboards after
-   it are written out, and the mater's legal moves looked for: a king's step to a square the
-   flagged side neither attacks nor defends, its sliders seeing through the king's own square; a
-   pawn's push, capture or en passant capture, a pinned pawn only along its pin, and in check only
-   onto the checking man or between it and the king. The en passant capture is counted even where
-   a horizontal pin forbids it, so the answer "stuck" is always right. No answer (false) with a
-   castling right of the flagged side's, two mater pawns with an empty square ahead, or two flagged
-   men a mater pawn can take (no single move mends either). */
-
-/* the bitboards after a flagged move, and the lines a pinned mater pawn may move along */
-const AFTER_LO = new Int32Array(16), AFTER_HI = new Int32Array(16);
-const PIN_LO = new Int32Array(64), PIN_HI = new Int32Array(64);
-/* the squares a pawn of colour `white` attacks from the squares of (lo, hi): through pawnLo / pawnHi */
-let pawnLo = 0, pawnHi = 0;
-function pawnAttacks(lo, hi, white) {
-  if (white) { pawnLo = sideways(northLo(lo)); pawnHi = sideways(northHi(lo, hi)); }
-  else { pawnLo = sideways(southLo(lo, hi)); pawnHi = sideways(southHi(hi)); }
-}
-/* every square colour `by` attacks or defends with the bitboards (lo, hi), the board occupied as
-   (occLo, occHi): through atkLo / atkHi */
-let atkLo = 0, atkHi = 0;
-function attackSet(lo, hi, by, occLo, occHi) {
-  pawnAttacks(lo[by | PAWN], hi[by | PAWN], by === WHITE);
-  let aL = pawnLo, aH = pawnHi;
-  const k = 2 * firstSquare(lo[by | KING], hi[by | KING]);
-  aL |= KING_STEPS[k]; aH |= KING_STEPS[k + 1];
-  let sL = lo[by | KNIGHT], sH = hi[by | KNIGHT];
-  while (sL | sH) {
-    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
-    aL |= KNIGHT_STEPS[2 * q]; aH |= KNIGHT_STEPS[2 * q + 1];
-  }
-  sL = lo[by | BISHOP] | lo[by | QUEEN]; sH = hi[by | BISHOP] | hi[by | QUEEN];
-  while (sL | sH) {
-    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
-    bishopRay(q, occLo, occHi); aL |= rayLo; aH |= rayHi;
-  }
-  sL = lo[by | ROOK] | lo[by | QUEEN]; sH = hi[by | ROOK] | hi[by | QUEEN];
-  while (sL | sH) {
-    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
-    rookRay(q, occLo, occHi); aL |= rayLo; aH |= rayHi;
-  }
-  atkLo = aL; atkHi = aH;
-}
-
-/** Has the mater (a king and pawns, to move) a legal move, with the bitboards AFTER_LO / AFTER_HI?
-    ep: the square behind a flagged double step, where a mater pawn beside it may capture en
-    passant (-1: none). */
-function materCanMove(flagged, ep) {
-  const lo = AFTER_LO, hi = AFTER_HI, mater = flagged ^ WHITE, mw = mater === WHITE;
-  const mpL = lo[mater | PAWN], mpH = hi[mater | PAWN], mkL = lo[mater | KING], mkH = hi[mater | KING];
-  const occL = lo[0] | lo[8], occH = hi[0] | hi[8];
-  const k = firstSquare(mkL, mkH);
-  // the king: a step to a square the flagged side neither attacks nor defends
-  const frL = KING_STEPS[2 * k] & ~lo[mater], frH = KING_STEPS[2 * k + 1] & ~hi[mater];
-  if (frL | frH) {
-    attackSet(lo, hi, flagged, occL & ~mkL, occH & ~mkH);
-    if ((frL & ~atkLo) | (frH & ~atkHi)) return true;
-  }
-  if (!(mpL | mpH)) return false;
-  // checks on the mater's king, and the squares that answer one
-  const dL = lo[flagged | BISHOP] | lo[flagged | QUEEN], dH = hi[flagged | BISHOP] | hi[flagged | QUEEN];
-  const oL = lo[flagged | ROOK] | lo[flagged | QUEEN], oH = hi[flagged | ROOK] | hi[flagged | QUEEN];
-  pawnAttacks(mkL, mkH, mw);
-  let cL = (pawnLo & lo[flagged | PAWN]) | (KNIGHT_STEPS[2 * k] & lo[flagged | KNIGHT]);
-  let cH = (pawnHi & hi[flagged | PAWN]) | (KNIGHT_STEPS[2 * k + 1] & hi[flagged | KNIGHT]);
-  bishopRay(k, occL, occH); cL |= rayLo & dL; cH |= rayHi & dH;
-  rookRay(k, occL, occH); cL |= rayLo & oL; cH |= rayHi & oH;
-  const checks = popcount(cL) + popcount(cH);
-  if (checks >= 2) return false;
-  let evL = -1, evH = -1;
-  if (checks) { const j = 2 * (64 * k + firstSquare(cL, cH)); evL = BETWEEN[j] | cL; evH = BETWEEN[j + 1] | cH; }
-  // pins: a flagged slider on a line through the king with one man between, a mater pawn
-  let pinL = 0, pinH = 0;
-  bishopRay(k, 0, 0); let sL = rayLo & dL, sH = rayHi & dH;
-  rookRay(k, 0, 0); sL |= rayLo & oL; sH |= rayHi & oH;
-  while (sL | sH) {
-    let q; if (sL) { q = lowestBit(sL); sL &= sL - 1; } else { q = 32 + lowestBit(sH); sH &= sH - 1; }
-    const j = 2 * (64 * k + q), bl = BETWEEN[j] & occL, bh = BETWEEN[j + 1] & occH;
-    if (popcount(bl) + popcount(bh) === 1 && ((bl & mpL) | (bh & mpH))) {
-      const p = firstSquare(bl, bh);
-      pinL |= bl; pinH |= bh; PIN_LO[p] = LINE[j]; PIN_HI[p] = LINE[j + 1];
-    }
-  }
-  // the pawns
-  const fL = lo[flagged], fH = hi[flagged];
-  const epL = ep >= 0 && ep < 32 ? 1 << ep : 0, epH = ep >= 32 ? 1 << (ep - 32) : 0;
-  let psL = mpL, psH = mpH;
-  while (psL | psH) {
-    let p; if (psL) { p = lowestBit(psL); psL &= psL - 1; } else { p = 32 + lowestBit(psH); psH &= psH - 1; }
-    const bL = p < 32 ? 1 << p : 0, bH = p >= 32 ? 1 << (p - 32) : 0;
-    let oneL, oneH;
-    if (mw) { oneL = northLo(bL) & ~occL; oneH = northHi(bL, bH) & ~occH; }
-    else { oneL = southLo(bL, bH) & ~occL; oneH = southHi(bH) & ~occH; }
-    let twoL = 0, twoH = 0;
-    if (mw ? (bL & 0x0000ff00) : (bH & 0x00ff0000)) {
-      if (mw) { twoL = northLo(oneL) & ~occL; twoH = northHi(oneL, oneH) & ~occH; }
-      else { twoL = southLo(oneL, oneH) & ~occL; twoH = southHi(oneH) & ~occH; }
-    }
-    pawnAttacks(bL, bH, mw);
-    let tL = oneL | twoL | (pawnLo & fL), tH = oneH | twoH | (pawnHi & fH);
-    let eL = pawnLo & epL, eH = pawnHi & epH;
-    if ((bL & pinL) | (bH & pinH)) { tL &= PIN_LO[p]; tH &= PIN_HI[p]; eL &= PIN_LO[p]; eH &= PIN_HI[p]; }
-    tL &= evL; tH &= evH;
-    // en passant answers a check by the double-stepped pawn too
-    if ((eL | eH) && checks) {
-      const vL = mw ? southLo(eL, eH) : northLo(eL), vH = mw ? southHi(eH) : northHi(eL, eH);
-      if (!((cL & vL) | (cH & vH)) && !((evL & eL) | (evH & eH))) { eL = 0; eH = 0; }
-    }
-    if (tL | tH | eL | eH) return true;
-  }
-  return false;
-}
-
-/** One flagged move written into AFTER_LO / AFTER_HI: from → to by a man of type `type`, which is a
-    man of type `now` on `to` (a promotion), `double` a pawn's double step, `epcap` an en passant
-    capture. Returns: does the mater have a legal move after it? */
-function afterMove(pos, flagged, from, to, type, now, double, epcap) {
-  const mater = flagged ^ WHITE, mw = mater === WHITE;
-  AFTER_LO.set(pos.lo); AFTER_HI.set(pos.hi);
-  const fL = from < 32 ? 1 << from : 0, fH = from >= 32 ? 1 << (from - 32) : 0;
-  const tL = to < 32 ? 1 << to : 0, tH = to >= 32 ? 1 << (to - 32) : 0;
-  AFTER_LO[flagged | type] ^= fL; AFTER_HI[flagged | type] ^= fH; AFTER_LO[flagged] ^= fL; AFTER_HI[flagged] ^= fH;
-  // a capture takes a mater pawn (en passant: the one beside the double-stepped square)
-  let xL, xH;
-  if (epcap) { if (mw) { xL = northLo(tL); xH = northHi(tL, tH); } else { xL = southLo(tL, tH); xH = southHi(tH); } }
-  else { xL = tL & AFTER_LO[mater]; xH = tH & AFTER_HI[mater]; }
-  AFTER_LO[mater | PAWN] &= ~xL; AFTER_HI[mater | PAWN] &= ~xH; AFTER_LO[mater] &= ~xL; AFTER_HI[mater] &= ~xH;
-  AFTER_LO[flagged | now] |= tL; AFTER_HI[flagged | now] |= tH; AFTER_LO[flagged] |= tL; AFTER_HI[flagged] |= tH;
-  return materCanMove(flagged, double ? (from + to) >> 1 : -1);
-}
-
-/** The stuck mater, move by move: with `flagged` to move and the mater a king and pawns, does every
-    legal move of the flagged side leave the mater without a legal move? (No legal move now: true
-    when it is a stalemate, false when a mate.) */
-export function stuckEvery(pos, flagged) {
-  if (pos.side !== flagged) return false;
-  const lo = pos.lo, hi = pos.hi, mater = flagged ^ WHITE, mw = mater === WHITE, fw = !mw;
-  const mpL = lo[mater | PAWN], mpH = hi[mater | PAWN], mkL = lo[mater | KING], mkH = hi[mater | KING];
-  if (lo[mater] !== (mpL | mkL) || hi[mater] !== (mpH | mkH)) return false;
-  if (pos.castling & (fw ? 3 : 12)) return false;
-  const occL = lo[0] | lo[8], occH = hi[0] | hi[8];
-  // two mater pawns with an empty square ahead, two flagged men a mater pawn can take: no single move mends either
-  const aL = mw ? northLo(mpL) : southLo(mpL, mpH), aH = mw ? northHi(mpL, mpH) : southHi(mpH);
-  if (popcount(aL & ~occL) + popcount(aH & ~occH) >= 2) return false;
-  pawnAttacks(mpL, mpH, mw);
-  const maL = pawnLo, maH = pawnHi;
-  if (popcount(maL & lo[flagged]) + popcount(maH & hi[flagged]) >= 2) return false;
-  const fkL = lo[flagged | KING], fkH = hi[flagged | KING], fk = firstSquare(fkL, fkH), mk = firstSquare(mkL, mkH);
-  const matL = maL | KING_STEPS[2 * mk], matH = maH | KING_STEPS[2 * mk + 1];
-  // a pawn's check on the flagged king: then its steps and the captures of the checking pawn
-  pawnAttacks(fkL, fkH, fw);
-  const ckL = pawnLo & mpL, ckH = pawnHi & mpH, check = (ckL | ckH) !== 0;
-  if (check && popcount(ckL) + popcount(ckH) >= 2) return false;
-  const mskL = check ? ckL : -1, mskH = check ? ckH : -1;
-  const ownL = lo[flagged], ownH = hi[flagged];
-  let any = false, tL, tH;
-  // the king
-  tL = KING_STEPS[2 * fk] & ~ownL & ~matL; tH = KING_STEPS[2 * fk + 1] & ~ownH & ~matH;
-  while (tL | tH) {
-    let to; if (tL) { to = lowestBit(tL); tL &= tL - 1; } else { to = 32 + lowestBit(tH); tH &= tH - 1; }
-    any = true; if (afterMove(pos, flagged, fk, to, KING, KING, false, false)) return false;
-  }
-  // knights, bishops, rooks, queens
-  for (const type of [KNIGHT, BISHOP, ROOK, QUEEN]) {
-    let sL = lo[flagged | type], sH = hi[flagged | type];
-    while (sL | sH) {
-      let from; if (sL) { from = lowestBit(sL); sL &= sL - 1; } else { from = 32 + lowestBit(sH); sH &= sH - 1; }
-      if (type === KNIGHT) { tL = KNIGHT_STEPS[2 * from]; tH = KNIGHT_STEPS[2 * from + 1]; }
-      else if (type === BISHOP) { bishopRay(from, occL, occH); tL = rayLo; tH = rayHi; }
-      else if (type === ROOK) { rookRay(from, occL, occH); tL = rayLo; tH = rayHi; }
-      else { bishopRay(from, occL, occH); tL = rayLo; tH = rayHi; rookRay(from, occL, occH); tL |= rayLo; tH |= rayHi; }
-      tL &= ~ownL & mskL; tH &= ~ownH & mskH;
-      while (tL | tH) {
-        let to; if (tL) { to = lowestBit(tL); tL &= tL - 1; } else { to = 32 + lowestBit(tH); tH &= tH - 1; }
-        any = true; if (afterMove(pos, flagged, from, to, type, type, false, false)) return false;
-      }
-    }
-  }
-  // the pawns: pushes (none in check), captures, en passant (in check only of the checking pawn)
-  const epL = pos.ep !== NO_SQUARE && pos.ep < 32 ? 1 << pos.ep : 0, epH = pos.ep >= 32 ? 1 << (pos.ep - 32) : 0;
-  let okEpL = epL, okEpH = epH;
-  if (check && (epL | epH)) {
-    const vL = fw ? southLo(epL, epH) : northLo(epL), vH = fw ? southHi(epH) : northHi(epL, epH);
-    if (!((vL & ckL) | (vH & ckH))) { okEpL = 0; okEpH = 0; }
-  }
-  let psL = lo[flagged | PAWN], psH = hi[flagged | PAWN];
-  while (psL | psH) {
-    let from; if (psL) { from = lowestBit(psL); psL &= psL - 1; } else { from = 32 + lowestBit(psH); psH &= psH - 1; }
-    const bL = from < 32 ? 1 << from : 0, bH = from >= 32 ? 1 << (from - 32) : 0;
-    let oneL = 0, oneH = 0, twoL = 0, twoH = 0;
-    if (!check) {
-      if (fw) { oneL = northLo(bL) & ~occL; oneH = northHi(bL, bH) & ~occH; }
-      else { oneL = southLo(bL, bH) & ~occL; oneH = southHi(bH) & ~occH; }
-      if (fw ? (bL & 0x0000ff00) : (bH & 0x00ff0000)) {
-        if (fw) { twoL = northLo(oneL) & ~occL; twoH = northHi(oneL, oneH) & ~occH; }
-        else { twoL = southLo(oneL, oneH) & ~occL; twoH = southHi(oneH) & ~occH; }
-      }
-    }
-    pawnAttacks(bL, bH, fw);
-    const cpL = pawnLo & lo[mater] & mskL, cpH = pawnHi & hi[mater] & mskH;
-    const epcL = pawnLo & okEpL, epcH = pawnHi & okEpH;
-    tL = oneL | twoL | cpL | epcL; tH = oneH | twoH | cpH | epcH;
-    while (tL | tH) {
-      let to; if (tL) { to = lowestBit(tL); tL &= tL - 1; } else { to = 32 + lowestBit(tH); tH &= tH - 1; }
-      any = true;
-      const toL = to < 32 ? 1 << to : 0, toH = to >= 32 ? 1 << (to - 32) : 0;
-      if (to < 8 || to > 55) {
-        for (const now of [QUEEN, ROOK, BISHOP, KNIGHT]) if (afterMove(pos, flagged, from, to, PAWN, now, false, false)) return false;
-      } else if (afterMove(pos, flagged, from, to, PAWN, PAWN, ((toL & twoL) | (toH & twoH)) !== 0, ((toL & epcL) | (toH & epcH)) !== 0)) return false;
-    }
-  }
-  return any || !check;
 }
 
 /* ─── The move rule (the second version) ─────────────────────────────────────────────────
@@ -594,6 +365,8 @@ export class Flags {
     if (!open) return;
     const asked = this.rungs === 1 ? tests & TEST_MATERIAL : tests;
     let proven = asked ? staticTests2(pos, open, asked) : 0;
+    // The stalemated flagged side at every ply (whatever the last move was: a quiet move can complete it).
+    if (this.rungs >= 2) proven = tempo2(pos, open, proven);
     if ((open & ~proven) && this.rungs === 3) {
       const r = sharedSearch.run2(pos, open & ~proven, DOMINO_PLY, DOMINO_BUDGET, { rootStatic: false });
       if (r[0].proven) proven |= FLAGGED_WHITE;

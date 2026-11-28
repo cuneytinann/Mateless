@@ -3,7 +3,8 @@
 ## Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 ## knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 ## moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-## move: it generates no move and searches nothing.
+## move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+## two plies at most.
 ##
 ## The first version (../../nim/lock.nim) grows each king's reach, the pawns that can never move,
 ## and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -25,7 +26,10 @@
 ##   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
 ##   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
 ##   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-##     position after it.
+##     position after it;
+##   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+##     bishops) plays, is left without a legal move and out of check, now or after the one legal
+##     move it has.
 ## A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 ## never be opened; one it fails may still be dead.
 ##
@@ -509,10 +513,174 @@ proc forcedStep(p: Pieces): Option[Pieces] =
     q.whitePawns = p.whitePawns and not to
   some(q)
 
-proc cannotBeMated*(p: Pieces, white: bool): bool =
-  ## Can White (white = true) or Black never be mated, by the lock detector?
+# ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+# Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+
+type
+  Men = array[12, uint64]
+  Move = object
+    ## A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it.
+    src, dst, victim, passed: uint64
+    kind, now: int
+
+const
+  pawnKind = 0
+  knightKind = 1
+  bishopKind = 2
+  rookKind = 3
+  queenKind = 4
+  kingKind = 5
+  diagonalSteps = [(1, 1), (-1, 1), (1, -1), (-1, -1)]
+  lineSteps = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+proc ray(s: uint64, df, dr: int, occ: uint64): uint64 =
+  ## The squares from the square s in the direction (df, dr), up to the first man (included).
+  let sq = countTrailingZeroBits(s)
+  var f = sq mod 8 + df
+  var r = sq div 8 + dr
+  while f >= 0 and f < 8 and r >= 0 and r < 8:
+    let t = 1'u64 shl (8 * r + f)
+    result = result or t
+    if (occ and t) != 0: break
+    f += df
+    r += dr
+
+proc men(m: Men, side: int): uint64 =
+  ## Every man of side (0 White, 1 Black).
+  let b = 6 * side
+  m[b] or m[b + 1] or m[b + 2] or m[b + 3] or m[b + 4] or m[b + 5]
+
+proc forward(side: int, s: uint64): uint64 = (if side == 0: north(s) else: south(s))
+
+proc attacks(m: Men, side: int, occ: uint64): uint64 =
+  ## Every square the men of side attack, the board occupied as occ.
+  let b = 6 * side
+  result = sideways(forward(side, m[b])) or knight(m[b + knightKind]) or steps(m[b + kingKind])
+  var s = m[b + bishopKind] or m[b + queenKind]
+  while s != 0:
+    for (df, dr) in diagonalSteps: result = result or ray(lowest(s), df, dr, occ)
+    s = s and (s - 1)
+  s = m[b + rookKind] or m[b + queenKind]
+  while s != 0:
+    for (df, dr) in lineSteps: result = result or ray(lowest(s), df, dr, occ)
+    s = s and (s - 1)
+
+proc legalMoves(m: Men, side: int, ep: uint64): seq[Move] =
+  ## The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is
+  ## four moves. ep: the square behind the other side's double step (0: none).
+  let b = 6 * side
+  let o = 6 * (1 - side)
+  let own = men(m, side)
+  let occ = men(m, 0) or men(m, 1)
+  let k = m[b + kingKind]
+  let them = men(m, 1 - side) and not m[o + kingKind]
+  var t = steps(k) and not own and not attacks(m, 1 - side, occ and not k)
+  while t != 0:
+    result.add Move(src: k, dst: lowest(t), kind: kingKind, now: kingKind)
+    t = t and (t - 1)
+  # checks on the king, and the men pinned to it (each may move along its line only)
+  var checkers = (sideways(forward(side, k)) and m[o + pawnKind]) or (knight(k) and m[o + knightKind])
+  var blocks = not 0'u64
+  var pinned, pinLine: seq[uint64]
+  for l in 0 .. 1:
+    let sliders = if l == 0: m[o + bishopKind] or m[o + queenKind] else: m[o + rookKind] or m[o + queenKind]
+    for (df, dr) in (if l == 0: diagonalSteps else: lineSteps):
+      let r = ray(k, df, dr, occ)
+      let first = r and occ
+      if (first and sliders) != 0:
+        checkers = checkers or first
+        blocks = r
+      elif (first and own) != 0:
+        let beyond = ray(first, df, dr, occ)
+        if (beyond and occ and sliders) != 0:
+          pinned.add first
+          pinLine.add(r or beyond)
+  if count(checkers) >= 2: return
+  let evade = if checkers == 0: not 0'u64 elif blocks != not 0'u64: blocks else: checkers
+  proc lineOf(s: uint64): uint64 =
+    for i in 0 ..< pinned.len:
+      if pinned[i] == s: return pinLine[i]
+    not 0'u64
+  var s = m[b + bishopKind]
+  while s != 0:
+    let src = lowest(s)
+    var to = 0'u64
+    for (df, dr) in diagonalSteps: to = to or ray(src, df, dr, occ)
+    t = to and not own and not m[o + kingKind] and evade and lineOf(src)
+    while t != 0:
+      result.add Move(src: src, dst: lowest(t), kind: bishopKind, now: bishopKind)
+      t = t and (t - 1)
+    s = s and (s - 1)
+  s = m[b + pawnKind]
+  while s != 0:
+    let src = lowest(s)
+    let line = lineOf(src)
+    let one = forward(side, src) and not occ
+    let two = forward(side, one and (if side == 0: rank3 else: rank6)) and not occ
+    let hit = sideways(forward(side, src))
+    t = (one or (hit and them)) and evade and line
+    while t != 0:
+      let dst = lowest(t)
+      if (dst and (rank1 or rank8)) != 0:
+        for now in [queenKind, rookKind, bishopKind, knightKind]:
+          result.add Move(src: src, dst: dst, kind: pawnKind, now: now)
+      else:
+        result.add Move(src: src, dst: dst, kind: pawnKind, now: pawnKind)
+      t = t and (t - 1)
+    t = two and evade and line
+    while t != 0:
+      result.add Move(src: src, dst: lowest(t), passed: one, kind: pawnKind, now: pawnKind)
+      t = t and (t - 1)
+    let e = hit and ep and line
+    if e != 0:
+      let victim = if side == 0: south(e) else: north(e)
+      if checkers == 0 or (checkers and victim) != 0 or (e and evade) != 0:
+        result.add Move(src: src, dst: e, victim: victim, kind: pawnKind, now: pawnKind)
+    s = s and (s - 1)
+
+proc play(m: Men, side: int, mv: Move): Men =
+  ## The men after side plays mv.
+  result = m
+  let o = 6 * (1 - side)
+  for i in o ..< o + 6: result[i] = result[i] and not (mv.dst or mv.victim)
+  result[6 * side + mv.kind] = result[6 * side + mv.kind] and not mv.src
+  result[6 * side + mv.now] = result[6 * side + mv.now] or mv.dst
+
+proc stalemated(m: Men, side: int, ep: uint64): bool =
+  ## Has side, to move, no legal move, its king in no check?
+  (attacks(m, 1 - side, men(m, 0) or men(m, 1)) and m[6 * side + kingKind]) == 0 and legalMoves(m, side, ep).len == 0
+
+proc everyMoveStalemates(m: Men, side: int, moves: seq[Move]): bool =
+  ## Does every move of moves (side's) leave the other side stalemated?
+  for mv in moves:
+    if not stalemated(play(m, side, mv), 1 - side, mv.passed): return false
+  true
+
+proc stalematedFlagged(p: Pieces, white: bool): bool =
+  ## The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+  ## bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+  ## move: it has a legal move, and each one does that. With the flagged side to move: it has
+  ## exactly one legal move (a promotion is four), after which every move of the mater's, if it has
+  ## any, does that (with none, that one move ended the game). Not with an en passant right.
+  let m: Men = [p.whitePawns, p.whiteKnights, p.whiteBishops, p.whiteRooks, p.whiteQueens, p.whiteKing,
+                p.blackPawns, p.blackKnights, p.blackBishops, p.blackRooks, p.blackQueens, p.blackKing]
+  let f = if white: 0 else: 1
+  let b = 6 * f
+  let o = 6 * (1 - f)
+  if p.enPassant or (m[b + knightKind] or m[b + bishopKind] or m[b + rookKind] or m[b + queenKind]) != 0 or
+     (m[o + knightKind] or m[o + rookKind] or m[o + queenKind]) != 0: return false
+  if p.whiteToMove != white:
+    let moves = legalMoves(m, 1 - f, 0)
+    return moves.len > 0 and everyMoveStalemates(m, 1 - f, moves)
+  let only = legalMoves(m, f, 0)
+  if only.len != 1: return false
+  let q = play(m, f, only[0])
+  everyMoveStalemates(q, 1 - f, legalMoves(q, 1 - f, only[0].passed))
+
+proc locked(p: Pieces, white: bool): bool =
+  ## The lock: no series of legal moves opens the structure for the side asked about.
   let after = forcedStep(p)
-  if after.isSome: return cannotBeMated(after.get, white)
+  if after.isSome: return locked(after.get, white)
   let wx = p.whiteKnights or p.whiteRooks or p.whiteQueens
   let bx = p.blackKnights or p.blackRooks or p.blackQueens
   if (wx or bx) != 0: return boxedLock(p, white, wx, bx)
@@ -526,3 +694,7 @@ proc cannotBeMated*(p: Pieces, white: bool): bool =
     let s = level(p, frozen, LevelIn(guard: true))
     if s.isSome and not netLeaks(p, s.get, white, 0): return true
   stuckMater(p, white)
+
+proc cannotBeMated*(p: Pieces, white: bool): bool =
+  ## Can White (white = true) or Black never be mated, by the lock detector?
+  locked(p, white) or stalematedFlagged(p, white)

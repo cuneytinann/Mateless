@@ -2,8 +2,9 @@
 
 Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 knights, rooks or queens boxed in by their own men) form a structure that no series of legal moves
-can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to move: it
-generates no move and searches nothing.
+can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to move and
+searches nothing: only its last rule looks at moves, those of kings, pawns and bishops, two plies
+at most.
 
 The first version (../../python/lock.py) grows each king's reach, the pawns that can never move,
 and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -25,7 +26,10 @@ all of it and adds, each only where its situation is on the board:
   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-    position after it.
+    position after it;
+  - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+    bishops) plays, is left without a legal move and out of check, now or after the one legal move
+    it has.
 A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 never be opened; one it fails may still be dead.
 
@@ -176,9 +180,14 @@ def squares(s):
 
 def cannot_be_mated(p, white):
     """Can White (white=True) or Black never be mated, by the lock detector?"""
+    return locked(p, white) or stalemated_flagged(p, white)
+
+
+def locked(p, white):
+    """The lock: no series of legal moves opens the structure for the side asked about."""
     after = forced_step(p)
     if after is not None:
-        return cannot_be_mated(after, white)
+        return locked(after, white)
     wx = p.white_knights | p.white_rooks | p.white_queens
     bx = p.black_knights | p.black_rooks | p.black_queens
     if wx | bx:
@@ -577,3 +586,131 @@ def forced_step(p):
     if white:
         return replace(p, white_king=to, black_pawns=p.black_pawns & no(to), white_to_move=False, en_passant=False)
     return replace(p, black_king=to, white_pawns=p.white_pawns & no(to), white_to_move=True, en_passant=False)
+
+
+# ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+# Men as a list of 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+DIAGONALS = ((1, 1), (-1, 1), (1, -1), (-1, -1))
+LINES = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def ray(s, df, dr, occ):
+    """The squares from the square s in the direction (df, dr), up to the first man (included)."""
+    sq = s.bit_length() - 1
+    f, r, out = sq % 8 + df, sq // 8 + dr, 0
+    while 0 <= f < 8 and 0 <= r < 8:
+        t = 1 << (8 * r + f)
+        out |= t
+        if occ & t:
+            break
+        f, r = f + df, r + dr
+    return out
+
+
+def men(m, side):
+    """Every man of side (0 White, 1 Black)."""
+    b = 6 * side
+    return m[b] | m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] | m[b + 5]
+
+
+def attacks(m, side, occ):
+    """Every square the men of side attack, the board occupied as occ."""
+    b = 6 * side
+    a = sideways(north(m[b]) if side == 0 else south(m[b])) | knight(m[b + 1]) | steps(m[b + 5])
+    for s in squares(m[b + 2] | m[b + 4]):
+        for df, dr in DIAGONALS:
+            a |= ray(s, df, dr, occ)
+    for s in squares(m[b + 3] | m[b + 4]):
+        for df, dr in LINES:
+            a |= ray(s, df, dr, occ)
+    return a
+
+
+def legal_moves(m, side, ep):
+    """The legal moves of side, to move, which has a king, pawns and bishops only: (from, to, kind,
+    kind after it, a pawn taken en passant, the square a double step passes), the kinds 0 to 5
+    (pawn, knight, bishop, rook, queen, king); a promotion is four moves. ep: the square behind the
+    other side's double step (0: none)."""
+    b, o = 6 * side, 6 * (1 - side)
+    own, occ, k = men(m, side), men(m, 0) | men(m, 1), m[b + 5]
+    them = men(m, 1 - side) & no(m[o + 5])
+    fwd = north if side == 0 else south
+    moves = [(k, t, 5, 5, 0, 0) for t in squares(steps(k) & no(own) & no(attacks(m, 1 - side, occ & no(k))))]
+    # checks on the king, and the men pinned to it (each may move along its line only)
+    checkers = (sideways(fwd(k)) & m[o]) | (knight(k) & m[o + 1])
+    block, pins = ALL, {}
+    for dirs, sliders in ((DIAGONALS, m[o + 2] | m[o + 4]), (LINES, m[o + 3] | m[o + 4])):
+        for df, dr in dirs:
+            r = ray(k, df, dr, occ)
+            first = r & occ
+            if first & sliders:
+                checkers |= first
+                block = r
+            elif first & own:
+                beyond = ray(first, df, dr, occ)
+                if beyond & occ & sliders:
+                    pins[first] = r | beyond
+    if count(checkers) >= 2:
+        return moves
+    evade = (block if block != ALL else checkers) if checkers else ALL
+    for s in squares(m[b + 2]):
+        to = 0
+        for df, dr in DIAGONALS:
+            to |= ray(s, df, dr, occ)
+        for t in squares(to & no(own) & no(m[o + 5]) & evade & pins.get(s, ALL)):
+            moves.append((s, t, 2, 2, 0, 0))
+    for s in squares(m[b]):
+        line = pins.get(s, ALL)
+        one = fwd(s) & no(occ)
+        two = fwd(one & (RANK_3 if side == 0 else RANK_6)) & no(occ)
+        hit = sideways(fwd(s))
+        for t in squares((one | (hit & them)) & evade & line):
+            for now in ((4, 3, 2, 1) if t & (RANK_1 | RANK_8) else (0,)):
+                moves.append((s, t, 0, now, 0, 0))
+        for t in squares(two & evade & line):
+            moves.append((s, t, 0, 0, 0, one))
+        e = hit & ep & line
+        if e:
+            victim = south(e) if side == 0 else north(e)
+            if not checkers or checkers & victim or e & evade:
+                moves.append((s, e, 0, 0, victim, 0))
+    return moves
+
+
+def play(m, side, move):
+    """The men after side plays move."""
+    s, t, kind, now, victim = move[:5]
+    r = list(m)
+    o = 6 * (1 - side)
+    for i in range(o, o + 6):
+        r[i] &= no(t | victim)
+    r[6 * side + kind] &= no(s)
+    r[6 * side + now] |= t
+    return r
+
+
+def stalemated(m, side, ep):
+    """Has side, to move, no legal move, its king in no check?"""
+    return not (attacks(m, 1 - side, men(m, 0) | men(m, 1)) & m[6 * side + 5]) and not legal_moves(m, side, ep)
+
+
+def stalemated_flagged(p, white):
+    """The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+    bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+    move: it has a legal move, and each one does that. With the flagged side to move: it has
+    exactly one legal move (a promotion is four), after which every move of the mater's, if it has
+    any, does that (with none, that one move ended the game). Not with an en passant right."""
+    m = [p.white_pawns, p.white_knights, p.white_bishops, p.white_rooks, p.white_queens, p.white_king,
+         p.black_pawns, p.black_knights, p.black_bishops, p.black_rooks, p.black_queens, p.black_king]
+    f = 0 if white else 1
+    b, o = 6 * f, 6 * (1 - f)
+    if p.en_passant or m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] or m[o + 1] | m[o + 3] | m[o + 4]:
+        return False
+    if p.white_to_move != white:
+        moves = legal_moves(m, 1 - f, 0)
+        return bool(moves) and all(stalemated(play(m, 1 - f, mv), f, mv[5]) for mv in moves)
+    moves = legal_moves(m, f, 0)
+    if len(moves) != 1:
+        return False
+    q = play(m, f, moves[0])
+    return all(stalemated(play(q, 1 - f, mv), f, mv[5]) for mv in legal_moves(q, 1 - f, moves[0][5]))

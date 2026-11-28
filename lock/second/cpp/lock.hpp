@@ -3,7 +3,8 @@
 // Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 // knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 // moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-// move: it generates no move and searches nothing.
+// move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+// two plies at most.
 //
 // The first version (../../cpp/lock.hpp) grows each king's reach, the pawns that can never move,
 // and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -25,7 +26,10 @@
 //   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
 //   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
 //   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-//     position after it.
+//     position after it;
+//   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+//     bishops) plays, is left without a legal move and out of check, now or after the one legal
+//     move it has.
 // A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 // never be opened; one it fails may still be dead.
 //
@@ -515,12 +519,141 @@ inline std::optional<Pieces> forced_step(const Pieces& p) {
     return q;
 }
 
-}  // namespace detail
+// ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+// Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+using Men = std::array<Set, 12>;
+enum Kind { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING };
+constexpr int DIAGONALS[4][2] = {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
+constexpr int LINES[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
-// Can White (white = true) or Black never be mated, by the lock detector?
-inline bool cannot_be_mated(const Pieces& p, bool white) {
-    using namespace detail;
-    if (auto after = forced_step(p)) return cannot_be_mated(*after, white);
+// A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it.
+struct Move { Set from, to, victim, passed; int kind, now; };
+
+// The squares from the square s in the direction (df, dr), up to the first man (included).
+inline Set ray(Set s, int df, int dr, Set occ) {
+    int sq = square_of(s), f = sq % 8 + df, r = sq / 8 + dr;
+    Set out = 0;
+    while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+        Set t = 1ULL << (8 * r + f);
+        out |= t;
+        if (occ & t) break;
+        f += df; r += dr;
+    }
+    return out;
+}
+
+// Every man of side (0 White, 1 Black).
+inline Set men(const Men& m, int side) {
+    int b = 6 * side;
+    return m[b] | m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] | m[b + 5];
+}
+
+// Every square the men of side attack, the board occupied as occ.
+inline Set attacks(const Men& m, int side, Set occ) {
+    int b = 6 * side;
+    Set a = sideways(side == 0 ? north(m[b]) : south(m[b])) | knight(m[b + KNIGHT]) | steps(m[b + KING]);
+    for (Set s = m[b + BISHOP] | m[b + QUEEN]; s; s &= s - 1)
+        for (auto& d : DIAGONALS) a |= ray(lowest(s), d[0], d[1], occ);
+    for (Set s = m[b + ROOK] | m[b + QUEEN]; s; s &= s - 1)
+        for (auto& d : LINES) a |= ray(lowest(s), d[0], d[1], occ);
+    return a;
+}
+
+// The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is four
+// moves. ep: the square behind the other side's double step (0: none).
+inline std::vector<Move> legal_moves(const Men& m, int side, Set ep) {
+    int b = 6 * side, o = 6 * (1 - side);
+    Set own = men(m, side), occ = men(m, 0) | men(m, 1), k = m[b + KING];
+    Set them = men(m, 1 - side) & ~m[o + KING];
+    std::vector<Move> moves;
+    for (Set t = steps(k) & ~own & ~attacks(m, 1 - side, occ & ~k); t; t &= t - 1) moves.push_back({k, lowest(t), 0, 0, KING, KING});
+    // checks on the king, and the men pinned to it (each may move along its line only)
+    Set checkers = (sideways(side == 0 ? north(k) : south(k)) & m[o + PAWN]) | (knight(k) & m[o + KNIGHT]), block = ~0ULL;
+    std::vector<std::pair<Set, Set>> pins;   // a pinned man, its line
+    for (int l = 0; l < 2; l++) {
+        Set sliders = l == 0 ? m[o + BISHOP] | m[o + QUEEN] : m[o + ROOK] | m[o + QUEEN];
+        for (auto& d : l == 0 ? DIAGONALS : LINES) {
+            Set r = ray(k, d[0], d[1], occ), first = r & occ;
+            if (first & sliders) { checkers |= first; block = r; }
+            else if (first & own) {
+                Set beyond = ray(first, d[0], d[1], occ);
+                if (beyond & occ & sliders) pins.push_back({first, r | beyond});
+            }
+        }
+    }
+    if (count(checkers) >= 2) return moves;
+    Set evade = checkers ? (block != ~0ULL ? block : checkers) : ~0ULL;
+    auto line_of = [&](Set from) -> Set { for (auto& [man, line] : pins) if (man == from) return line; return ~0ULL; };
+    for (Set s = m[b + BISHOP]; s; s &= s - 1) {
+        Set from = lowest(s), to = 0;
+        for (auto& d : DIAGONALS) to |= ray(from, d[0], d[1], occ);
+        for (Set t = to & ~own & ~m[o + KING] & evade & line_of(from); t; t &= t - 1) moves.push_back({from, lowest(t), 0, 0, BISHOP, BISHOP});
+    }
+    for (Set s = m[b + PAWN]; s; s &= s - 1) {
+        Set from = lowest(s), line = line_of(from);
+        Set one = (side == 0 ? north(from) : south(from)) & ~occ;
+        Set two = (side == 0 ? north(one & RANK_3) : south(one & RANK_6)) & ~occ;
+        Set hit = sideways(side == 0 ? north(from) : south(from));
+        for (Set t = (one | (hit & them)) & evade & line; t; t &= t - 1) {
+            Set to = lowest(t);
+            if (to & (RANK_1 | RANK_8)) for (int now : {QUEEN, ROOK, BISHOP, KNIGHT}) moves.push_back({from, to, 0, 0, PAWN, now});
+            else moves.push_back({from, to, 0, 0, PAWN, PAWN});
+        }
+        for (Set t = two & evade & line; t; t &= t - 1) moves.push_back({from, lowest(t), 0, one, PAWN, PAWN});
+        Set e = hit & ep & line;
+        if (e) {
+            Set victim = side == 0 ? south(e) : north(e);
+            if (!checkers || (checkers & victim) || (e & evade)) moves.push_back({from, e, victim, 0, PAWN, PAWN});
+        }
+    }
+    return moves;
+}
+
+// The men after side plays mv.
+inline Men play(const Men& m, int side, const Move& mv) {
+    Men r = m;
+    int o = 6 * (1 - side);
+    for (int i = o; i < o + 6; i++) r[i] &= ~(mv.to | mv.victim);
+    r[6 * side + mv.kind] &= ~mv.from;
+    r[6 * side + mv.now] |= mv.to;
+    return r;
+}
+
+// Has side, to move, no legal move, its king in no check?
+inline bool stalemated(const Men& m, int side, Set ep) {
+    return !(attacks(m, 1 - side, men(m, 0) | men(m, 1)) & m[6 * side + KING]) && legal_moves(m, side, ep).empty();
+}
+
+// Does every move of moves (side's) leave the other side stalemated?
+inline bool every_move_stalemates(const Men& m, int side, const std::vector<Move>& moves) {
+    for (const Move& mv : moves) if (!stalemated(play(m, side, mv), 1 - side, mv.passed)) return false;
+    return true;
+}
+
+// The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+// bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+// move: it has a legal move, and each one does that. With the flagged side to move: it has
+// exactly one legal move (a promotion is four), after which every move of the mater's, if it has
+// any, does that (with none, that one move ended the game). Not with an en passant right.
+inline bool stalemated_flagged(const Pieces& p, bool white) {
+    Men m = {p.white_pawns, p.white_knights, p.white_bishops, p.white_rooks, p.white_queens, p.white_king,
+             p.black_pawns, p.black_knights, p.black_bishops, p.black_rooks, p.black_queens, p.black_king};
+    int f = white ? 0 : 1, b = 6 * f, o = 6 * (1 - f);
+    if (p.en_passant || (m[b + KNIGHT] | m[b + BISHOP] | m[b + ROOK] | m[b + QUEEN]) || (m[o + KNIGHT] | m[o + ROOK] | m[o + QUEEN]))
+        return false;
+    if (p.white_to_move != white) {
+        auto moves = legal_moves(m, 1 - f, 0);
+        return !moves.empty() && every_move_stalemates(m, 1 - f, moves);
+    }
+    auto moves = legal_moves(m, f, 0);
+    if (moves.size() != 1) return false;
+    Men q = play(m, f, moves[0]);
+    return every_move_stalemates(q, 1 - f, legal_moves(q, 1 - f, moves[0].passed));
+}
+
+// The lock: no series of legal moves opens the structure for the side asked about.
+inline bool locked(const Pieces& p, bool white) {
+    if (auto after = forced_step(p)) return locked(*after, white);
     Set wx = p.white_knights | p.white_rooks | p.white_queens, bx = p.black_knights | p.black_rooks | p.black_queens;
     if (wx | bx) return boxed_lock(p, white, wx, bx);
     if (p.en_passant) return false;
@@ -537,6 +670,13 @@ inline bool cannot_be_mated(const Pieces& p, bool white) {
         if (s && !net_leaks(p, *s, white, 0)) return true;
     }
     return stuck_mater(p, white);
+}
+
+}  // namespace detail
+
+// Can White (white = true) or Black never be mated, by the lock detector?
+inline bool cannot_be_mated(const Pieces& p, bool white) {
+    return detail::locked(p, white) || detail::stalemated_flagged(p, white);
 }
 
 }  // namespace mateless::lock_second

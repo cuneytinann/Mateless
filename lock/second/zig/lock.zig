@@ -3,7 +3,8 @@
 //! Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 //! knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 //! moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-//! move: it generates no move and searches nothing.
+//! move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+//! two plies at most.
 //!
 //! The first version (../../zig/lock.zig) grows each king's reach, the pawns that can never move,
 //! and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -25,7 +26,10 @@
 //!   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
 //!   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
 //!   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-//!     position after it.
+//!     position after it;
+//!   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+//!     bishops) plays, is left without a legal move and out of check, now or after the one legal
+//!     move it has.
 //! A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 //! never be opened; one it fails may still be dead.
 //!
@@ -220,7 +224,12 @@ pub fn fromFen(fen: []const u8) Pieces {
 
 /// Can White (white = true) or Black never be mated, by the lock detector?
 pub fn cannotBeMated(p: Pieces, white: bool) bool {
-    if (forcedStep(p)) |after| return cannotBeMated(after, white);
+    return locked(p, white) or stalematedFlagged(p, white);
+}
+
+/// The lock: no series of legal moves opens the structure for the side asked about.
+fn locked(p: Pieces, white: bool) bool {
+    if (forcedStep(p)) |after| return locked(after, white);
     const wx = p.white_knights | p.white_rooks | p.white_queens;
     const bx = p.black_knights | p.black_rooks | p.black_queens;
     if ((wx | bx) != 0) return boxedLock(p, white, wx, bx);
@@ -639,4 +648,204 @@ fn forcedStep(p: Pieces) ?Pieces {
         q.white_pawns &= ~to;
     }
     return q;
+}
+
+// ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+// Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+const Men = [12]Set;
+const kind_pawn = 0;
+const kind_knight = 1;
+const kind_bishop = 2;
+const kind_rook = 3;
+const kind_queen = 4;
+const kind_king = 5;
+const diagonal_steps = [4][2]i32{ .{ 1, 1 }, .{ -1, 1 }, .{ 1, -1 }, .{ -1, -1 } };
+const line_steps = [4][2]i32{ .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1 }, .{ 0, -1 } };
+
+/// A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the
+/// kind after it.
+const Move = struct { from: Set, to: Set, victim: Set = 0, passed: Set = 0, kind: usize, now: usize };
+
+/// The legal moves of one side (at most 256).
+const MoveList = struct {
+    n: usize = 0,
+    list: [256]Move = undefined,
+    fn add(self: *MoveList, mv: Move) void {
+        self.list[self.n] = mv;
+        self.n += 1;
+    }
+};
+
+/// The squares from the square s in the direction (df, dr), up to the first man (included).
+fn rayFrom(s: Set, df: i32, dr: i32, occ: Set) Set {
+    const sq: i32 = @intCast(@ctz(s));
+    var f = @mod(sq, 8) + df;
+    var r = @divTrunc(sq, 8) + dr;
+    var out: Set = 0;
+    while (f >= 0 and f < 8 and r >= 0 and r < 8) {
+        const t = @as(Set, 1) << @intCast(8 * r + f);
+        out |= t;
+        if ((occ & t) != 0) break;
+        f += df;
+        r += dr;
+    }
+    return out;
+}
+
+/// Every man of side (0 White, 1 Black).
+fn menOf(m: Men, side: usize) Set {
+    const b = 6 * side;
+    return m[b] | m[b + 1] | m[b + 2] | m[b + 3] | m[b + 4] | m[b + 5];
+}
+
+/// Ahead for side (White's pawns go north).
+fn onward(side: usize, s: Set) Set {
+    return if (side == 0) north(s) else south(s);
+}
+
+/// Every square the men of side attack, the board occupied as occ.
+fn attacksOf(m: Men, side: usize, occ: Set) Set {
+    const b = 6 * side;
+    var a = sideways(onward(side, m[b])) | knight(m[b + kind_knight]) | steps(m[b + kind_king]);
+    var s = m[b + kind_bishop] | m[b + kind_queen];
+    while (s != 0) : (s &= s - 1) {
+        for (diagonal_steps) |d| a |= rayFrom(lowest(s), d[0], d[1], occ);
+    }
+    s = m[b + kind_rook] | m[b + kind_queen];
+    while (s != 0) : (s &= s - 1) {
+        for (line_steps) |d| a |= rayFrom(lowest(s), d[0], d[1], occ);
+    }
+    return a;
+}
+
+/// The legal moves of side, to move, which has a king, pawns and bishops only, into moves. A
+/// promotion is four moves. ep: the square behind the other side's double step (0: none).
+fn legalMoves(m: Men, side: usize, ep: Set, moves: *MoveList) void {
+    moves.n = 0;
+    const b = 6 * side;
+    const o = 6 * (1 - side);
+    const own = menOf(m, side);
+    const occ = menOf(m, 0) | menOf(m, 1);
+    const k = m[b + kind_king];
+    const them = menOf(m, 1 - side) & ~m[o + kind_king];
+    var t = steps(k) & ~own & ~attacksOf(m, 1 - side, occ & ~k);
+    while (t != 0) : (t &= t - 1) moves.add(.{ .from = k, .to = lowest(t), .kind = kind_king, .now = kind_king });
+    // checks on the king, and the men pinned to it (each may move along its line only)
+    var checkers = (sideways(onward(side, k)) & m[o + kind_pawn]) | (knight(k) & m[o + kind_knight]);
+    var block: Set = ~@as(Set, 0);
+    var pinned: [8]Set = undefined;
+    var pin_line: [8]Set = undefined;
+    var pins: usize = 0;
+    for (0..2) |l| {
+        const sliders = if (l == 0) m[o + kind_bishop] | m[o + kind_queen] else m[o + kind_rook] | m[o + kind_queen];
+        for (if (l == 0) diagonal_steps else line_steps) |d| {
+            const r = rayFrom(k, d[0], d[1], occ);
+            const first = r & occ;
+            if ((first & sliders) != 0) {
+                checkers |= first;
+                block = r;
+            } else if ((first & own) != 0) {
+                const beyond = rayFrom(first, d[0], d[1], occ);
+                if ((beyond & occ & sliders) != 0) {
+                    pinned[pins] = first;
+                    pin_line[pins] = r | beyond;
+                    pins += 1;
+                }
+            }
+        }
+    }
+    if (count(checkers) >= 2) return;
+    const evade: Set = if (checkers == 0) ~@as(Set, 0) else if (block != ~@as(Set, 0)) block else checkers;
+    var s = m[b + kind_bishop];
+    while (s != 0) : (s &= s - 1) {
+        const from = lowest(s);
+        var line: Set = ~@as(Set, 0);
+        for (pinned[0..pins], pin_line[0..pins]) |man, pl| {
+            if (man == from) line = pl;
+        }
+        var to: Set = 0;
+        for (diagonal_steps) |d| to |= rayFrom(from, d[0], d[1], occ);
+        t = to & ~own & ~m[o + kind_king] & evade & line;
+        while (t != 0) : (t &= t - 1) moves.add(.{ .from = from, .to = lowest(t), .kind = kind_bishop, .now = kind_bishop });
+    }
+    s = m[b + kind_pawn];
+    while (s != 0) : (s &= s - 1) {
+        const from = lowest(s);
+        var line: Set = ~@as(Set, 0);
+        for (pinned[0..pins], pin_line[0..pins]) |man, pl| {
+            if (man == from) line = pl;
+        }
+        const one = onward(side, from) & ~occ;
+        const two = onward(side, one & (if (side == 0) rank_3 else rank_6)) & ~occ;
+        const hit = sideways(onward(side, from));
+        t = (one | (hit & them)) & evade & line;
+        while (t != 0) : (t &= t - 1) {
+            const to = lowest(t);
+            if ((to & (rank_1 | rank_8)) != 0) {
+                for ([_]usize{ kind_queen, kind_rook, kind_bishop, kind_knight }) |now| moves.add(.{ .from = from, .to = to, .kind = kind_pawn, .now = now });
+            } else moves.add(.{ .from = from, .to = to, .kind = kind_pawn, .now = kind_pawn });
+        }
+        t = two & evade & line;
+        while (t != 0) : (t &= t - 1) moves.add(.{ .from = from, .to = lowest(t), .passed = one, .kind = kind_pawn, .now = kind_pawn });
+        const e = hit & ep & line;
+        if (e != 0) {
+            const victim = if (side == 0) south(e) else north(e);
+            if (checkers == 0 or (checkers & victim) != 0 or (e & evade) != 0)
+                moves.add(.{ .from = from, .to = e, .victim = victim, .kind = kind_pawn, .now = kind_pawn });
+        }
+    }
+}
+
+/// The men after side plays mv.
+fn playMove(m: Men, side: usize, mv: Move) Men {
+    var r = m;
+    const o = 6 * (1 - side);
+    for (o..o + 6) |i| r[i] &= ~(mv.to | mv.victim);
+    r[6 * side + mv.kind] &= ~mv.from;
+    r[6 * side + mv.now] |= mv.to;
+    return r;
+}
+
+/// Has side, to move, no legal move, its king in no check?
+fn stalemated(m: Men, side: usize, ep: Set) bool {
+    if ((attacksOf(m, 1 - side, menOf(m, 0) | menOf(m, 1)) & m[6 * side + kind_king]) != 0) return false;
+    var moves: MoveList = .{};
+    legalMoves(m, side, ep, &moves);
+    return moves.n == 0;
+}
+
+/// Does every move of moves (side's) leave the other side stalemated?
+fn everyMoveStalemates(m: Men, side: usize, moves: *const MoveList) bool {
+    for (moves.list[0..moves.n]) |mv| {
+        if (!stalemated(playMove(m, side, mv), 1 - side, mv.passed)) return false;
+    }
+    return true;
+}
+
+/// The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+/// bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+/// move: it has a legal move, and each one does that. With the flagged side to move: it has
+/// exactly one legal move (a promotion is four), after which every move of the mater's, if it has
+/// any, does that (with none, that one move ended the game). Not with an en passant right.
+fn stalematedFlagged(p: Pieces, white: bool) bool {
+    const m: Men = .{
+        p.white_pawns, p.white_knights, p.white_bishops, p.white_rooks, p.white_queens, p.white_king,
+        p.black_pawns, p.black_knights, p.black_bishops, p.black_rooks, p.black_queens, p.black_king,
+    };
+    const f: usize = if (white) 0 else 1;
+    const b = 6 * f;
+    const o = 6 * (1 - f);
+    if (p.en_passant or (m[b + kind_knight] | m[b + kind_bishop] | m[b + kind_rook] | m[b + kind_queen]) != 0 or
+        (m[o + kind_knight] | m[o + kind_rook] | m[o + kind_queen]) != 0) return false;
+    var moves: MoveList = .{};
+    if (p.white_to_move != white) {
+        legalMoves(m, 1 - f, 0, &moves);
+        return moves.n > 0 and everyMoveStalemates(m, 1 - f, &moves);
+    }
+    legalMoves(m, f, 0, &moves);
+    if (moves.n != 1) return false;
+    const q = playMove(m, f, moves.list[0]);
+    var answers: MoveList = .{};
+    legalMoves(q, 1 - f, moves.list[0].passed, &answers);
+    return everyMoveStalemates(q, 1 - f, &answers);
 }

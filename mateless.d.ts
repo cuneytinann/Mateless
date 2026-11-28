@@ -179,7 +179,8 @@ declare namespace Mateless {
 
   /** The flagged side cannot be mated: its opponent has too little material. */
   function materialCannotMate(pos: Position, flagged: Color): boolean;
-  /** The flagged side cannot be mated: the lock detector certifies it. */
+  /** The flagged side cannot be mated: the lock detector certifies it (or, a king and pawns, it is
+      stalemated by every move the mater can make: see _internal.tempoStalemate). */
   function lockCannotMate(pos: Position, flagged: Color): boolean;
   /** The static tests (material test or lock detector): the flagged side can never be mated. */
   function cannotMate(pos: Position, flagged: Color): boolean;
@@ -446,6 +447,8 @@ declare namespace Mateless {
 
   /** The stuck mater's certificate: the game ends at the mater's next turn. */
   interface LockStuck { readonly stuck: true; }
+  /** The stalemated flagged side's certificate: the game ends in a stalemate after the mater's next move. */
+  interface LockTempo { readonly tempo: true; }
   /** The forced step's certificate: the one of the position after the only legal move. */
   interface LockForced { readonly forced: LockSets | LockFamilies | LockStuck | LockForced; }
 
@@ -477,12 +480,17 @@ declare namespace Mateless {
     readonly lockTest2: (pos: Position, ask: number) => FlaggedSides;
     /** The lock certificate's sets, each a [lo, hi] pair of words; null when there is no lock. With
         first, the first version's (coreLockTest's) certificate. The stuck mater's is { stuck: true },
-        the forced step's { forced: <the certificate after the step> }. */
-    readonly lockSets: (pos: Position, flagged: Color, first?: boolean) => LockSets | LockFamilies | LockStuck | LockForced | null;
+        the forced step's { forced: <the certificate after the step> }, the stalemated flagged side's { tempo: true }. */
+    readonly lockSets: (pos: Position, flagged: Color, first?: boolean) => LockSets | LockFamilies | LockStuck | LockForced | LockTempo | null;
     /** The stuck mater (the second version): the flagged side is to move and, whatever it plays, the mater has no legal move. */
     readonly materStuck: (pos: Position, flagged: Color) => boolean;
-    /** The stuck mater, move by move (ladder.js): with the flagged side to move and the mater a king and pawns, every move of the flagged side leaves the mater without a legal move. */
-    readonly stuckEvery: (pos: Position, flagged: Color) => boolean;
+    /** The stuck mater, move by move: with the flagged side to move and the mater a king and pawns, every move of the flagged side leaves the mater without a legal move (with quiet, and out of check: a stalemate). */
+    readonly stuckEvery: (pos: Position, flagged: Color, quiet?: boolean) => boolean;
+    /** The stalemated flagged side (the second version): the flagged side a king and pawns, the mater without a knight, rook or
+        queen, no en passant right; with the mater to move, it has a legal move and each one leaves the flagged side without one and
+        out of check (a stalemate); with the flagged side to move, it has exactly one legal move, after which every move of the
+        mater's (if any) does so. In lockCannotMate, cannotMate and a game's flags, not in the search's static tests. */
+    readonly tempoStalemate: (pos: Position, flagged: Color) => boolean;
     /** The first version's lock detector alone (lock/, the scalachess patch): no open pairs, no boxed pieces. */
     readonly coreLockTest: (pos: Position, flagged: Color) => boolean;
     readonly SHARED_CONTEXT: MoveContext;

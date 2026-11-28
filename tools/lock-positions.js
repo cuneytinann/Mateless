@@ -307,7 +307,7 @@ function secondKind(fen) {   // the certificate kinds of the second version's pr
     const c = I.lockSets(pos, side);
     if (c.boxed && ((c.still[0] | c.still[1]) || (c.frozen[0] | c.frozen[1]))) kind.wall = true;
     if (c.families) kind.families = true; else if (c.boxed) kind.boxed = true;
-    else if (c.stuck) kind.stuck = true; else if (c.forced) kind.forced = true; else kind.level = true;
+    else if (c.stuck) kind.stuck = true; else if (c.forced) kind.forced = true; else if (c.tempo) kind.tempo = true; else kind.level = true;
   }
   return kind;
 }
@@ -376,6 +376,48 @@ for (const fen of seeds) {
     const n = normal(p);
     if (!n || second.has(n)) continue;
     if (secondKind(n).wall) { if (!hits++) add2(n); }
+    else if (!misses++) add2(n);
+  }
+}
+
+/* The stalemated flagged side: a king and pawns that whatever the other side (a king, pawns, bishops)
+   plays is left without a move and out of check, now or after the one legal move it has. TEMPO_CASES:
+   one or two positions of each kind (the one move a king's step, a push, a double step, a capture, a
+   check, or a move that ends the game at once; the other side with or without bishops, with a
+   promotion or a double step among its moves), from chasolver's list of 19 November and positions a
+   move or two on; each with its mirror image, and near misses: for each, the mutations above until
+   one keeps the rule's proof and one breaks it. */
+const TEMPO_CASES = [
+  'k7/Pp6/1P6/8/8/8/7K/8 w - - 0 1', '8/6k1/6p1/6P1/5pPK/5p1P/5P2/8 b - - 0 1',
+  '8/4b1pk/4p3/6PK/6PP/5b2/8/8 w - - 0 1', '8/4b1pk/4p3/6PK/6PP/8/8/3b4 w - - 0 1',
+  '8/4b1pk/4p1P1/7K/6PP/5b2/8/8 b - - 0 1', '8/4b1pk/4p1P1/7K/6PP/8/8/3b4 b - - 0 1',
+  '8/p1p5/2P5/P7/4k3/6p1/3b2Pp/7K w - - 0 1', '8/p1p5/2P5/P7/4k3/6p1/5bPp/7K w - - 0 1',
+  'k7/Pp6/1P5P/8/8/6p1/6Pp/7K w - - 0 1', '8/8/8/8/1p6/kPp5/P7/K7 b - - 0 1',
+  '8/2p5/1pP5/1P6/KP6/1P6/Pk6/8 w - - 0 1', '8/p7/P1p5/K1p5/2P5/Pk6/8/8 w - - 0 1',
+  'K1k5/P1Pp4/1P1P4/8/b7/8/8/8 w - - 0 1', 'K1k5/P1Pp4/1P1P4/8/8/8/8/3b4 w - - 0 1',
+  'k7/1p6/1P6/KP6/PPp5/2P5/8/8 b - - 0 1', '8/8/8/8/1p6/kP6/P7/K7 w - - 0 1',
+  '8/p7/1p4p1/1p4P1/kp4PK/1p4PP/1P4P1/8 b - - 0 1', '8/8/8/8/6p1/6Pk/PP5P/7K w - - 0 1',
+  '3B2kB/p1P3P1/P5P1/8/1p6/8/1P6/K7 b - - 0 1', '3B2kB/p1P3P1/P5P1/8/1p6/8/1P6/7K b - - 0 1',
+  '3B2kB/p1P3P1/P5P1/8/8/1p6/1P6/K7 w - - 0 1', '3B2kB/p1P3P1/P5P1/8/8/1p5K/1P6/8 w - - 0 1',
+  '2k5/8/p2p4/P1pP1p2/KpPp1pp1/1P1P2P1/8/8 w - - 0 1', '7k/6pP/6P1/p7/8/P5K1/2P5/8 b - - 0 1',
+  '7k/6pP/p5P1/8/P7/6K1/2P5/8 b - - 0 1', '8/8/8/8/8/6p1/4k1Pp/6K1 w - - 0 1',
+  '6k1/4K1pP/6P1/8/8/8/8/8 b - - 0 1', '8/1p6/pP6/K1pk4/P7/2P5/8/8 w - - 0 1',
+  '8/1p6/8/kPK5/p1P5/P7/8/8 b - - 0 1', '1k6/1P6/1P6/6p1/4BB2/5PK1/6P1/8 b - - 0 1',
+  '7k/p6p/6pK/6P1/8/8/5b2/8 b - - 0 1', '7k/6pP/6P1/2P1P1K1/8/3B4/5P2/8 w - - 0 1',
+  '6k1/6pP/5pP1/2B2P2/5PB1/7K/8/8 b - - 0 1', '2K5/kpB5/pP6/P7/8/8/8/8 b - - 0 1',
+  '7k/7P/4p1bK/1p2P1P1/1P6/8/8/8 w - - 0 1', '7k/7P/6bK/6P1/8/8/8/8 w - - 0 1',
+  '7k/1B4pP/6P1/2p5/p1P5/2K5/P6P/8 b - - 0 1', '8/pp5P/kp6/1p4p1/1P6/6p1/6Pp/7K b - - 0 1',
+];
+rng = 20261128;
+for (const fen of TEMPO_CASES) { add2(normal(parse(fen))); add2(normal(mirror(parse(fen)))); }
+for (const fen of TEMPO_CASES) {
+  let hits = 0, misses = 0;
+  for (let tries = 0; tries < 30 && (!hits || !misses); tries++) {
+    const p = rand() < 0.5 ? parse(fen) : mirror(parse(fen));
+    if (!pick(MUTATIONS)(p)) continue;
+    const n = normal(p);
+    if (!n || second.has(n)) continue;
+    if (secondKind(n).tempo) { if (!hits++) add2(n); }
     else if (!misses++) add2(n);
   }
 }

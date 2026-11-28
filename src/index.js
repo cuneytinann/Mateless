@@ -61,10 +61,11 @@ import { BISHOP, BLACK, castlingField, CastlingFiles, chess960Arrangement, color
          SHARED_CONTEXT, squareName, STANDARD_SKELETON, toFen, typeOf, undoMove, WHITE, writeKey } from './board.js';
 import { fromFen } from './fen.js';
 import { materialCannotMate, materialTest } from './material.js';
-import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2, materStuck } from './lock.js';
+import { cannotMate, cannotMate2, coreLockTest, FLAGGED_BLACK, FLAGGED_WHITE, lockCannotMate, lockSets, lockTest, lockTest2, materStuck,
+         stuckEvery, tempoStalemate } from './lock.js';
 import { DOMINO_BUDGET, DOMINO_DEEP_BUDGET, DOMINO_DEEP_PLY, DOMINO_PLY, Domino, PositionSet } from './domino.js';
 import { ClockSearch, REGION_REACH } from './clock.js';
-import { Flags, isDeadPosition, proveBoth, proveCannotBeMated, stuckEvery } from './ladder.js';
+import { Flags, isDeadPosition, proveBoth, proveCannotBeMated } from './ladder.js';
 import { Claim, flagVerdict, Game, gameStatus, Result, RESULT_NAMES } from './game.js';
 
 // The public API (tools/build.js turns this list into the object mateless.js returns).
@@ -85,4 +86,4 @@ export {
 export const _internal = Object.freeze({ generateLegalMoves, doMove, undoMove, writeKey, hashKey, PositionSet, enemyAttacks, hasLegalMove, materialTest,
                                          lockTest, lockTest2, lockSets, materStuck, coreLockTest, SHARED_CONTEXT,
                                          FLAG_CASTLE, FLAG_EP, FLAG_DOUBLE, FLAG_PROMO, MOVE_STRIDE, KEY_WORDS,
-                                         ClockSearch, REGION_REACH, readFen, stuckEvery });
+                                         ClockSearch, REGION_REACH, readFen, stuckEvery, tempoStalemate });

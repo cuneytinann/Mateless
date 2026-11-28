@@ -1,10 +1,10 @@
 # Kilit dedektörü, ikinci sürüm, tek başına
 
 [Mateless](https://github.com/cuneytinann/Mateless)'in kilit dedektörünün ikinci sürümü, en sade
-hâliyle, ilk sürümle aynı 20 dilde (ilk sürüm bir üst klasörde, [`../`](../)). Her sürüm 470 ile
-650 satır arası ve yalnızca kendi dilinin standart kütüphanesini kullanıyor. Hepsi satır satır aynı
-algoritma ve hepsi `positions.tsv`'deki 65.956 pozisyonda Mateless'in ikinci sürümünün cevaplarını
-veriyor.
+hâliyle, ilk sürümle aynı 20 dilde (ilk sürüm bir üst klasörde, [`../`](../)). Her sürüm 600 ile
+1.000 satır arası (Rust, rustfmt'nin dizdiği hâliyle 1.170) ve yalnızca kendi dilinin standart
+kütüphanesini kullanıyor. Hepsi satır satır aynı algoritma ve hepsi `positions.tsv`'deki 66.100
+pozisyonda Mateless'in ikinci sürümünün cevaplarını veriyor.
 
 [English](README.md) · [İlk sürüm](../README.tr.md)
 
@@ -12,10 +12,11 @@ veriyor.
 
 İlk sürümle aynı soruyu: **bu taraf asla mat edilemez mi?** Tahtadaki taşlar hiçbir geçerli hamle
 dizisinin açamayacağı bir yapı kurduğunda evet (FIDE 5.2.2 ölü pozisyon, 6.9 süre bitimi).
-Bitboard'ları ve sıranın kimde olduğunu okuyor. Hamle üretmiyor, aramıyor. **Sağlam ama tam
+Bitboard'ları ve sıranın kimde olduğunu okuyor, arama yapmıyor: hamlelere yalnızca son kuralı
+bakıyor, şahların, piyonların ve fillerin hamlelerine, en fazla iki yarım hamle. **Sağlam ama tam
 değil**: geçirdiği bir yapı asla açılamaz, ama geçirmediği bir pozisyon yine de ölü olabilir.
 
-İlk sürümün hepsini koruyor ve yedi kural ekliyor. Her biri yalnızca kendi durumu tahtadayken
+İlk sürümün hepsini koruyor ve sekiz kural ekliyor. Her biri yalnızca kendi durumu tahtadayken
 çalışıyor; başka her pozisyonda ilk sürümün cevabını veriyor.
 
 - **Önü açık piyon çiftleri.** Aynı dikeyde, aralarında tek boş kare olan bir beyaz ve bir siyah
@@ -39,11 +40,22 @@ değil**: geçirdiği bir yapı asla açılamaz, ama geçirmediği bir pozisyon 
   kalmıyor.
 - **Zorunlu adım.** Piyon şahındaki bir şahın tek yasal hamlesi bir adımsa, cevap o adımdan sonraki
   pozisyonun kilididir.
+- **Süresi biten tarafın patı.** Süresi biten tarafta yalnızca şah ve piyonlar var, mat edecek
+  tarafta at, kale ya da vezir yok ve mat edecek taraf ne oynarsa oynasın süresi biten tarafın
+  yasal hamlesi kalmıyor, şahı da tehdit altında olmuyor: pat. Sıra mat edecek taraftaysa, yasal
+  bir hamlesi var ve her biri bunu yapıyor. Sıra süresi biten taraftaysa, tam bir yasal hamlesi var
+  (terfi dört sayılıyor) ve ondan sonra mat edecek tarafın her hamlesi bunu yapıyor; mat edecek
+  tarafın hiç hamlesi yoksa oyun o tek hamleyle bitmiştir. Hamlelere yalnızca bu kural bakıyor:
+  süresi biten tarafın tek hamlesine, sonra mat edecek tarafın her cevabına, açmazları ve şahları
+  sayarak.
 
 Mümkün bir en passant alış onu yine hemen düşürüyor.
 
 Ne zaman sorulacağı ilk sürümdeki gibi: süre bittiğinde, süresi biten oyuncu için; her hamleden
-sonra da, yarım hamle sayacı 0 ya da 1 iken iki taraf için (ikisi de evetse pozisyon ölü).
+sonra da, yarım hamle sayacı 0 ya da 1 iken iki taraf için (ikisi de evetse pozisyon ölü). Süresi
+biten tarafın patı sessiz bir hamleden sonra da doğabilir (rakibine tek hamle bırakan bir şah
+adımı gibi): Mateless bu kuralı her hamleden sonra soruyor; yalnızca o anlarda sorulan dedektör
+biraz daha az ispatlar, asla yanlış ispatlamaz.
 
 ## Çağırmak
 
@@ -103,7 +115,7 @@ az ispatlayabilir, asla fazla değil.
 | Zig | [`zig/`](zig/) | `zig run -O ReleaseFast test.zig` | Zig 0.17 |
 
 `sh test-all.sh`, derleyicisi kurulu olan her testi çalıştırıyor. Her test her pozisyonda iki
-tarafı da cevaplıyor ve `<dil>: 65956 positions, 0 wrong` yazıyor.
+tarafı da cevaplıyor ve `<dil>: 66100 positions, 0 wrong` yazıyor.
 
 ## Nasıl denendi
 
@@ -121,21 +133,29 @@ tarafı da cevaplıyor ve `<dil>: 65956 positions, 0 wrong` yazıyor.
   kendi renginden hareketsiz bir filin ya da kendi şahının kutuladığı bir at, kale ya da vezir;
   piyonu ve bir filin kutuladığı bir kale ile birbirini tutan bir şah, kale ve fil, her biri filsiz
   ya da şahsız hâliyle de; aynıları bir rok hakkı kalmış olarak ve tahtanın taşıyamayacağı bir hakla;
-  iki kale arasında bir şah, bir rokun şahı ve kaleyi bıraktığı yerde ve bırakmadığı yerde.
+  iki kale arasında bir şah, bir rokun şahı ve kaleyi bıraktığı yerde ve bırakmadığı yerde;
+- süresi biten tarafın patı: her türden bir iki pozisyon (tek hamle bir şah adımı, bir piyon
+  sürüşü, bir çift adım, bir alış, bir şah çekiş ya da oyunu hemen bitiren bir hamle; mat edecek
+  taraf filli ya da filsiz, hamleleri arasında bir terfi ya da bir çift adım), chasolver'ın 19 Kasım
+  listesinden ve onlardan bir iki hamle sonrasından, ayna görüntüleriyle ve her biri için kuralın
+  ispatladığı ve ispatlamadığı birer yakın pozisyonla.
 
-38.265 "asla mat edilemez" cevabının 31.256'sı ilk sürümün. Kalanı yeni kurallardan:
+38.403 "asla mat edilemez" cevabının 31.260'ı ilk sürümün. Kalanı yeni kurallardan:
 
 | kural | cevap |
 |---|---|
-| yeni seviye: ikiz filler, pat bekçisi, piyon şahı tohumu | 5.653 |
+| yeni seviye: ikiz filler, pat bekçisi, piyon şahı tohumu | 5.663 |
 | zorunlu adım | 618 |
 | kutulu at, kale ve vezir (466'sının duvarlarında hareketsiz bir fil ya da şah var) | 580 |
+| süresi biten tarafın patı | 112 |
 | önü açık piyon çiftleri | 92 |
-| hamlesiz rakip | 66 |
+| hamlesiz rakip | 78 |
 
-Her dil ayrıca 183.461 başka pozisyonda ve rok alanını denemek için yazılmış 206.149 pozisyonda
-(bir piyon zinciri üstünde ilk yatayda şah, kaleler ve filler, tahtanın izin verdiği her rok alanıyla)
-Mateless'in cevaplarını veriyor.
+Her dil ayrıca 183.461 başka pozisyonda, rok alanını denemek için yazılmış 206.149 pozisyonda (bir
+piyon zinciri üstünde ilk yatayda şah, kaleler ve filler, tahtanın izin verdiği her rok alanıyla)
+ve yalnızca şah, piyon ve fillerden oluşan 848.240 pozisyonda (chasolver'ın listelerinin ve
+Lichess'in oyun sonları, bir ve iki hamle sonrasıyla; süresi biten tarafın patı bunlarda 785
+cevap ispatlıyor) Mateless'in cevaplarını veriyor.
 
 Dosyayı Mateless reposundaki `tools/lock-positions.js` yazıyor.
 

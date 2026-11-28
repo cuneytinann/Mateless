@@ -395,19 +395,20 @@ the detector alone, in its simplest form, in 20 languages: C, C++, C#, Crystal, 
 JavaScript, Kotlin, Lua, Nim, OCaml, Pascal, PHP, Python, Ruby, Rust, Scala, TypeScript, Zig. Each
 is about two hundred lines on its language's standard library, and all give the same answers on the
 same 36,406 test positions ([lock/README.md](lock/README.md)). Its folder `second/` holds the
-second version the same way: 470 to 730 lines in each of the same 20 languages, the same answers on
-65,956 test positions ([lock/second/README.md](lock/second/README.md)). The table below is the fast
+second version the same way: 600 to 1,000 lines in each of the same 20 languages, the same answers
+on 66,100 test positions ([lock/second/README.md](lock/second/README.md)). The table below is the fast
 versions inside Mateless.
 
 **What it needs:** the bitboards of the pawns, kings and bishops (by colour), whether any knight,
 rook or queen is on the board, and the en passant square (only when a legal capture onto it
-exists). It generates no move and searches nothing.
+exists). It generates no move and searches nothing (the second version's last rule, the stalemated
+flagged side, looks at the moves of kings, pawns and bishops, two plies at most).
 
 | language | function |
 |---|---|
 | JS | `lockCannotMate(pos, flagged)` (`src/lock.js`) |
 | WebAssembly | `lockCannotMate(fen or Position, flagged)` (`mateless-wasm.js`) |
-| Rust | `lock_test(&pos, flagged)` (`rust/src/lock.rs`) |
+| Rust | `lock_cannot_mate(&pos, flagged)` (`rust/src/lock.rs`) |
 | Scala (scalachess) | `chess.mateless.Lock.cannotBeMated(position, flagged)` (mateless-scalachess: `in-game`, `a-lock`) |
 
 **Cost** per call:
@@ -560,9 +561,11 @@ measured, and only where its own situation is on the board.
 | **the check seed**: a king in a pawn's check starts its reach from the squares it can step to now, not from its own, which the fixed pawn keeps attacked | the side to move is in a pawn's check (no bishop on the board) | | |
 | **the stuck mater**: the flagged side is to move and, whatever it plays, the mater has no legal move (the game ends at the mater's turn); read from the bitboards, no move is made | kings and pawns, the flagged side to move, the lock found nothing | | |
 | **the forced step**: a king in a pawn's check with one legal move, a step: the lock of the position after it | as for the check seed, with kings and pawns only | | |
+| **the stalemated flagged side**: whatever the mater plays, the flagged side is left without a legal move and out of check, a stalemate; with the flagged side to move, after the one legal move it has (a promotion counts four; if the mater then has no move, that move ended the game). Exact: the legal moves of the two plies, pins and checks counted, on the bitboards. Not in the search: a quiet move can complete it, so a game's flags ask it at every ply | the flagged side has only its king and pawns, the mater no knight, rook or queen, no en passant right | none of the 36; on chasolver's list of 19 November 90 more lock answers (75 of the 76 rows where the flagged side is stalemated within two plies), on its composed positions 7 | ~15 ns per call outside such positions (JS); a game's flags: none measurable |
 | **twin bishops**: two or more bishops of one side on one colour (only a promotion makes them) no longer fail the detector; the mating net does not count its second flight rule (a free square vertically and one horizontally next to the king, two squares of one colour) for the flagged side on the king squares where its twins may hold both | a side has twin bishops | none in the Lichess data; 227 more answers on chasolver's labelled positions (899 of them have twins) | |
 
-In the code: `lockTest` runs the second version's rules where they apply; `_internal.coreLockTest`
+In the code: `lockTest` runs the second version's rules where they apply, and `lockCannotMate` that
+and the stalemated flagged side (`_internal.tempoStalemate`); `_internal.coreLockTest`
 is the first version's detector alone (the one in `lock/` and in the scalachess patch, which the
 lock tab draws); `proveCannotBeMated(pos, side, { deepBudget: 0 })` leaves the second tier out (the
 stuck mater still runs), and `_internal.stuckEvery(pos, side)` is the stuck mater rule alone. A
@@ -640,7 +643,7 @@ The four rules of November (stalemate guard, check seed, stuck mater, forced ste
 was checked by walking all the positions reachable from it, chasolver's labels give no false draw,
 and the invariant check knows their certificates ([docs/RESULTS.md](docs/RESULTS.md#the-four-rules-of-november)).
 They are in the JavaScript, Rust and WebAssembly engines, with the same answers and node counts, and
-in the simple detector's 20 languages (`lock/second/`, the same answers on 65,956 positions).
+in the simple detector's 20 languages (`lock/second/`, the same answers on 66,100 positions).
 
 The walls of a boxed piece that are not pawns (27 November): a still bishop of its colour and its
 own frozen king, as in the table above. A rook shut in by its pawn and its bishop
@@ -649,6 +652,14 @@ needs them) and 72 more answers of chasolver's composed positions; every new loc
 files was checked by walking all the positions reachable from it, by chasolver's full analysis and
 by the invariant check ([docs/RESULTS.md](docs/RESULTS.md#the-walls-of-a-boxed-piece)). The same in
 JavaScript, Rust, WebAssembly and the 20 languages.
+
+The stalemated flagged side (28 November), as in the table above: the flagged side, a king and
+pawns, is stalemated whatever the mater plays, now or after its one legal move. On chasolver's list
+of 19 November it moves 90 rows from the search to the lock (none lost); the rule is exact, and a
+brute force with the engine's own moves agrees on 1.34 million sides; chasolver's full analysis and
+an independent move generator (shakmaty) find no mate after any of its proofs, and the invariant
+check knows its certificate ([docs/RESULTS.md](docs/RESULTS.md#the-stalemated-flagged-side)). The
+same in JavaScript, Rust, WebAssembly and the 20 languages.
 
 **What comes next**, in order: the 2 cages left (RwnQJq1k, bKHPqNEw), a bounded full closure for
 what stays open, and a written proof of soundness for the detector and the rules above.

@@ -3,7 +3,8 @@
 //! Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 //! knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 //! moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-//! move: it generates no move and searches nothing.
+//! move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+//! two plies at most.
 //!
 //! The first version (../../rust) grows each king's reach, the pawns that can never move, and the
 //! squares where each side may take a pawn, until nothing changes; the structure leaks if a pawn
@@ -25,7 +26,10 @@
 //!   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
 //!   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
 //!   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-//!     position after it.
+//!     position after it;
+//!   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+//!     bishops) plays, is left without a legal move and out of check, now or after the one legal
+//!     move it has.
 //!
 //! A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 //! never be opened; one it fails may still be dead.
@@ -234,8 +238,13 @@ pub fn from_fen(fen: &str) -> Pieces {
 
 /// Can White (`white` = true) or Black never be mated, by the lock detector?
 pub fn cannot_be_mated(p: &Pieces, white: bool) -> bool {
+    locked(p, white) || stalemated_flagged(p, white)
+}
+
+/// The lock: no series of legal moves opens the structure for the side asked about.
+fn locked(p: &Pieces, white: bool) -> bool {
     if let Some(after) = forced_step(p) {
-        return cannot_be_mated(&after, white);
+        return locked(&after, white);
     }
     let wx = p.white_knights | p.white_rooks | p.white_queens;
     let bx = p.black_knights | p.black_rooks | p.black_queens;
@@ -939,4 +948,223 @@ fn forced_step(p: &Pieces) -> Option<Pieces> {
         q.white_pawns &= !to;
     }
     Some(q)
+}
+
+// ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+// Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+type Men = [Set; 12];
+const PAWN: usize = 0;
+const KNIGHT: usize = 1;
+const BISHOP: usize = 2;
+const ROOK: usize = 3;
+const QUEEN: usize = 4;
+const KING: usize = 5;
+const DIAGONALS: [(i32, i32); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
+const LINES: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+/// A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the
+/// kind after it.
+#[derive(Clone, Copy)]
+struct Move {
+    from: Set,
+    to: Set,
+    victim: Set,
+    passed: Set,
+    kind: usize,
+    now: usize,
+}
+
+/// The squares from the square s in the direction (df, dr), up to the first man (included).
+fn ray(s: Set, df: i32, dr: i32, occ: Set) -> Set {
+    let sq = s.trailing_zeros() as i32;
+    let (mut f, mut r, mut out) = (sq % 8 + df, sq / 8 + dr, 0);
+    while (0..8).contains(&f) && (0..8).contains(&r) {
+        let t = 1 << (8 * r + f);
+        out |= t;
+        if occ & t != 0 {
+            break;
+        }
+        f += df;
+        r += dr;
+    }
+    out
+}
+
+/// Every man of side (0 White, 1 Black).
+fn men(m: &Men, side: usize) -> Set {
+    m[6 * side..6 * side + 6].iter().fold(0, |a, x| a | x)
+}
+
+fn forward(side: usize, s: Set) -> Set {
+    if side == 0 {
+        north(s)
+    } else {
+        south(s)
+    }
+}
+
+/// Every square the men of side attack, the board occupied as occ.
+fn attacks(m: &Men, side: usize, occ: Set) -> Set {
+    let b = 6 * side;
+    let mut a = sideways(forward(side, m[b])) | knight(m[b + KNIGHT]) | steps(m[b + KING]);
+    for s in squares(m[b + BISHOP] | m[b + QUEEN]) {
+        for (df, dr) in DIAGONALS {
+            a |= ray(s, df, dr, occ);
+        }
+    }
+    for s in squares(m[b + ROOK] | m[b + QUEEN]) {
+        for (df, dr) in LINES {
+            a |= ray(s, df, dr, occ);
+        }
+    }
+    a
+}
+
+/// The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is
+/// four moves. ep: the square behind the other side's double step (0: none).
+fn legal_moves(m: &Men, side: usize, ep: Set) -> Vec<Move> {
+    let (b, o) = (6 * side, 6 * (1 - side));
+    let (own, occ, k) = (men(m, side), men(m, 0) | men(m, 1), m[b + KING]);
+    let them = men(m, 1 - side) & !m[o + KING];
+    let mv = |from, to, kind, now, victim, passed| Move {
+        from,
+        to,
+        victim,
+        passed,
+        kind,
+        now,
+    };
+    let mut moves: Vec<Move> = squares(steps(k) & !own & !attacks(m, 1 - side, occ & !k))
+        .map(|t| mv(k, t, KING, KING, 0, 0))
+        .collect();
+    // checks on the king, and the men pinned to it (each may move along its line only)
+    let mut checkers = (sideways(forward(side, k)) & m[o + PAWN]) | (knight(k) & m[o + KNIGHT]);
+    let mut block = !0;
+    let mut pins: Vec<(Set, Set)> = Vec::new();
+    for (dirs, sliders) in [
+        (DIAGONALS, m[o + BISHOP] | m[o + QUEEN]),
+        (LINES, m[o + ROOK] | m[o + QUEEN]),
+    ] {
+        for (df, dr) in dirs {
+            let r = ray(k, df, dr, occ);
+            let first = r & occ;
+            if first & sliders != 0 {
+                checkers |= first;
+                block = r;
+            } else if first & own != 0 {
+                let beyond = ray(first, df, dr, occ);
+                if beyond & occ & sliders != 0 {
+                    pins.push((first, r | beyond));
+                }
+            }
+        }
+    }
+    if count(checkers) >= 2 {
+        return moves;
+    }
+    let evade = match (checkers, block) {
+        (0, _) => !0,
+        (_, b) if b != !0 => b,
+        _ => checkers,
+    };
+    let line_of = |s: Set| pins.iter().find(|x| x.0 == s).map_or(!0, |x| x.1);
+    for s in squares(m[b + BISHOP]) {
+        let to = DIAGONALS
+            .iter()
+            .fold(0, |a, &(df, dr)| a | ray(s, df, dr, occ));
+        for t in squares(to & !own & !m[o + KING] & evade & line_of(s)) {
+            moves.push(mv(s, t, BISHOP, BISHOP, 0, 0));
+        }
+    }
+    for s in squares(m[b + PAWN]) {
+        let line = line_of(s);
+        let one = forward(side, s) & !occ;
+        let two = forward(side, one & if side == 0 { RANK_3 } else { RANK_6 }) & !occ;
+        let hit = sideways(forward(side, s));
+        for t in squares((one | (hit & them)) & evade & line) {
+            if t & (RANK_1 | RANK_8) != 0 {
+                for now in [QUEEN, ROOK, BISHOP, KNIGHT] {
+                    moves.push(mv(s, t, PAWN, now, 0, 0));
+                }
+            } else {
+                moves.push(mv(s, t, PAWN, PAWN, 0, 0));
+            }
+        }
+        for t in squares(two & evade & line) {
+            moves.push(mv(s, t, PAWN, PAWN, 0, one));
+        }
+        let e = hit & ep & line;
+        if e != 0 {
+            let victim = if side == 0 { south(e) } else { north(e) };
+            if checkers == 0 || checkers & victim != 0 || e & evade != 0 {
+                moves.push(mv(s, e, PAWN, PAWN, victim, 0));
+            }
+        }
+    }
+    moves
+}
+
+/// The men after side plays mv.
+fn play(m: &Men, side: usize, mv: &Move) -> Men {
+    let mut r = *m;
+    let o = 6 * (1 - side);
+    for x in &mut r[o..o + 6] {
+        *x &= !(mv.to | mv.victim);
+    }
+    r[6 * side + mv.kind] &= !mv.from;
+    r[6 * side + mv.now] |= mv.to;
+    r
+}
+
+/// Has side, to move, no legal move, its king in no check?
+fn stalemated(m: &Men, side: usize, ep: Set) -> bool {
+    attacks(m, 1 - side, men(m, 0) | men(m, 1)) & m[6 * side + KING] == 0
+        && legal_moves(m, side, ep).is_empty()
+}
+
+/// Does every move of moves (side's) leave the other side stalemated?
+fn every_move_stalemates(m: &Men, side: usize, moves: &[Move]) -> bool {
+    moves
+        .iter()
+        .all(|mv| stalemated(&play(m, side, mv), 1 - side, mv.passed))
+}
+
+/// The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+/// bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+/// move: it has a legal move, and each one does that. With the flagged side to move: it has
+/// exactly one legal move (a promotion is four), after which every move of the mater's, if it has
+/// any, does that (with none, that one move ended the game). Not with an en passant right.
+fn stalemated_flagged(p: &Pieces, white: bool) -> bool {
+    let m: Men = [
+        p.white_pawns,
+        p.white_knights,
+        p.white_bishops,
+        p.white_rooks,
+        p.white_queens,
+        p.white_king,
+        p.black_pawns,
+        p.black_knights,
+        p.black_bishops,
+        p.black_rooks,
+        p.black_queens,
+        p.black_king,
+    ];
+    let f = if white { 0 } else { 1 };
+    let (b, o) = (6 * f, 6 * (1 - f));
+    if p.en_passant
+        || m[b + KNIGHT] | m[b + BISHOP] | m[b + ROOK] | m[b + QUEEN] != 0
+        || m[o + KNIGHT] | m[o + ROOK] | m[o + QUEEN] != 0
+    {
+        return false;
+    }
+    if p.white_to_move != white {
+        let moves = legal_moves(&m, 1 - f, 0);
+        return !moves.is_empty() && every_move_stalemates(&m, 1 - f, &moves);
+    }
+    let only = legal_moves(&m, f, 0);
+    if only.len() != 1 {
+        return false;
+    }
+    let q = play(&m, f, &only[0]);
+    every_move_stalemates(&q, 1 - f, &legal_moves(&q, 1 - f, only[0].passed))
 }

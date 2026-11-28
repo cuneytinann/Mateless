@@ -4,7 +4,8 @@
  * Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
  * knights, rooks or queens boxed in by their own men) form a structure that no series of legal
  * moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
- * move: it generates no move and searches nothing.
+ * move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+ * two plies at most.
  *
  * The first version (../../kotlin/Lock.kt) grows each king's reach, the pawns that can never move,
  * and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -26,7 +27,10 @@
  *   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
  *   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
  *   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
- *     position after it.
+ *     position after it;
+ *   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+ *     bishops) plays, is left without a legal move and out of check, now or after the one legal
+ *     move it has.
  * A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
  * never be opened; one it fails may still be dead.
  *
@@ -154,9 +158,12 @@ object Lock {
     }
 
     /** Can White (white = true) or Black never be mated, by the lock detector? */
-    fun cannotBeMated(p: Pieces, white: Boolean): Boolean {
+    fun cannotBeMated(p: Pieces, white: Boolean): Boolean = locked(p, white) || stalematedFlagged(p, white)
+
+    /** The lock: no series of legal moves opens the structure for the side asked about. */
+    private fun locked(p: Pieces, white: Boolean): Boolean {
         val after = forcedStep(p)
-        if (after != null) return cannotBeMated(after, white)
+        if (after != null) return locked(after, white)
         val wx = p.whiteKnights or p.whiteRooks or p.whiteQueens
         val bx = p.blackKnights or p.blackRooks or p.blackQueens
         if ((wx or bx) != 0L) return boxedLock(p, white, wx, bx)
@@ -559,5 +566,159 @@ object Lock {
         if (((if (white) sideways(south(checkers)) else sideways(north(checkers))) and own) != 0L) return null  // a pawn may take instead
         return if (white) p.copy(whiteKing = to, blackPawns = p.blackPawns and to.inv(), whiteToMove = false, enPassant = false)
                else p.copy(blackKing = to, whitePawns = p.whitePawns and to.inv(), whiteToMove = true, enPassant = false)
+    }
+
+    // ─── The stalemated flagged side ─────────────────────────────────────────────────────────
+    // Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+    private const val PAWN = 0
+    private const val KNIGHT = 1
+    private const val BISHOP = 2
+    private const val ROOK = 3
+    private const val QUEEN = 4
+    private const val KING = 5
+    private val DIAGONALS = arrayOf(intArrayOf(1, 1), intArrayOf(-1, 1), intArrayOf(1, -1), intArrayOf(-1, -1))
+    private val LINES = arrayOf(intArrayOf(1, 0), intArrayOf(-1, 0), intArrayOf(0, 1), intArrayOf(0, -1))
+
+    /** A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it. */
+    private class Move(val from: Long, val to: Long, val victim: Long, val passed: Long, val kind: Int, val now: Int)
+
+    /** The squares from the square s in the direction (df, dr), up to the first man (included). */
+    private fun ray(s: Long, df: Int, dr: Int, occ: Long): Long {
+        val sq = java.lang.Long.numberOfTrailingZeros(s)
+        var f = sq % 8 + df
+        var r = sq / 8 + dr
+        var out = 0L
+        while (f in 0..7 && r in 0..7) {
+            val t = 1L shl (8 * r + f)
+            out = out or t
+            if ((occ and t) != 0L) break
+            f += df; r += dr
+        }
+        return out
+    }
+
+    /** Every man of side (0 White, 1 Black). */
+    private fun men(m: LongArray, side: Int): Long {
+        val b = 6 * side
+        return m[b] or m[b + 1] or m[b + 2] or m[b + 3] or m[b + 4] or m[b + 5]
+    }
+
+    private fun lowest(s: Long): Long = s and -s
+
+    /** Every square the men of side attack, the board occupied as occ. */
+    private fun attacks(m: LongArray, side: Int, occ: Long): Long {
+        val b = 6 * side
+        var a = sideways(if (side == 0) north(m[b]) else south(m[b])) or knight(m[b + KNIGHT]) or steps(m[b + KING])
+        var s = m[b + BISHOP] or m[b + QUEEN]
+        while (s != 0L) { for (d in DIAGONALS) a = a or ray(lowest(s), d[0], d[1], occ); s = s and (s - 1) }
+        s = m[b + ROOK] or m[b + QUEEN]
+        while (s != 0L) { for (d in LINES) a = a or ray(lowest(s), d[0], d[1], occ); s = s and (s - 1) }
+        return a
+    }
+
+    /** The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is
+        four moves. ep: the square behind the other side's double step (0: none). */
+    private fun legalMoves(m: LongArray, side: Int, ep: Long): List<Move> {
+        val b = 6 * side
+        val o = 6 * (1 - side)
+        val own = men(m, side)
+        val occ = men(m, 0) or men(m, 1)
+        val k = m[b + KING]
+        val them = men(m, 1 - side) and m[o + KING].inv()
+        val moves = ArrayList<Move>()
+        var t = steps(k) and own.inv() and attacks(m, 1 - side, occ and k.inv()).inv()
+        while (t != 0L) { moves.add(Move(k, lowest(t), 0, 0, KING, KING)); t = t and (t - 1) }
+        // checks on the king, and the men pinned to it (each may move along its line only)
+        var checkers = (sideways(if (side == 0) north(k) else south(k)) and m[o + PAWN]) or (knight(k) and m[o + KNIGHT])
+        var block = -1L
+        val pins = HashMap<Long, Long>()
+        for (l in 0..1) {
+            val sliders = if (l == 0) m[o + BISHOP] or m[o + QUEEN] else m[o + ROOK] or m[o + QUEEN]
+            for (d in if (l == 0) DIAGONALS else LINES) {
+                val r = ray(k, d[0], d[1], occ)
+                val first = r and occ
+                if ((first and sliders) != 0L) { checkers = checkers or first; block = r }
+                else if ((first and own) != 0L) {
+                    val beyond = ray(first, d[0], d[1], occ)
+                    if ((beyond and occ and sliders) != 0L) pins[first] = r or beyond
+                }
+            }
+        }
+        if (count(checkers) >= 2) return moves
+        val evade = if (checkers != 0L) (if (block != -1L) block else checkers) else -1L
+        var s = m[b + BISHOP]
+        while (s != 0L) {
+            val from = lowest(s)
+            var to = 0L
+            for (d in DIAGONALS) to = to or ray(from, d[0], d[1], occ)
+            t = to and own.inv() and m[o + KING].inv() and evade and (pins[from] ?: -1L)
+            while (t != 0L) { moves.add(Move(from, lowest(t), 0, 0, BISHOP, BISHOP)); t = t and (t - 1) }
+            s = s and (s - 1)
+        }
+        s = m[b + PAWN]
+        while (s != 0L) {
+            val from = lowest(s)
+            val line = pins[from] ?: -1L
+            val one = (if (side == 0) north(from) else south(from)) and occ.inv()
+            val two = (if (side == 0) north(one and RANK_3) else south(one and RANK_6)) and occ.inv()
+            val hit = sideways(if (side == 0) north(from) else south(from))
+            t = (one or (hit and them)) and evade and line
+            while (t != 0L) {
+                val to = lowest(t)
+                if ((to and (RANK_1 or RANK_8)) != 0L) for (now in intArrayOf(QUEEN, ROOK, BISHOP, KNIGHT)) moves.add(Move(from, to, 0, 0, PAWN, now))
+                else moves.add(Move(from, to, 0, 0, PAWN, PAWN))
+                t = t and (t - 1)
+            }
+            t = two and evade and line
+            while (t != 0L) { moves.add(Move(from, lowest(t), 0, one, PAWN, PAWN)); t = t and (t - 1) }
+            val e = hit and ep and line
+            if (e != 0L) {
+                val victim = if (side == 0) south(e) else north(e)
+                if (checkers == 0L || (checkers and victim) != 0L || (e and evade) != 0L) moves.add(Move(from, e, victim, 0, PAWN, PAWN))
+            }
+            s = s and (s - 1)
+        }
+        return moves
+    }
+
+    /** The men after side plays mv. */
+    private fun play(m: LongArray, side: Int, mv: Move): LongArray {
+        val r = m.copyOf()
+        val o = 6 * (1 - side)
+        for (i in o until o + 6) r[i] = r[i] and (mv.to or mv.victim).inv()
+        r[6 * side + mv.kind] = r[6 * side + mv.kind] and mv.from.inv()
+        r[6 * side + mv.now] = r[6 * side + mv.now] or mv.to
+        return r
+    }
+
+    /** Has side, to move, no legal move, its king in no check? */
+    private fun stalemated(m: LongArray, side: Int, ep: Long): Boolean =
+        (attacks(m, 1 - side, men(m, 0) or men(m, 1)) and m[6 * side + KING]) == 0L && legalMoves(m, side, ep).isEmpty()
+
+    /** Does every move of moves (side's) leave the other side stalemated? */
+    private fun everyMoveStalemates(m: LongArray, side: Int, moves: List<Move>): Boolean =
+        moves.all { stalemated(play(m, side, it), 1 - side, it.passed) }
+
+    /** The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+        bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+        move: it has a legal move, and each one does that. With the flagged side to move: it has
+        exactly one legal move (a promotion is four), after which every move of the mater's, if it
+        has any, does that (with none, that one move ended the game). Not with an en passant right. */
+    private fun stalematedFlagged(p: Pieces, white: Boolean): Boolean {
+        val m = longArrayOf(p.whitePawns, p.whiteKnights, p.whiteBishops, p.whiteRooks, p.whiteQueens, p.whiteKing,
+                            p.blackPawns, p.blackKnights, p.blackBishops, p.blackRooks, p.blackQueens, p.blackKing)
+        val f = if (white) 0 else 1
+        val b = 6 * f
+        val o = 6 * (1 - f)
+        if (p.enPassant || (m[b + KNIGHT] or m[b + BISHOP] or m[b + ROOK] or m[b + QUEEN]) != 0L ||
+            (m[o + KNIGHT] or m[o + ROOK] or m[o + QUEEN]) != 0L) return false
+        if (p.whiteToMove != white) {
+            val moves = legalMoves(m, 1 - f, 0)
+            return moves.isNotEmpty() && everyMoveStalemates(m, 1 - f, moves)
+        }
+        val only = legalMoves(m, f, 0)
+        if (only.size != 1) return false
+        val q = play(m, f, only[0])
+        return everyMoveStalemates(q, 1 - f, legalMoves(q, 1 - f, only[0].passed))
     }
 }

@@ -118,9 +118,9 @@ pub extern "C" fn position_halfmove(h: i32) -> i32 { position(h).halfmove as i32
 #[no_mangle]
 pub extern "C" fn material_test(h: i32, flagged: i32) -> i32 { mateless::material_test(position(h), flagged as u8) as i32 }
 
-/// Rung 2 for `flagged`.
+/// Rung 2 for `flagged`: the lock detector, with the stalemated flagged side (lockCannotMate).
 #[no_mangle]
-pub extern "C" fn lock_test(h: i32, flagged: i32) -> i32 { mateless::lock_test(position(h), flagged as u8) as i32 }
+pub extern "C" fn lock_cannot_mate(h: i32, flagged: i32) -> i32 { mateless::lock_cannot_mate(position(h), flagged as u8) as i32 }
 
 /// Rungs 1 and 2 for `flagged`.
 #[no_mangle]

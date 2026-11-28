@@ -58,8 +58,11 @@ function inspect(fen, side) {
   const setup = E.fromFen(fen);
   if (setup.error) return null;
   const pos = setup.position, flagged = side ? E.WHITE : E.BLACK;
+  const lock = E.lockCannotMate(pos, flagged);
+  // the second version's stalemated flagged side: an answer of lockCannotMate's, not of the structure
+  const tempo = lock && !!(E._internal && E._internal.tempoStalemate) && !E._internal.lockTest(pos, flagged);
   return { status: E.gameStatus(pos, { deadPositionSearch: false }),
-           material: E.materialCannotMate(pos, flagged), lock: E.lockCannotMate(pos, flagged) };
+           material: E.materialCannotMate(pos, flagged), lock, tempo };
 }
 
 var GLYPH = ' ♝♜♛♟♚♞', VAL = { b: 1, r: 2, q: 3, p: 4, k: 5, n: 6 };
@@ -216,6 +219,8 @@ en: {
  st1No: "{0} still has mating material.",
  st2Yes: "Pawns, kings and bishops are locked against {0}: no series of moves opens the structure. Draw, without a single move generated.",
  st2Also: "Also locked against {0}, but material had already settled it.",
+ st2Tempo: "Whatever {0} plays, {1}, left with its king and pawns, has no legal move and stands in no check, a stalemate (with {1} to move: after the one legal move it has). The game ends before any mate: draw.",
+ st2AlsoTempo: "{1} is also stalemated whatever {0} plays, but material had already settled it.",
  st2No: "Not locked against {0}.",
  st2Ep: "No lock while an en passant square ({0}) stands.",
  st2Skip: "Not needed: material settled it.",
@@ -533,6 +538,8 @@ tr: {
  st1No: "{0} tarafında hâlâ mat edecek materyal var.",
  st2Yes: "Piyon, şah ve filler {0} tarafına karşı kilitli: hiçbir hamle dizisi yapıyı açamaz. Berabere; tek bir hamle üretilmeden.",
  st2Also: "{0} tarafına karşı da kilitli, ama materyal zaten çözmüştü.",
+ st2Tempo: "{0} ne oynarsa oynasın, şahı ve piyonlarıyla kalan {1} tarafının yasal hamlesi kalmıyor ve şahı tehdit altında olmuyor, pat (sıra {1} tarafındaysa: elindeki tek yasal hamleden sonra). Oyun her mattan önce bitiyor: berabere.",
+ st2AlsoTempo: "{0} ne oynarsa oynasın {1} tarafı da pat kalıyor, ama materyal zaten çözmüştü.",
  st2No: "{0} tarafına karşı kilitli değil.",
  st2Ep: "Geçerken alma karesi ({0}) dururken kilit olmaz.",
  st2Skip: "Gerek yok: materyal çözdü.",
@@ -1121,8 +1128,8 @@ function detailHTML(k) {
   if (ins.material) { s += stepRow('dec', T('s1n'), 'materialCannotMate(' + who + ')', F('st1Yes', op)); done = true }
   else s += stepRow('no', T('s1n'), 'materialCannotMate(' + who + ')', F('st1No', op));
   var c2 = 'lockCannotMate(' + who + ')';
-  if (done) s += ins.lock ? stepRow('also', T('s2n'), c2, F('st2Also', op)) : stepRow('skip', T('s2n'), c2, T('st2Skip'));
-  else if (ins.lock) { s += stepRow('dec', T('s2n'), c2, F('st2Yes', op)); done = true }
+  if (done) s += ins.lock ? stepRow('also', T('s2n'), c2, (ins.tempo ? F('st2AlsoTempo', op, fl) : F('st2Also', op))) : stepRow('skip', T('s2n'), c2, T('st2Skip'));
+  else if (ins.lock) { s += stepRow('dec', T('s2n'), c2, (ins.tempo ? F('st2Tempo', op, fl) : F('st2Yes', op))); done = true }
   else s += stepRow('no', T('s2n'), c2, ep ? F('st2Ep', ep) : F('st2No', op));
   var c3 = 'Domino(' + who + ', ' + P + ', ' + num(B) + ')';
   /* the second tier, if it ran: then its limits are the ones the last search reached */

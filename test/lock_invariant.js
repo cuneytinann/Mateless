@@ -24,6 +24,9 @@ const LOOSE = { strict: false };   // chasolver's positions include composed one
              position after it holds there (and is checked from there)
      stuck   the flagged side is to move and not mated, and after each of its moves the mater has no
              legal move: checked exactly, move by move
+     tempo   the stalemated flagged side: with the mater to move, after each of its moves the flagged
+             side has no legal move and is not in check (a stalemate); with the flagged side to
+             move, it has exactly one legal move, and after it the same holds: checked exactly
    A position without a legal move ends the game: there only I7 is asked (a pawn guarded against
    capture, see stalemateGuard, falls only in such a position). At the root, the side to move in a
    pawn's check may stand outside its reach (it must step out, see the check seed).
@@ -117,7 +120,8 @@ function explore(rootPos, S, flagged) {
 }
 
 /* The kinds of certificate. forced: one legal move, then the certificate after it. stuck: the game
-   ends at the mater's next turn, checked move by move. Otherwise the sets, explored. */
+   ends at the mater's next turn, checked move by move. tempo: the game ends in a stalemate after the
+   mater's next move, checked move by move. Otherwise the sets, explored. */
 const ONE = new Int32Array(256), TWO = new Int32Array(256);
 function certify(rootPos, S, flagged) {
   if (S.forced) {
@@ -139,17 +143,34 @@ function certify(rootPos, S, flagged) {
     }
     return { v: null, states, closed: true };
   }
+  if (S.tempo) {
+    const pos = rootPos.clone(); let states = 1;
+    if (pos.side === flagged) {
+      const n = I.generateLegalMoves(pos, ONE, 0);
+      if (n !== 1 || (ONE[0] >> 12) & I.FLAG_PROMO) return { v: 'tempo: the flagged side has not exactly one legal move', states, closed: true };
+      I.doMove(pos, ONE[0], QUEEN); states++;
+    }
+    const n = I.generateLegalMoves(pos, ONE, 0);
+    for (let i = 0; i < n; i++) for (let p = 0; p < ((ONE[i] >> 12) & I.FLAG_PROMO ? 4 : 1); p++) {
+      I.doMove(pos, ONE[i], PROMO[p]); states++;
+      const m = I.generateLegalMoves(pos, TWO, 0), check = E.inCheck(pos); const fen = E.toFen(pos); I.undoMove(pos);
+      if (check) return { v: m ? 'tempo: the flagged side is in check' : 'I7 the flagged king is checkmated', states, closed: true, fen };
+      if (m > 0) return { v: 'tempo: the flagged side has a move', states, closed: true, fen };
+    }
+    return { v: null, states, closed: true };
+  }
   return explore(rootPos, S, flagged);
 }
 
-let done = 0, closed = 0, states = 0, bad = []; const t0 = Date.now();
+let done = 0, closed = 0, states = 0, bad = [], kinds = {}; const t0 = Date.now();
 for (let i = +(process.env.OFFSET || 0); i < rows.length; i += EVERY) {
   const [fen, w] = rows[i]; const s = E.fromFen(fen, LOOSE); if (s.error) continue;
   const flagged = w === 'w' ? BLACK : WHITE;
   const S = I.lockSets(s.position, flagged); if (!S) continue;      // only lock certificates
   const r = certify(s.position, S, flagged);
+  const kind = S.tempo ? 'tempo' : S.stuck ? 'stuck' : S.forced ? 'forced' : 'sets'; kinds[kind] = (kinds[kind] || 0) + 1;
   done++; states += r.states; if (r.closed) closed++;
   if (r.v) bad.push([r.v, fen, w, r.fen]);
 }
-console.log(`certificates checked ${done}, reachable sets enumerated completely ${closed}, positions visited ${states}, violations ${bad.length}, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+console.log(`certificates checked ${done}, reachable sets enumerated completely ${closed}, positions visited ${states}, violations ${bad.length}, ${((Date.now() - t0) / 1000).toFixed(0)} s; kinds ${JSON.stringify(kinds)}`);
 bad.slice(0, 20).forEach(b => console.log('  ', b.join(' | ')));

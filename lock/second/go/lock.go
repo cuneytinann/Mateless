@@ -3,7 +3,8 @@
 // Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 // knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 // moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-// move: it generates no move and searches nothing.
+// move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+// two plies at most.
 //
 // The first version (../../go) grows each king's reach, the pawns that can never move, and the
 // squares where each side may take a pawn, until nothing changes; the structure leaks if a pawn can
@@ -25,7 +26,10 @@
 //   - the check seed: a king in a pawn's check starts its reach from the squares it can step to;
 //   - the stuck mater: whatever the flagged side plays, the mater is left without a move;
 //   - the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-//     position after it.
+//     position after it;
+//   - the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+//     bishops) plays, is left without a legal move and out of check, now or after the one legal
+//     move it has.
 //
 // A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 // never be opened; one it fails may still be dead.
@@ -216,8 +220,13 @@ func FromFen(fen string) Pieces {
 
 // CannotBeMated answers: can White (white = true) or Black never be mated, by the lock detector?
 func CannotBeMated(p Pieces, white bool) bool {
+	return locked(p, white) || stalematedFlagged(p, white)
+}
+
+// The lock: no series of legal moves opens the structure for the side asked about.
+func locked(p Pieces, white bool) bool {
 	if after, ok := forcedStep(p); ok {
-		return CannotBeMated(after, white)
+		return locked(after, white)
 	}
 	wx := p.WhiteKnights | p.WhiteRooks | p.WhiteQueens
 	bx := p.BlackKnights | p.BlackRooks | p.BlackQueens
@@ -738,4 +747,221 @@ func forcedStep(p Pieces) (Pieces, bool) {
 	}
 	q.WhiteToMove = !p.WhiteToMove
 	return q, true
+}
+
+// ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+// Men as 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+
+type men [12]uint64
+
+const (
+	pawn = iota
+	knightKind
+	bishop
+	rook
+	queen
+	king
+)
+
+var diagonals = [4][2]int{{1, 1}, {-1, 1}, {1, -1}, {-1, -1}}
+var lines = [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+
+// A move: from, to, a pawn taken en passant, the square a double step passes, the kind and the kind after it.
+type move struct {
+	from, to, victim, passed uint64
+	kind, now                int
+}
+
+// The squares from the square s in the direction (df, dr), up to the first man (included).
+func ray(s uint64, df, dr int, occ uint64) uint64 {
+	sq := bits.TrailingZeros64(s)
+	f, r, out := sq%8+df, sq/8+dr, uint64(0)
+	for f >= 0 && f < 8 && r >= 0 && r < 8 {
+		t := uint64(1) << (8*r + f)
+		out |= t
+		if occ&t != 0 {
+			break
+		}
+		f, r = f+df, r+dr
+	}
+	return out
+}
+
+// Every man of side (0 White, 1 Black).
+func (m *men) of(side int) uint64 {
+	b := 6 * side
+	return m[b] | m[b+1] | m[b+2] | m[b+3] | m[b+4] | m[b+5]
+}
+
+func fwd(side int, s uint64) uint64 {
+	if side == 0 {
+		return north(s)
+	}
+	return south(s)
+}
+
+// Every square the men of side attack, the board occupied as occ.
+func (m *men) attacks(side int, occ uint64) uint64 {
+	b := 6 * side
+	a := sideways(fwd(side, m[b])) | knight(m[b+knightKind]) | steps(m[b+king])
+	for s := m[b+bishop] | m[b+queen]; s != 0; s &= s - 1 {
+		for _, d := range diagonals {
+			a |= ray(s&-s, d[0], d[1], occ)
+		}
+	}
+	for s := m[b+rook] | m[b+queen]; s != 0; s &= s - 1 {
+		for _, d := range lines {
+			a |= ray(s&-s, d[0], d[1], occ)
+		}
+	}
+	return a
+}
+
+// The legal moves of side, to move, which has a king, pawns and bishops only. A promotion is four
+// moves. ep: the square behind the other side's double step (0: none).
+func (m *men) legalMoves(side int, ep uint64) []move {
+	b, o := 6*side, 6*(1-side)
+	own, occ, k := m.of(side), m.of(0)|m.of(1), m[b+king]
+	them := m.of(1-side) &^ m[o+king]
+	var moves []move
+	for t := steps(k) &^ own &^ m.attacks(1-side, occ&^k); t != 0; t &= t - 1 {
+		moves = append(moves, move{k, t & -t, 0, 0, king, king})
+	}
+	// checks on the king, and the men pinned to it (each may move along its line only)
+	checkers := (sideways(fwd(side, k)) & m[o+pawn]) | (knight(k) & m[o+knightKind])
+	block := ^uint64(0)
+	pins := map[uint64]uint64{}
+	for l, dirs := range [2][4][2]int{diagonals, lines} {
+		sliders := m[o+bishop] | m[o+queen]
+		if l == 1 {
+			sliders = m[o+rook] | m[o+queen]
+		}
+		for _, d := range dirs {
+			r := ray(k, d[0], d[1], occ)
+			first := r & occ
+			if first&sliders != 0 {
+				checkers |= first
+				block = r
+			} else if first&own != 0 {
+				if beyond := ray(first, d[0], d[1], occ); beyond&occ&sliders != 0 {
+					pins[first] = r | beyond
+				}
+			}
+		}
+	}
+	if count(checkers) >= 2 {
+		return moves
+	}
+	evade := ^uint64(0)
+	if checkers != 0 {
+		evade = checkers
+		if block != ^uint64(0) {
+			evade = block
+		}
+	}
+	lineOf := func(s uint64) uint64 {
+		if l, ok := pins[s]; ok {
+			return l
+		}
+		return ^uint64(0)
+	}
+	for s := m[b+bishop]; s != 0; s &= s - 1 {
+		from, to := s&-s, uint64(0)
+		for _, d := range diagonals {
+			to |= ray(from, d[0], d[1], occ)
+		}
+		for t := to &^ own &^ m[o+king] & evade & lineOf(from); t != 0; t &= t - 1 {
+			moves = append(moves, move{from, t & -t, 0, 0, bishop, bishop})
+		}
+	}
+	for s := m[b+pawn]; s != 0; s &= s - 1 {
+		from := s & -s
+		line := lineOf(from)
+		one := fwd(side, from) &^ occ
+		start := rank3
+		if side == 1 {
+			start = rank6
+		}
+		two := fwd(side, one&start) &^ occ
+		hit := sideways(fwd(side, from))
+		for t := (one | (hit & them)) & evade & line; t != 0; t &= t - 1 {
+			to := t & -t
+			if to&(rank1|rank8) != 0 {
+				for _, now := range []int{queen, rook, bishop, knightKind} {
+					moves = append(moves, move{from, to, 0, 0, pawn, now})
+				}
+			} else {
+				moves = append(moves, move{from, to, 0, 0, pawn, pawn})
+			}
+		}
+		for t := two & evade & line; t != 0; t &= t - 1 {
+			moves = append(moves, move{from, t & -t, 0, one, pawn, pawn})
+		}
+		if e := hit & ep & line; e != 0 {
+			victim := south(e)
+			if side == 1 {
+				victim = north(e)
+			}
+			if checkers == 0 || checkers&victim != 0 || e&evade != 0 {
+				moves = append(moves, move{from, e, victim, 0, pawn, pawn})
+			}
+		}
+	}
+	return moves
+}
+
+// The men after side plays mv.
+func (m *men) play(side int, mv move) men {
+	r := *m
+	o := 6 * (1 - side)
+	for i := o; i < o+6; i++ {
+		r[i] &^= mv.to | mv.victim
+	}
+	r[6*side+mv.kind] &^= mv.from
+	r[6*side+mv.now] |= mv.to
+	return r
+}
+
+// Has side, to move, no legal move, its king in no check?
+func (m *men) stalemated(side int, ep uint64) bool {
+	return m.attacks(1-side, m.of(0)|m.of(1))&m[6*side+king] == 0 && len(m.legalMoves(side, ep)) == 0
+}
+
+// Does every move of moves (side's) leave the other side stalemated?
+func (m *men) everyMoveStalemates(side int, moves []move) bool {
+	for _, mv := range moves {
+		r := m.play(side, mv)
+		if !r.stalemated(1-side, mv.passed) {
+			return false
+		}
+	}
+	return true
+}
+
+// The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+// bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+// move: it has a legal move, and each one does that. With the flagged side to move: it has exactly
+// one legal move (a promotion is four), after which every move of the mater's, if it has any, does
+// that (with none, that one move ended the game). Not with an en passant right.
+func stalematedFlagged(p Pieces, white bool) bool {
+	m := men{p.WhitePawns, p.WhiteKnights, p.WhiteBishops, p.WhiteRooks, p.WhiteQueens, p.WhiteKing,
+		p.BlackPawns, p.BlackKnights, p.BlackBishops, p.BlackRooks, p.BlackQueens, p.BlackKing}
+	f := 1
+	if white {
+		f = 0
+	}
+	b, o := 6*f, 6*(1-f)
+	if p.EnPassant || m[b+knightKind]|m[b+bishop]|m[b+rook]|m[b+queen] != 0 || m[o+knightKind]|m[o+rook]|m[o+queen] != 0 {
+		return false
+	}
+	if p.WhiteToMove != white {
+		moves := m.legalMoves(1-f, 0)
+		return len(moves) > 0 && m.everyMoveStalemates(1-f, moves)
+	}
+	only := m.legalMoves(f, 0)
+	if len(only) != 1 {
+		return false
+	}
+	q := m.play(f, only[0])
+	return q.everyMoveStalemates(1-f, q.legalMoves(1-f, only[0].passed))
 }

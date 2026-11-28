@@ -4,7 +4,8 @@ Mateless's lock detector, second version, in its simplest form.
 Can a side never be mated? The lock detector answers yes when pawns, kings and bishops (and
 knights, rooks or queens boxed in by their own men) form a structure that no series of legal
 moves can open (FIDE 5.2.2 dead position, 6.9 flag fall). It reads bitboards and the side to
-move: it generates no move and searches nothing.
+move and searches nothing: only its last rule looks at moves, those of kings, pawns and bishops,
+two plies at most.
 
 The first version (../../haskell/Lock.hs) grows each king's reach, the pawns that can never move,
 and the squares where each side may take a pawn, until nothing changes; the structure leaks if a
@@ -27,7 +28,10 @@ keeps all of it and adds, each only where its situation is on the board:
   * the check seed: a king in a pawn's check starts its reach from the squares it can step to;
   * the stuck mater: whatever the flagged side plays, the mater is left without a move;
   * the forced step: a king in a pawn's check with one legal move, a step: the lock of the
-    position after it.
+    position after it;
+  * the stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+    bishops) plays, is left without a legal move and out of check, now or after the one legal
+    move it has.
 
 A possible en passant capture fails it at once. Sound, not complete: a structure it passes can
 never be opened; one it fails may still be dead.
@@ -197,8 +201,12 @@ data Families
 
 -- | Can White (white = True) or Black never be mated, by the lock detector?
 cannotBeMated :: Pieces -> Bool -> Bool
-cannotBeMated p white
-  | Just q <- forcedStep p = cannotBeMated q white
+cannotBeMated p white = locked p white || stalematedFlagged p white
+
+-- | The lock: no series of legal moves opens the structure for the side asked about.
+locked :: Pieces -> Bool -> Bool
+locked p white
+  | Just q <- forcedStep p = locked q white
   | (wx .|. bx) /= 0 = boxedLock p white wx bx
   | enPassant p = False
   | otherwise = go (levels p 0 0)
@@ -516,3 +524,128 @@ forcedStep p
     attacked = if white then sideways (south enemy) else sideways (north enemy)
     to = steps k .&. no own .&. no attacked .&. no (steps ek)
     takers = (if white then sideways (south checkers) else sideways (north checkers)) .&. own
+
+-- ─── The stalemated flagged side ────────────────────────────────────────────────────────────
+-- Men as a list of 12 sets: White's pawns, knights, bishops, rooks, queens and king, then Black's.
+type Men = [Set]
+
+-- | A move: from, to, the kind and the kind after it, a pawn taken en passant, the square a double
+-- step passes.
+data Move = Move !Set !Set !Int !Int !Set !Set
+
+passed :: Move -> Set
+passed (Move _ _ _ _ _ x) = x
+
+diagonalSteps, lineSteps :: [(Int, Int)]
+diagonalSteps = [(1, 1), (-1, 1), (1, -1), (-1, -1)]
+lineSteps = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+-- | The squares from the square s in the direction (df, dr), up to the first man (included).
+rayFrom :: Set -> Int -> Int -> Set -> Set
+rayFrom s df dr occ = go (sq `mod` 8 + df) (sq `div` 8 + dr) 0
+  where
+    sq = countTrailingZeros s
+    go f r out
+      | f < 0 || f > 7 || r < 0 || r > 7 = out
+      | occ .&. t /= 0 = out .|. t
+      | otherwise = go (f + df) (r + dr) (out .|. t)
+      where t = bit (8 * r + f)
+
+-- | Every man of side (0 White, 1 Black).
+menOf :: Men -> Int -> Set
+menOf m side = foldl (.|.) 0 (take 6 (drop (6 * side) m))
+
+forward :: Int -> Set -> Set
+forward side = if side == 0 then north else south
+
+-- | Every square the men of side attack, the board occupied as occ.
+attacks :: Men -> Int -> Set -> Set
+attacks m side occ =
+  sideways (forward side (m !! b)) .|. knight (m !! (b + 1)) .|. steps (m !! (b + 5))
+    .|. foldl (.|.) 0 [rayFrom s df dr occ | s <- squares (m !! (b + 2) .|. m !! (b + 4)), (df, dr) <- diagonalSteps]
+    .|. foldl (.|.) 0 [rayFrom s df dr occ | s <- squares (m !! (b + 3) .|. m !! (b + 4)), (df, dr) <- lineSteps]
+  where b = 6 * side
+
+-- | The legal moves of side, to move, which has a king, pawns and bishops only, the kinds 0 to 5
+-- (pawn, knight, bishop, rook, queen, king); a promotion is four moves. ep: the square behind the
+-- other side's double step (0: none).
+legalMoves :: Men -> Int -> Set -> [Move]
+legalMoves m side ep
+  | count checkers >= 2 = kingMoves
+  | otherwise = kingMoves ++ bishopMoves ++ concatMap pawnMoves (squares (at b))
+  where
+    b = 6 * side
+    o = 6 * (1 - side)
+    at i = m !! i
+    own = menOf m side
+    occ = menOf m 0 .|. menOf m 1
+    k = at (b + 5)
+    them = menOf m (1 - side) .&. no (at (o + 5))
+    kingMoves = [Move k t 5 5 0 0 | t <- squares (steps k .&. no own .&. no (attacks m (1 - side) (occ .&. no k)))]
+    -- checks on the king, and the men pinned to it (each may move along its line only)
+    looks = [ (r, first, sliders, if first /= 0 then rayFrom first df dr occ else 0)
+            | (dirs, sliders) <- [(diagonalSteps, at (o + 2) .|. at (o + 4)), (lineSteps, at (o + 3) .|. at (o + 4))]
+            , (df, dr) <- dirs
+            , let r = rayFrom k df dr occ
+            , let first = r .&. occ ]
+    sliderChecks = [(first, r) | (r, first, sliders, _) <- looks, first .&. sliders /= 0]
+    checkers = (sideways (forward side k) .&. at o) .|. (knight k .&. at (o + 1)) .|. foldl (.|.) 0 (map fst sliderChecks)
+    pins = [ (first, r .|. beyond) | (r, first, sliders, beyond) <- looks
+           , first .&. own /= 0, beyond .&. occ .&. sliders /= 0 ]
+    lineOf s = fromMaybe (complement 0) (lookup s pins)
+    evade
+      | checkers == 0 = complement 0
+      | ((_, r) : _) <- sliderChecks = r
+      | otherwise = checkers
+    bishopMoves = [ Move s t 2 2 0 0
+                  | s <- squares (at (b + 2))
+                  , let to = foldl (.|.) 0 [rayFrom s df dr occ | (df, dr) <- diagonalSteps]
+                  , t <- squares (to .&. no own .&. no (at (o + 5)) .&. evade .&. lineOf s) ]
+    pawnMoves s =
+      [ Move s t 0 now 0 0 | t <- squares ((one .|. (hit .&. them)) .&. evade .&. line)
+                           , now <- if t .&. (rank1 .|. rank8) /= 0 then [4, 3, 2, 1] else [0] ]
+      ++ [Move s t 0 0 0 one | t <- squares (two .&. evade .&. line)]
+      ++ [Move s e 0 0 victim 0 | e /= 0, checkers == 0 || checkers .&. victim /= 0 || e .&. evade /= 0]
+      where
+        line = lineOf s
+        one = forward side s .&. no occ
+        two = forward side (one .&. (if side == 0 then rank3 else rank6)) .&. no occ
+        hit = sideways (forward side s)
+        e = hit .&. ep .&. line
+        victim = if side == 0 then south e else north e
+
+-- | The men after side plays a move.
+play :: Men -> Int -> Move -> Men
+play m side (Move s t kind now victim _) = zipWith change [0 ..] m
+  where
+    o = 6 * (1 - side)
+    change i x
+      | i >= o && i < o + 6 = x .&. no (t .|. victim)
+      | otherwise = (if i == 6 * side + kind then x .&. no s else x) .|. (if i == 6 * side + now then t else 0)
+
+-- | Has side, to move, no legal move, its king in no check?
+stalemated :: Men -> Int -> Set -> Bool
+stalemated m side ep =
+  attacks m (1 - side) (menOf m 0 .|. menOf m 1) .&. (m !! (6 * side + 5)) == 0 && null (legalMoves m side ep)
+
+-- | The stalemated flagged side: a king and pawns that, whatever the mater (a king, pawns and
+-- bishops) plays, is left without a legal move and out of check, a stalemate. With the mater to
+-- move: it has a legal move, and each one does that. With the flagged side to move: it has exactly
+-- one legal move (a promotion is four), after which every move of the mater's, if it has any, does
+-- that (with none, that one move ended the game). Not with an en passant right.
+stalematedFlagged :: Pieces -> Bool -> Bool
+stalematedFlagged p white
+  | enPassant p = False
+  | (at (b + 1) .|. at (b + 2) .|. at (b + 3) .|. at (b + 4)) /= 0 = False
+  | (at (o + 1) .|. at (o + 3) .|. at (o + 4)) /= 0 = False
+  | whiteToMove p /= white = let moves = legalMoves m (1 - f) 0 in not (null moves) && all (answers m) moves
+  | [only] <- legalMoves m f 0 = let q = play m f only in all (answers q) (legalMoves q (1 - f) (passed only))
+  | otherwise = False
+  where
+    m = [ whitePawns p, whiteKnights p, whiteBishops p, whiteRooks p, whiteQueens p, whiteKing p
+        , blackPawns p, blackKnights p, blackBishops p, blackRooks p, blackQueens p, blackKing p ]
+    at i = m !! i
+    f = if white then 0 else 1
+    b = 6 * f
+    o = 6 * (1 - f)
+    answers x mv = stalemated (play x (1 - f) mv) f (passed mv)

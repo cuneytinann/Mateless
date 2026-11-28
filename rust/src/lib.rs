@@ -46,3 +46,4 @@ pub use domino::*;
 pub use clock::*;
 pub use ladder::*;
 pub use game::*;
+pub use stuck::{stuck_every, tempo_stalemate};

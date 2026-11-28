@@ -42,7 +42,7 @@ Bunun kazandırdığı yalnızca düzelen sonuçlar değil:
   kontrol onları çok sonra bir tekrarda, anlaşmada ya da bayrakta değil, kilitlendikleri anda bitirir.
 - **Sonuçlar düzelir.** Hiç mat edemeyecek bir tarafa karşı düşen bayrak ya da terk beraberliktir
   (FIDE 6.9, 5.1.2). chasolver'ın listesinde bunun yerine galibiyet sayılmış 204.484 Lichess oyunu
-  var; scalachess #821'den beri hâlâ günde 19 kadar (7–30 Eylül 2026'da 460), %92'si kilit; Ağustos
+  var; scalachess #821'den beri hâlâ günde 19 kadar (7 Eylül–31 Ekim 2026'da 1.054), %93'ü kilit; Ağustos
   ve Eylül'de bu türden 170 de terk.
 
 **Oyundan sonra: sınırsız tam sürüm, ay ay.** Oyundaki kontrolün ispatsız bıraktığını (chasolver'ın
@@ -155,27 +155,28 @@ sayısını, her pozisyon kendi yarım hamle sayacını tutuyor.
 
 **Veri.** Miguel Ambrona'nın chasolver projesi, rakip hiçbir zaman mat edemeyecekken süreden
 kaybedilmiş dereceli Lichess oyunlarını topluyor ve CSV dosyaları olarak
-[chasolver.org/unfair-games](https://chasolver.org/unfair-games) adresinde yayımlıyor: 31 Temmuz
-2026'ya kadar 201.060 oyun, hepsi yanlış sonuçlanmış. İki sınıf Lichess'te artık görülmüyor ve yayımlanan kümeden çıkarılmış:
-malzeme (8.139 satır; Lichess bunu 2020 civarında düzeltmiş) ve sunucu patları (464 satır; kısa
-süreli bir hata). Ağustos ve eylül 2026, Lichess'in kendi aylık veritabanlarının taranmasından
-geliyor (181,5 milyon dereceli oyun): süreden kaybedilmiş ve kazananın hiçbir zaman mat
-edemeyeceğini hem chasolver'ın hem Mateless'in ispatladığı 2.830 oyun (kural ihlaliyle kazanılan
-oyunlar dışarıda). 195.287 satır, Mateless'in sınıflamasıyla (JS, Rust ve WebAssembly her satırda
-aynı cevabı veriyor):
+[chasolver.org/unfair-games](https://chasolver.org/unfair-games) adresinde yayımlıyor: 19 Kasım 2026
+listesinde 31 Ekim 2026'ya kadar 204.484 oyun var, hepsi yanlış sonuçlanmış. İki sınıf Lichess'te
+artık görülmüyor: malzeme (8.139 satır, sonuncusu 2020'de; Lichess bunu o sıralarda düzeltmiş) ve
+sunucu patları (464 satır; kısa süreli bir hata: süresi biten tarafın yasal hamlesi yoktu, oyun
+zaten bitmişti). Listenin ağustos ve eylül satırları, oyunu oyununa, Lichess'in aylık
+veritabanlarında yaptığımız kendi taramamızın (181,5 milyon dereceli oyun) 2.830 süre kaybıyla aynı.
+204.484 satır, Mateless'in sınıflamasıyla, araması varsayılanında, 3 ply ve 10 düğümle (JS, Rust ve
+WebAssembly her satırda aynı cevabı veriyor):
 
 | sınıf | satır | pay | Lichess bugün berabere veriyor (scalachess 18.1.0) | oyun içinde kilit kontrolü (in-game) | bayrakta kilit kontrolü (a-lock) |
 |---|---|---|---|---|---|
-| **kilitli pozisyonlar** (kilit dedektörü) | **52.050** | %26,7 | 141 | **52.034** | 52.050 |
-| zorunlu çizgiler (Domino araması) | 143.201 | %73,3 | 138.431 | 138.431 | 138.669 |
-| ispatlanamayan | 36 | %0,018 | 0 | 0 | 0 |
-| **hepsi** | **195.287** | | **138.572** (%71,0) | **190.465** (%97,5) | 190.719 (%97,7) |
+| malzeme | 8.139 | %4,0 | 8.139 | 8.139 | 8.139 |
+| **kilitli pozisyonlar** (kilit dedektörü) | **52.609** | %25,7 | 141 | **52.593** | 52.609 |
+| zorunlu çizgiler (Domino araması; sunucu patları da içinde) | 143.080 | %70,0 | 137.999 | 137.999 | 138.239 |
+| ispatlanamayan | 656 | %0,32 | 432 | 432 | 432 |
+| **hepsi** | **204.484** | | **146.711** (%71,7) | **199.163** (%97,4) | 199.419 (%97,5) |
 
 Lichess bugün zorunlu çizgilerin çoğunu berabere veriyor: scalachess #821 (Ağustos 2026'da
 birleşti; veriye göre Lichess'te 6 Eylül'den beri kullanılıyor), lila'nın süre bitince sorduğu
 teste bir hamlelik ileri bakış ekledi. Hâlâ kaçırdıkları neredeyse tamamen **kilitli
-pozisyonlar**: 56.715 kaçırılan satırın 51.909'u. 7–30 Eylül'de, #821 kullanılırken, 460 oyun yine
-böyle süreden kaybedildi; 422'si (%92) kilitti.
+pozisyonlar**: 57.773 kaçırılan satırın 52.468'i. 7 Eylül–31 Ekim'de, #821 kullanılırken, 1.054 oyun
+yine böyle süreden kaybedildi; 981'i (%93) kilitti.
 
 Lichess için önerilen kilit yaması
 ([lichess-org/scalachess#916](https://github.com/lichess-org/scalachess/pull/916); #907'nin
@@ -185,34 +186,36 @@ From Position oyunlarında. **Oyun içinde**
 scalachess'in `autoDraw`'unda bir ölü pozisyon kontrolü (FIDE 5.2.2); yarım hamle sayacı 0 ya da 1
 iken, yani bir alıştan ya da piyon hamlesinden hemen sonra ve bir hamle sonra, iki taraf için
 soruluyor: kilit ancak o anlarda oluşabilir. Oyun kilitlendiği anda berabere bitiyor; yukarıdaki
-satırların 52.034'ü süre bitmeden önce biterdi: Lichess'in bugün kazanç saydığı 51.893 (eylüldeki
-422 de bunların içinde) ve süre bitince berabere verdiği 141. **Süre bitince ya da bir oyuncu terk
+satırların 52.593'ü süre bitmeden önce biterdi: Lichess'in bugün kazanç saydığı 52.452 (7 Eylül'den
+beri olan 981 de bunların içinde) ve süre bitince berabere verdiği 141. **Süre bitince ya da bir oyuncu terk
 edince** `a-lock`: aynı dedektör bir kez daha, pozisyonda ve #821'in ileri bakışında soruluyor.
 Oyun içi kontrolün göremediklerini berabere veriyor: yalnızca bir tarafın kilidi olan 16 satır
 (ölü değil: süresi biten taraf hâlâ mat edebilirdi; bu süre bitiminin sorusu, FIDE 6.9) ve kilidin
-süre bittikten bir hamle sonra geldiği 238 satır. Toplam: 190.719 satır (%97,7). Yalnızca süre
+süre bittikten bir hamle sonra geldiği 240 satır. Toplam: 199.419 satır (%97,5). Yalnızca süre
 bitince sorulsaydı ölü bir oyun başka bir yoldan bitene kadar oynanmaya devam ederdi: ağustos ve
 eylülde 8.718 berabere oyun, böyle bir kilit oluştuktan sonra ortanca 14 ply daha sürdü. Merdivenin
-tamamı, Mateless'in kendisi ya da o repodaki `c-ladder` yaması, 195.251 satırı (%99,98; Mateless'in araması 26 Kasım 2026'ya kadarki varsayılanıyla, 6 ply ve 100 düğümle) berabere
-veriyor.
+tamamı, Mateless'in kendisi, 203.828 satırı (%99,68) berabere veriyor; araması 26 Kasım 2026'ya
+kadarki varsayılanıyla, 6 ply ve 100 düğümle, o repodaki `c-ladder` yamasında olduğu gibi, 204.448
+satırı (%99,98).
 
-Satırların 117.455'inde (%60) son pozisyon zaten ölüydü, iki taraf da mat edemiyordu: FIDE 5.2.2'ye
+Satırların 118.195'inde (%58) son pozisyon zaten ölüydü, iki taraf da mat edemiyordu: FIDE 5.2.2'ye
 göre bu oyunlar süre bitmeden önce berabere bitmişti.
 
 Sınıflama [`data/`](data) klasöründe, en yeni oyun en üstte: `timeouts_classified.tsv` (her satır:
 oyun kimliği, tarih, sınıf, Lichess bugün, bayrakta `a-lock` ile, ölü pozisyon, `in-game` ile),
-`locked_positions.tsv` (52.050 kilitli pozisyon, mat edemeyen tarafla) ve
-`lichess_2026-08_09.tsv` (taranan satırlar son pozisyonlarıyla; yanlarında rakip hiçbir zaman
+`locked_positions.tsv` (30 Eylül'e kadarki 52.050 kilitli pozisyon, mat edemeyen tarafla) ve
+`lichess_2026-08_09.tsv` (taramamızın satırları son pozisyonlarıyla; yanlarında rakip hiçbir zaman
 mat edemezken terk edilen 170 oyun: FIDE 5.1.2'ye göre beraberlik, Lichess ise her terki kayıp
-sayıyor). İspatlanamayan 36 satırın hepsi chasolver'ın temmuza kadarki listesinden (taranan
-satırlar Mateless'in ispatladıkları arasından seçildi). 32'si,
+sayıyor). İspatlanamayan 656 satırın 612'sinde arama 10 düğümlük bütçesini bitiriyor, 44'ünde 3
+ply'lık tavanına varıyor. 6 ply ve 100 düğümle 36'sı kalıyor, hepsi temmuza kadarki listeden. 32'si,
 ulaşılabilen pozisyonları arasında pat bulunan kafesler (çoğu köşeye kapanmış bir şah, son piyonu
 almak pat getiriyor; 6'sında vezir ya da kale var), 3'ü önü açık bir piyon çifti (bir sütunda bir
 beyaz ve bir siyah piyon, aralarında tek boş kare, yapının geri kalanı kilitli), 1'i kendi
 piyonlarının arasına kapanmış bir at. Oyundan sonra bir puan iadesinin kapsayacağı şey bunlar ve
 platformun kendi kurallarının bıraktıkları: oyun bittikten sonra tam bir çözücü (chasolver) onlara
-bakar. Merdivenin tamamıyla bu 195.287 satırda 36 satır; bugünkü Lichess'in üstüne yalnızca kilit
-dedektörüyle 4.822 (yalnızca `in-game`) ya da 4.568 (`a-lock` ve ikisini birden yapan #916).
+bakar. Merdivenin tamamıyla bu 204.484 satırda 656 satır (6 ply ve 100 düğümle 36); bugünkü
+Lichess'in üstüne yalnızca kilit dedektörüyle 5.321 (yalnızca `in-game`) ya da 5.065 (`a-lock` ve
+ikisini birden yapan #916).
 
 **Sağlamlık.** Henüz yazılı bir ispat yok; güçlü test kanıtı var.
 - chasolver'ın etiketlerine karşı yanlış beraberlik yok (68.950 etiketli pozisyonu, iki taraf;
@@ -433,8 +436,8 @@ da vezir olup olmadığı ve en passant karesi (yalnızca o kareye yasal bir al�
 | tahtada at, kale ya da vezir var (oyunun çoğu): hemen çıkıyor | ~9 ns | | ~30–35 ns |
 | kilitli pozisyon (sabit noktanın tamamı) | ~105 ns | ~0,3–0,8 µs | ~150–190 ns |
 
-**Tek başına neyi görür:** pozisyonun kendisinde duran bir kilidi: yukarıdaki 195.287 Lichess
-satırının 52.050'si, Lichess'in bugün kaçırdığı 51.909'u dahil.
+**Tek başına neyi görür:** pozisyonun kendisinde duran bir kilidi: yukarıdaki 204.484 Lichess
+satırının 52.609'u, Lichess'in bugün kaçırdığı 52.468'i dahil.
 
 **Neyi görmez:** bir hamle ötedeki kilidi.
 1. **Piyon şahından çıkış.** Piyon şahındaki şah, bir piyonun saldırdığı bir karede duruyor ve
@@ -454,7 +457,7 @@ satırının 52.050'si, Lichess'in bugün kaçırdığı 51.909'u dahil.
   kapsar. Ne zaman sorulacağını yalnızca sayaç söyler; hiçbir şey hatırlanmaz. Yukarıdaki üç durum
   da hamle oynandığı anda yakalanır. Yalnızca bir tarafın kilidini görmez (o, süre bitince sorulan
   sorudur, FIDE 6.9); süre bittikten sonraki hamlenin tamamlayacağı kilidi de görmez. Lichess
-  verisinde: 190.465 satır (%97,5); 52.034'ü süre bitmeden önce biterdi, bunların 51.893'ü bugün
+  verisinde: 199.163 satır (%97,4); 52.593'ü süre bitmeden önce biterdi, bunların 52.452'si bugün
   süre kaybı.
   ```
   kilitle ölü  ⇔  yarım hamle sayacı ≤ 1  ve  kilit(pozisyon, Beyaz)  ve  kilit(pozisyon, Siyah)
@@ -462,7 +465,7 @@ satırının 52.050'si, Lichess'in bugün kaçırdığı 51.909'u dahil.
 - **Süre bitince, bir hamlelik ileri bakışla** (`a-lock`, #916'nın ikinci yarısı; scalachess #821
   süresi biten tarafın her hamlesine bakıyor): kilidi pozisyonda ve her çocuk pozisyonda sor. Üç
   durum da kendiliğinden gelir; çocuk pozisyonda en passant hakkı kalmamıştır. Lichess verisinde
-  çocuk pozisyonlar 238 satır ekledi: 237'si piyon şahından çıkış, 1'i zorunlu kale alışı. Ama ölü
+  çocuk pozisyonlar 240 satır ekledi: 239'u piyon şahından çıkış, 1'i zorunlu kale alışı. Ama ölü
   bir oyun, süre bitene ya da başka bir yoldan bitene kadar sürer.
   ```
   süre bitince beraberlik  ⇔  kilit(pozisyon)

@@ -14520,8 +14520,23 @@ function inspect(fen, side) {
   const lock = E.lockCannotMate(pos, flagged);
   // the second version's stalemated flagged side: an answer of lockCannotMate's, not of the structure
   const tempo = lock && !!(E._internal && E._internal.tempoStalemate) && !E._internal.lockTest(pos, flagged);
-  return { status: E.gameStatus(pos, { deadPositionSearch: false }),
-           material: E.materialCannotMate(pos, flagged), lock, tempo };
+  const over = overOf(pos), R = E.Result;
+  const status = over ? (over.k === 'mate' ? (over.g ? R.WHITE_MATES : R.BLACK_MATES) : over.k === 'stale' ? R.STALEMATE
+                                                                           : over.rule === 100 ? R.FIFTY_MOVES : R.SEVENTY_FIVE_MOVES)
+                      : E.cannotMate(pos, E.WHITE) && E.cannotMate(pos, E.BLACK) ? R.DEAD_POSITION : R.NONE;
+  return { status, material: E.materialCannotMate(pos, flagged), lock, tempo };
+}
+/* The endings that need neither a claim nor a proof, in the order they take: checkmate (FIDE 9.6.2:
+   a mate on the move that reaches the move rule stands), stalemate, then the move rule: the full
+   version's choice, 150 or 100 plies, and FIDE's 150 for the fast one. A single position has no
+   history, so no repetition; the dead position comes after them, from the two answers. Returns
+   null, { k: 'mate', g } (g the side that mated: 1 White, 0 Black), { k: 'stale', g } (g the side
+   stalemated) or { k: 'rule', rule }. */
+function overOf(pos) {
+  const g = pos.side === E.WHITE ? 1 : 0;
+  if (!E.legalMoves(pos).length) return E.inCheck(pos) ? { k: 'mate', g: 1 - g } : { k: 'stale', g };
+  const rule = VER === 2 ? RULE : 150;
+  return pos.halfmove >= rule ? { k: 'rule', rule } : null;
 }
 /* For the detail view: can each side mate? The same ladder, version and limits as the verdict,
    asked for both sides. Returns [Black, White] (indexed like `side`: 1 White, 0 Black), each
@@ -14834,6 +14849,15 @@ en: {
  sd_nolock: "not locked",
  sdIf: "if {0}’s flag falls: {1}",
  sdDead: "Neither side can mate: the position is dead, and the game ends in a draw at once.",
+ ovMates: "checkmates",
+ ovMated: "is checkmated",
+ ovStalemated: "is stalemated",
+ ovDraw: "draw",
+ ovChipMate: "Checkmate",
+ ovResult: "the game is over: {0}",
+ ovSumMate: "Checkmate: {0} wins, and the game is over. No flag can fall after it, so nothing else is asked.",
+ ovSumStale: "Stalemate: {0} has no legal move and is not in check. The game ends in a draw at once (FIDE 5.2.1).",
+ ovSumRule: "The {0}-move rule: {1} plies without a capture or a pawn move. The game has ended in a draw by itself, whatever either side could still do.",
  sdOne: "Only {0} can mate: the game goes on, and {0} cannot lose on time.",
  sdBoth: "Both sides can mate: the game goes on, and the side whose flag falls loses.",
  infoH: "What the two answers mean",
@@ -15238,6 +15262,15 @@ tr: {
  sd_nolock: "kilit yok",
  sdIf: "{0} tarafının bayrağı düşerse: {1}",
  sdDead: "İki taraf da mat edemiyor: pozisyon ölü, oyun hemen berabere biter.",
+ ovMates: "mat etti",
+ ovMated: "mat oldu",
+ ovStalemated: "pat oldu",
+ ovDraw: "berabere",
+ ovChipMate: "Mat",
+ ovResult: "oyun bitti: {0}",
+ ovSumMate: "Mat: {0} kazandı ve oyun bitti. Ondan sonra bayrak düşemez, başka bir şey sorulmaz.",
+ ovSumStale: "Pat: {0} tarafının yasal hamlesi yok ve şahı tehdit altında değil. Oyun hemen berabere biter (FIDE 5.2.1).",
+ ovSumRule: "{0} hamle kuralı: alma ya da piyon hamlesi olmadan {1} yarım hamle. Oyun kendiliğinden berabere bitti; iki tarafın daha ne yapabileceği önemli değil.",
  sdOne: "Yalnız {0} mat edebiliyor: oyun sürer, {0} süreden kaybetmez.",
  sdBoth: "İki taraf da mat edebiliyor: oyun sürer, bayrağı düşen kaybeder.",
  infoH: "İki cevap ne demek",
@@ -16252,7 +16285,7 @@ var ED = { sq: new Array(64).fill(''), turn: 'w', castle: '', ep: '-', clock: 0,
 function filesOf(id) { var a = E.chess960Arrangement(id); return { k: a.indexOf('K'), q: a.indexOf('R'), h: a.lastIndexOf('R') } }
 function start960(id) { var a = E.chess960Arrangement(id); return a.toLowerCase() + '/pppppppp/8/8/8/8/PPPPPPPP/' + a + ' w KQkq - 0 1' }
 var ED_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-var ED_EXAMPLE = '5b2/p7/Pp3k2/1Pp1pBp1/2P1P1P1/5K2/8/8 w - - 0 1';      /* Lichess ijyj0mHa, a lock */
+var ED_EXAMPLE = '8/3bk3/2p1p3/1pPpPp1p/pP1P1PpP/P5P1/3K4/8 w - - 0 1';   /* a lock for both sides: a dead position */
 function edGlyph(c) { return PGLYPH[c.toLowerCase()] + (c === 'x' ? '' : '︎') }
 function edColor(c) { return c === 'x' ? 'x' : c === c.toUpperCase() ? 'w' : 'b' }
 /* Reads a FEN into the editor; false (and nothing changed) when its board cannot be read. */
@@ -16355,26 +16388,36 @@ function edSide() {
   $('edEp').innerHTML = ['-'].concat(edEpSquares()).map(function (e) {
     return '<button type="button" data-v="' + e + '"' + (ED.ep === e ? ' class="on"' : '') + '>' + (e === '-' ? '–' : e) + '</button>' }).join('');
   if (document.activeElement !== $('edClock')) $('edClock').value = ED.clock;
-  var rule = VER === 2 && !LOCKONLY ? RULE : 0;
-  $('edClockNote').textContent = rule ? (ED.clock >= rule ? F('edClockOver', rule / 2) : F('edClockLeft', num(rule - ED.clock), rule / 2)) : VER === 2 ? '' : T('edClockFast');
+  var rule = VER === 2 && !LOCKONLY ? RULE : 0, end = VER === 2 ? RULE : 150;   /* end: where the move rule ends the game (overOf) */
+  $('edClockNote').textContent = ED.clock >= end ? F('edClockOver', end / 2) : rule ? F('edClockLeft', num(rule - ED.clock), rule / 2) : VER === 2 ? '' : T('edClockFast');
   if (document.activeElement !== $('edFen')) { $('edFen').value = edFen(); $('edFen').classList.remove('bad') } }
-/* The two bars: can each side mate? Black above the board, White below, unless the board is flipped. */
+/* The two bars: can each side mate? Black above the board, White below, unless the board is flipped.
+   A game already over (overOf: checkmate, stalemate, the move rule) is said first, and instead. */
 var ED_CAP = 1000000;     /* nodes per side for the board's live answer */
 function edJudge() {
   var keep = DT; readDeep(); var dcap = DT.some(function (g) { return g[1] > ED_CAP });
   DT = DT.map(function (g) { return [g[0], Math.min(g[1], ED_CAP)] });
   var fen = edFen(), setup = readFen(fen), B = bud(), sd = setup ? bothSides(fen, ply(), Math.min(B, ED_CAP)) : null, why = setup ? '' : badText(badReason);
   DT = keep;
-  var top = ED.flip ? 1 : 0;
-  edBar($('vbarTop'), top, sd); edBar($('vbarBot'), 1 - top, sd);
+  var over = sd ? overOf(E.fromFen(fen).position) : null, top = ED.flip ? 1 : 0;
+  edBar($('vbarTop'), top, sd, over); edBar($('vbarBot'), 1 - top, sd, over);
+  if (over && over.k !== 'rule') { var end = VER === 2 ? RULE : 150; if (ED.clock >= end) $('edClockNote').textContent = '' }   /* the mate or stalemate came first */
   $('edBad').textContent = why ? F('edInvalid', why) : ''; $('edBad').classList.toggle('hide', !why);
   var n = canCount(sd);
-  $('edSum').textContent = !sd ? '' : n === 0 ? T('sdDead') : n === 1 ? F('sdOne', sideName(sd[1].cannot ? 0 : 1)) : T('sdBoth');
-  $('edInfo').innerHTML = ((B > ED_CAP || dcap) && sd ? '<p class="hint">' + F('edCap', num(ED_CAP)) + '</p>' : '') + infoHTML(sd);
+  $('edSum').textContent = !sd ? '' : over ? (over.k === 'mate' ? F('ovSumMate', sideName(over.g)) : over.k === 'stale' ? F('ovSumStale', sideName(over.g)) : F('ovSumRule', over.rule / 2, over.rule))
+                         : n === 0 ? T('sdDead') : n === 1 ? F('sdOne', sideName(sd[1].cannot ? 0 : 1)) : T('sdBoth');
+  $('edInfo').innerHTML = ((B > ED_CAP || dcap) && sd && !over ? '<p class="hint">' + F('edCap', num(ED_CAP)) + '</p>' : '') + infoHTML(over ? null : sd);
   $('edGo').disabled = !sd || busy || PGN.busy; $('edAdd').disabled = !setup }
-function edBar(el, g, sd) {
+function edBar(el, g, sd, over) {
   var who = '<span class="who"><i class="' + (g ? 'w' : 'b') + '"></i>' + sideName(g) + '</span>';
   if (!sd) { el.className = 'vbar bad'; el.innerHTML = who + '<span class="vv">—</span>'; return }
+  if (over) {
+    var mate = over.k === 'mate', won = mate && over.g === g, k = mate ? (won ? 'k-win' : 'k-open') : 'k-draw';
+    el.className = 'vbar ' + (mate ? (won ? 'can' : 'over') : 'cannot');
+    el.innerHTML = who + '<span class="vv ' + k + '">' + T(mate ? (won ? 'ovMates' : 'ovMated') : over.k === 'stale' && over.g === g ? 'ovStalemated' : 'ovDraw') + '</span>' +
+      '<span class="chip ' + k + '">' + (mate ? T('ovChipMate') : over.k === 'stale' ? T('rs_stalemate') : F('rsRule', over.rule / 2)) + '</span>' +
+      '<span class="vif">' + F('ovResult', mate ? (over.g ? '1–0' : '0–1') : '½–½') + '</span>';
+    return }
   var s = sd[g], can = !s.cannot;
   el.className = 'vbar ' + (can ? 'can' : 'cannot');
   el.innerHTML = who + '<span class="vv ' + (can ? 'k-win' : 'k-draw') + '">' + T(can ? 'sdCan' : 'sdCannot') + '</span>' + chipHTML(s) +

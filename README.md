@@ -121,7 +121,7 @@ side can never mate brings its flag down, for good.
 > came down after it go up again.
 
 **End-of-game rules.** Mateless decides only the endings that need no claim: checkmate,
-stalemate, dead position, the 75-move rule and fivefold repetition (FIDE 9.6). Threefold
+stalemate, the 75-move rule, fivefold repetition and dead position, in that order (FIDE 9.6). Threefold
 repetition (9.2) and the 50-move rule (9.3) are claims, a draw by agreement an agreement: those
 are the platform's. `Game` keeps the repetition count and every position its halfmove clock.
 

@@ -9003,8 +9003,8 @@ class Flags {
 /* ═══ Mateless · game.js — a reference game: results, repetitions, the move rules ═════════════
 
    What the ladder's answers mean for the result of a game, and the endings that need no claim:
-   checkmate, stalemate, a dead position (both flags down), the 75-move rule and fivefold
-   repetition. Claims (threefold repetition, the 50-move rule) and agreed draws are left to the
+   checkmate, stalemate, the 75-move rule, fivefold repetition and a dead position (both flags
+   down). Claims (threefold repetition, the 50-move rule) and agreed draws are left to the
    platform, which has the repetition count and the halfmove clock to decide them.
      repetition    a game keeps an exact code of every position and counts repetitions by looking
                    back only over the moves since the last capture or pawn move, every other ply
@@ -9031,8 +9031,9 @@ const Result = Object.freeze({
 /** The draws a player may claim now (Game.claimable), as bits. */
 const Claim = Object.freeze({ FIFTY_MOVES: 1, THREEFOLD: 2 });
 
-/** How the game stands: checkmate, stalemate, dead position, fivefold repetition,
-    the 75-move rule, in that order: the endings that need no claim. Returns a Result code, 0
+/** How the game stands: checkmate, stalemate, the move rule, repetition, dead position, in
+    that order: the endings that need no claim (a mate on the move that reaches the move rule
+    stands, FIDE 9.6.2; the rules cost nothing, a dead position a proof). Returns a Result code, 0
     while the game goes on. Threefold repetition and the 50-move rule are claims, left to the
     platform.
       repetitions         how many times the current position has occurred;
@@ -9053,19 +9054,17 @@ function gameStatus(pos, { repetitions = 1, deadPositionSearch = true, memory = 
     if (SHARED_CONTEXT.checks === 0) return Result.STALEMATE;
     return pos.side === WHITE ? Result.BLACK_MATES : Result.WHITE_MATES;
   }
-  // Under a move rule, the rule is what ended a game at it: there every side is proven unable to mate
-  // (the rule ends every line at once), but the rule's own result says why.
-  if (moveRule && pos.halfmove >= moveRule) return moveRule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
-  // The same for a repetition rule: a position that occurs for the N-th time ends the game there.
-  if (repetition && repetitions >= repetition) return repetition === 3 ? Result.THREEFOLD : Result.FIVEFOLD;
+  // The move rule, then repetition, before the dead position: a game at the rule ended there (the
+  // rule ends every line at once), and the rule's own result says why. Without a rule, FIDE's.
+  if (memory) memory.updateFlags();
+  const rule = moveRule || 150, rep = repetition || 5;
+  if (pos.halfmove >= rule) return rule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
+  if (repetitions >= rep) return rep === 3 ? Result.THREEFOLD : Result.FIVEFOLD;
   let dead;
-  if (memory) { memory.updateFlags(); dead = memory.neverMates(WHITE) && memory.neverMates(BLACK); }
+  if (memory) dead = memory.neverMates(WHITE) && memory.neverMates(BLACK);
   else if (deadPositionSearch) dead = isDeadPosition(pos, { moveRule, repetition });
   else dead = cannotMate(pos, WHITE) && cannotMate(pos, BLACK);
-  if (dead) return Result.DEAD_POSITION;
-  if (repetitions >= 5) return Result.FIVEFOLD;   // (0: no repetition rule above)
-  if (pos.halfmove >= (moveRule || 150)) return moveRule === 100 ? Result.FIFTY_MOVES : Result.SEVENTY_FIVE_MOVES;
-  return Result.NONE;
+  return dead ? Result.DEAD_POSITION : Result.NONE;
 }
 
 /** The verdict when the flag of `side` falls (FIDE 6.9), or `side` resigns (FIDE 5.1.2), in a
@@ -11908,7 +11907,7 @@ en: {
  res5: "fivefold repetition",
  res6: "a dead position",
  secPgn: "Games",
- pgnSub: "A test of its own, separate from the positions above. Every game is replayed move by move with Mateless. After each move it checks the endings that need no claim: checkmate, stalemate, a dead position, the 75-move rule and fivefold repetition. The first one met is where the rules end the game, and any moves played after it are reported. If none comes first, the final position is judged as a flag fall: the side whose flag fell is the loser named in the Result tag, or the side to move when the result is a draw or <code>*</code>. After every move Mateless also keeps a flag per side: once a side is proven unable to mate, it stays so for the rest of the game, and the other side’s flag fall is a draw at once.",
+ pgnSub: "A test of its own, separate from the positions above. Every game is replayed move by move with Mateless. After each move it checks the endings that need no claim, in this order: checkmate, stalemate, the 75-move rule, fivefold repetition and a dead position. The first one met is where the rules end the game, and any moves played after it are reported. If none comes first, the final position is judged as a flag fall: the side whose flag fell is the loser named in the Result tag, or the side to move when the result is a draw or <code>*</code>. After every move Mateless also keeps a flag per side: once a side is proven unable to mate, it stays so for the rest of the game, and the other side’s flag fall is a draw at once.",
  pgnHPaste: "PGN",
  pgnDropBig: "Drop PGN files here, or click to choose",
  pgnDropSmall: "Any number of games per file. Comments, variations and NAGs are skipped; the <code>FEN</code> and <code>Variant</code> tags are read. Chess960 works too: castling is <code>O-O</code> / <code>O-O-O</code>, and the FEN tag may give the rights as KQkq or as Shredder file letters.",
@@ -12227,7 +12226,7 @@ tr: {
  res5: "beşli tekrar",
  res6: "ölü pozisyon",
  secPgn: "Oyunlar",
- pgnSub: "Yukarıdaki pozisyonlardan ayrı, kendi başına bir test. Her oyun Mateless ile hamle hamle yeniden oynanır. Her hamleden sonra talep gerektirmeyen bitişlere bakılır: mat, pat, ölü pozisyon, 75 hamle kuralı ve beşli tekrar. İlk karşılaşılan, kuralların oyunu bitirdiği yerdir; ondan sonra oynanan hamleler raporlanır. Hiçbiri önce gelmezse son pozisyon bayrak düşüşü olarak değerlendirilir: bayrağı düşen, Result etiketindeki kaybedendir; sonuç berabere ya da <code>*</code> ise sırası gelen taraftır. Mateless her hamleden sonra taraf başına bir bayrak da tutar: bir tarafın mat edemeyeceği ispatlanınca oyunun geri kalanında da öyle kalır ve öbür tarafın bayrak düşüşü o an beraberliktir.",
+ pgnSub: "Yukarıdaki pozisyonlardan ayrı, kendi başına bir test. Her oyun Mateless ile hamle hamle yeniden oynanır. Her hamleden sonra talep gerektirmeyen bitişlere bu sırayla bakılır: mat, pat, 75 hamle kuralı, beşli tekrar ve ölü pozisyon. İlk karşılaşılan, kuralların oyunu bitirdiği yerdir; ondan sonra oynanan hamleler raporlanır. Hiçbiri önce gelmezse son pozisyon bayrak düşüşü olarak değerlendirilir: bayrağı düşen, Result etiketindeki kaybedendir; sonuç berabere ya da <code>*</code> ise sırası gelen taraftır. Mateless her hamleden sonra taraf başına bir bayrak da tutar: bir tarafın mat edemeyeceği ispatlanınca oyunun geri kalanında da öyle kalır ve öbür tarafın bayrak düşüşü o an beraberliktir.",
  pgnHPaste: "PGN",
  pgnDropBig: "PGN dosyalarını buraya bırak ya da seçmek için tıkla",
  pgnDropSmall: "Bir dosyada istediğin kadar oyun olabilir. Yorumlar, varyantlar ve NAG’ler atlanır; <code>FEN</code> ve <code>Variant</code> etiketleri okunur. Chess960 da olur: rok <code>O-O</code> / <code>O-O-O</code> diye yazılır, FEN etiketi de hakları KQkq ya da Shredder sütun harfleriyle verebilir.",
@@ -12805,8 +12804,8 @@ $('expInv').onclick = function () { if (!results) return;
 
 /* ═══════════════════════════════ games (PGN): a test of its own ═══════════════════════════════
    Every game is replayed move by move with the engine's Game, whose play() returns the game
-   status after the move: checkmate, stalemate, a dead position, the 75-move rule or fivefold
-   repetition, the endings that need no claim. The first one met is where the rules end the game.
+   status after the move: checkmate, stalemate, the 75-move rule, fivefold repetition or a dead
+   position, the endings that need no claim. The first one met is where the rules end the game.
    If none comes first, the final position is judged as a flag fall: the loser named by Result is
    the side whose flag fell (on a draw or *, the side to move). Time-outs and resignations are not
    told apart; both ask whether the opponent can still mate. Nothing here reads or writes the
